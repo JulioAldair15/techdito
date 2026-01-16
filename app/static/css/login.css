@@ -1,0 +1,125 @@
+body {
+    font-family: 'Poppins', Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.login-container, .inicio-container {
+    background: #fff;
+    padding: 20px;
+    border-radius: 14px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    width: 300px;
+    text-align: center;
+}
+
+h1 {
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+    text-align: left;
+}
+
+label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+input {
+    width: 95%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column; 
+    align-items: flex-start; 
+    margin-bottom: 5px; 
+}
+
+button {
+    background: #184875;
+    color: #fff;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+}
+
+button:hover {
+    background: #81beff;
+}
+
+.flash {
+    margin-bottom: 15px;
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.flash.error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Animación de entrada suave */
+@keyframes fadeInScale {
+    0% {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.login-container {
+    animation: fadeInScale 0.6s ease-out;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.password-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 300px;
+}
+
+.password-wrapper input {
+    width: 100%;
+    padding: 8px 40px 8px 8px; /* padding-right aumentado para dejar espacio al ojito */
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.password-wrapper .toggle-password {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    cursor: pointer;
+    user-select: none;
+}
+
+.password-wrapper .toggle-password svg {
+    height: 20px;
+    width: 20px;
+    pointer-events: none; /* evita problemas al hacer clic */
+}

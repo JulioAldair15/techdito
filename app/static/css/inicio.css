@@ -1,0 +1,6447 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Poppins', Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+header {
+    background-color: #184875;
+    width: 100%;
+    padding: 15px 20px;
+    color: white;
+    display: flex;
+    align-items: center;
+    /*position: fixed; */
+    top: 0; 
+    z-index: 1000;
+}
+
+.navbar {
+    display: flex;
+    align-items: center;
+}
+
+.navbar .logo {
+    margin-left: 10px;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+#menu-toggle {
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+.main-container {
+    display: flex;
+    height: 100vh; 
+    overflow: hidden;
+    transition: all 0.3s ease;
+    position: relative; 
+}
+
+.sidebar {
+    background-color: #a1c0dd;
+    position: relative; 
+    width: 200px;
+    padding: 20px;
+    transition: transform 0.3s ease, width 0.3s ease;
+    visibility: visible; 
+}
+
+.sidebar.active {
+    transform: translateX(-100%);
+    width: 0; 
+    padding: 0; 
+    visibility: hidden; 
+}
+
+.sidebar ul {
+    list-style-type: none;
+}
+
+.sidebar ul li {
+    margin-bottom: 15px;
+}
+
+.sidebar ul li a {
+    text-decoration: none;
+    color: #000000;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.sidebar ul li a:hover {
+    color: #ffffff;
+}
+
+.content {
+    flex-grow: 1;
+    padding: 20px;
+    background-color: #fff;
+    transition: width 0.3s ease; 
+    overflow-y: auto;
+}
+
+.section {
+    display: none;
+    height: auto; /* ✅ Que se adapte al contenido */
+}
+
+.section.active {
+    display: block;
+    height: auto; /* ✅ Este es el cambio importante */
+}
+
+
+.sidebar.active + .content {
+    margin-left: 0; 
+    width: 100%; 
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .sidebar {
+        position: absolute;
+        left: 0;
+        top: 60px;
+        height: calc(100vh - 60px);
+        z-index: 1000;
+    }
+
+    .sidebar.active {
+        transform: translateX(-100%);
+        visibility: hidden; 
+    }
+
+    .content {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+}
+
+.logout-link {
+    color: #e74c3c; 
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    display: block;
+    padding: 10px;
+    border-radius: 5px;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.logout-link:hover {
+    background-color: #c0392b; 
+    color: white; 
+    border-radius: 5px;
+}
+
+.logout-item {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    width: 100%;
+}
+
+
+.inicio-container h1 {
+    font-size: 32px; 
+    color: #000000; 
+    margin-bottom: 4px; 
+}
+
+.inicio-container p {
+    font-size: 16px; 
+    color: #000000; 
+    line-height: 1; 
+}
+
+#welcome-message {
+    transition: opacity 0.3s ease-in-out;
+}
+
+.logo {
+    color: white;
+    text-decoration: none;
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-left: 10px;
+}
+
+.logo:hover {
+    text-decoration: none;
+    color: #f0f0f0; /* Un tono más claro al pasar el mouse, opcional */
+    cursor: pointer;
+}
+
+/* Animación fade-in suave */
+@keyframes zoomIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+#welcome-message.fullscreen-bienvenida {
+    animation: zoomIn 0.8s ease-out forwards;
+}
+
+
+
+/* RECAUDACIÓN */
+
+.input-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0;
+    border: 2px solid #ddd;
+    border-radius: 18px;
+    padding: 10px;
+    margin-top: 4px;
+    width: 60%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+.input-container label {
+    font-size: 12px !important;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 8px;
+    display: block; /* Para separar las etiquetas de los inputs */
+    font-family: Arial, sans-serif;
+}
+
+.input-container select, .input-container input, .input-container button {
+    padding: 8px 15px;
+    font-size: 12px !important;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.input-container button {
+    background-color: #184875;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+.input-container button:hover {
+    background-color: #1f5f7c;
+}
+
+/* Contenedor para ambas tablas */
+.tabla-container {
+    display: flex;
+    justify-content: flex-start; /* Espaciado uniforme entre tablas */
+    align-items: flex-start; /* Alineación superior */
+    gap: 20px; /* Espaciado entre tablas */
+    margin-top: 0;
+    padding: 10px;
+    max-width: 100%;
+}
+
+
+/* Tabla de empleados */
+.empleados-table-container {
+    width: 100%; /* Reducir ancho */
+    max-height: 480px; /* Limitar la altura */
+    overflow-y: auto; /* Habilitar scroll */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+
+
+/* Estilos específicos para cada tipo de input */
+.empleados-table td input[name="pasajes"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table td input[name="ruta"] {
+    color: #000000; /* Texto azul oscuro */
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table td input[name="viaticos"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table {
+    width: 100%; /* Ancho completo */
+    border-collapse: collapse;
+    table-layout: fixed; /* Fijar ancho de columnas */
+    min-height: 500px;
+}
+
+.empleados-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* Mantener encabezado encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table tfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2; /* Mantener pie encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table th, .empleados-table td {
+    padding: 4px 6px; /* Reducir padding */
+    text-align: left;
+    border: 1px solid #ddd;
+    font-size: 10px; /* Tamaño del texto */
+    line-height: 1; /* Reducir espaciado interno */
+}
+
+.empleados-table td select {
+    padding: 4px;
+    width: 100%;
+    font-size: 10px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+/* Botón guardar asistencia */
+.empleados-table tfoot .btn {
+    width: 30%;
+    padding: 10px;
+    background-color: #184875;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.empleados-table tfoot .btn:hover {
+    background-color: #a1c0dd;
+}
+
+
+
+/* Estilo del botón de eliminación */
+.eliminar-fila-btn {
+    background-color: #ff4d4f; /* Rojo claro */
+    color: white;
+    border: none;
+    border-radius: 20px;
+    font-weight: bold;
+    padding: 2px 4px 2px 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.eliminar-fila-btn:hover {
+    background-color: #d9363e; /* Rojo más oscuro al pasar el ratón */
+}
+
+.eliminar-fila-btn:focus {
+    outline: none;
+    box-shadow: 0 0 4px rgba(255, 77, 79, 0.5);
+}
+
+/* Estilo del botón de eliminación */
+.eliminar-fila-btn-1,
+.eliminar-fila-btn-2,
+.eliminar-fila-btn-3,
+.eliminar-fila-btn-4,
+.eliminar-fila-btn-5,
+.eliminar-fila-btn-6,
+.eliminar-fila-btn-7,
+.eliminar-fila-btn-8,
+.eliminar-fila-btn-10 {
+    background-color: #ff4d4f; /* Rojo claro */
+    color: white;
+    border: none;
+    border-radius: 20px;
+    font-weight: bold;
+    padding: 2px 4px 2px 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.eliminar-fila-btn-1:hover,
+.eliminar-fila-btn-2:hover,
+.eliminar-fila-btn-3:hover,
+.eliminar-fila-btn-4:hover,
+.eliminar-fila-btn-5:hover,
+.eliminar-fila-btn-6:hover,
+.eliminar-fila-btn-7:hover,
+.eliminar-fila-btn-8:hover,
+.eliminar-fila-btn-10:hover {
+    background-color: #d9363e; /* Rojo más oscuro al pasar el ratón */
+}
+
+.eliminar-fila-btn-1:focus,
+.eliminar-fila-btn-2:focus,
+.eliminar-fila-btn-3:focus,
+.eliminar-fila-btn-4:focus,
+.eliminar-fila-btn-5:focus,
+.eliminar-fila-btn-6:focus,
+.eliminar-fila-btn-7:focus,
+.eliminar-fila-btn-8:hover,
+.eliminar-fila-btn-10:hover {
+    outline: none;
+    box-shadow: 0 0 4px rgba(255, 77, 79, 0.5);
+}
+
+
+
+/* Contenedor de las leyendas */
+.leyendas-container-recaudacion {
+    display: flex;
+    flex-direction: column; /* Apilar tablas verticalmente */
+    gap: 10px; /* Espaciado entre las tablas de leyenda */
+    /*flex: 1; /* Ocupa menos espacio que la tabla principal */
+    max-height: 480px; /* Limitar altura total */
+    width: 30%;
+}
+
+/* Tablas de leyenda (Asistencia y Viáticos) */
+.asistencia-legenda-container-recaudacion, 
+.viaticos-legenda-container-recaudacion {
+    flex: 1; /* Cada tabla ocupa igual espacio vertical dentro del contenedor */
+    max-height: 400px; /* Altura máxima para cada tabla */
+    overflow-y: auto; /* Scroll si exceden la altura */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.asistencia-legenda-recaudacion, 
+.viaticos-legenda-recaudacion {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+}
+
+.asistencia-legenda-recaudacion th, 
+.viaticos-legenda-recaudacion th {
+    background-color: #184875;
+    color: white;
+    font-size: 10px;
+}
+
+.asistencia-legenda-recaudacion th, 
+.viaticos-legenda-recaudacion th, 
+.asistencia-legenda-recaudacion td, 
+.viaticos-legenda-recaudacion td {
+    padding: 6px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.asistencia-legenda-recaudacion td, 
+.viaticos-legenda-recaudacion td {
+    color: #333;
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .tabla-container {
+        flex-direction: column; /* Columna en pantallas pequeñas */
+        align-items: center;
+        gap: 10px;
+    }
+
+    .empleados-table-container,
+    .asistencia-legenda-container {
+        width: 100%; /* Ancho completo en pantallas pequeñas */
+    }
+}
+
+/* Encabezados */
+.empleados-table th:nth-child(1),
+.empleados-table td:nth-child(1) {
+    width: 2%; /* Número de fila */
+}
+
+.empleados-table th:nth-child(2),
+.empleados-table td:nth-child(2) {
+    width: 8%; /* DNI */
+}
+
+.empleados-table th:nth-child(3),
+.empleados-table td:nth-child(3) {
+    width: 20%; /* Nombres y apellidos */
+}
+
+.empleados-table th:nth-child(4),
+.empleados-table td:nth-child(4) {
+    width: 15%; /* Cargo */
+}
+
+.empleados-table th:nth-child(5),
+.empleados-table td:nth-child(5) {
+    width: 6%; /* Tipo de asistencia  */
+}
+
+.empleados-table th:nth-child(6),
+.empleados-table td:nth-child(6) {
+    width: 10%; /* pasajes */
+}
+
+.empleados-table th:nth-child(7),
+.empleados-table td:nth-child(7) {
+    width: 8%; /* Viáticos */
+}
+
+.empleados-table th:nth-child(8),
+.empleados-table td:nth-child(8) {
+    width: 15%; /*ruta */
+}
+
+/* Estilo específico para la columna de eliminar */
+.empleados-table th:nth-child(9), 
+.empleados-table td:nth-child(9) {
+    text-align: center;
+    width: 5% ; /* Ajusta según sea necesario */
+    padding: 0 ;
+}
+
+.fila-flex {
+    display: flex;
+    align-items: center; /* Alineación vertical centrada */
+    gap: 10px; /* Espacio entre los elementos */
+    height: 45px;
+}
+
+/* Ajustes para el selector */
+#nuevo-empleado-selector {
+    width: 150px; /* Ajusta el ancho del selector */
+    height: 35px; /* Asegura que la altura coincida con los otros elementos */
+    padding: 5px; /* Espaciado interno */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 10px !important;
+}
+
+#fila-agregar-empleado {
+    background-color: #ffffff; /* Cambiar el fondo a blanco */
+    height: 10px;
+}
+
+#empleado-a-anadir-label {
+    color: #000000; /* Cambiar el color del texto a negro */
+    font-weight: bold; /* Poner el texto en negrita */
+}
+
+/* Estilo para el contenedor del botón */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2px;
+}
+
+/* Estilo personalizado para el botón "Añadir Empleado" */
+#agregar-empleado-btn {
+    height: 35px; /* Altura igual al selector */
+    padding: 5px 10px; /* Espaciado interno */
+    background-color: #4CAF50; /* Fondo verde */
+    color: white; /* Texto blanco */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambiar el cursor a mano */
+    font-size: 10px;
+}
+
+#agregar-empleado-btn:hover {
+    background-color: #45a049; /* Efecto hover para el botón */
+}
+
+/* Estilo para el contenedor de Choices.js */
+.choices {
+    width: 50%; /* Ocupa todo el ancho del contenedor padre */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 10px !important; /* Tamaño de fuente pequeño */
+    height: 35px; /* Altura del contenedor pequeño */
+}
+
+/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
+.choices__input {
+    height: 35px; /* Ajustar la altura del input */
+    padding: 5px; /* Espaciado interno */
+    font-size: 10px !important; /* Tamaño de la fuente */
+}
+
+/* Estilo para las opciones de Choices.js */
+.choices__list--dropdown .choices__item {
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    padding: 5px 10px; /* Espaciado de las opciones */
+    font-size: 10px !important; /* Tamaño de fuente pequeño */
+}
+
+/* Estilo para la opción seleccionada */
+.choices__list--dropdown .choices__item--selectable.is-selected {
+    background-color: #184875; /* Fondo azul para la opción seleccionada */
+    color: white; /* Texto blanco */
+}
+
+/* Estilo al hacer hover sobre una opción */
+.choices__list--dropdown .choices__item--selectable:hover {
+    background-color: #184875; /* Fondo azul oscuro al hacer hover */
+    color: white; /* Texto blanco al hacer hover */
+}
+
+/* Estilo cuando la lista está abierta */
+.choices__list--dropdown {
+    max-height: 200px; /* Limitar la altura de la lista de opciones */
+    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
+}
+
+
+/* LECTURAS*/
+.input-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0;
+    border: 2px solid #ddd;
+    border-radius: 18px;
+    padding: 10px;
+    margin-top: 4px;
+    width: 60%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+.input-container label {
+    font-size: 1rem;
+    color: #000000;
+}
+
+.input-container select, .input-container input, .input-container button {
+    padding: 8px 15px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.input-container button {
+    background-color: #184875;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+.input-container button:hover {
+    background-color: #1f5f7c;
+}
+
+/* Contenedor para ambas tablas */
+.tabla-container-lectura {
+    display: flex;
+    justify-content: flex-start; /* Espaciado uniforme entre tablas */
+    align-items: flex-start; /* Alineación superior */
+    gap: 20px; /* Espaciado entre tablas */
+    margin-top: 0;
+    padding: 10px;
+    max-width: 100%;
+}
+
+/* Tabla de empleados */
+.empleados-table-container-lectura {
+    width: 100%; /* Reducir ancho */
+    max-height: 480px; /* Limitar la altura */
+    overflow-y: auto; /* Habilitar scroll */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.empleados-table-lecturas {
+    width: 100%; /* Ancho completo */
+    border-collapse: collapse;
+    table-layout: fixed; /* Fijar ancho de columnas */
+    min-height: 500px;
+}
+
+/* Estilos específicos para cada tipo de input */
+.empleados-table-lecturas td input[name="pasajes"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-lecturas td input[name="ruta"] {
+    color: #000000; /* Texto azul oscuro */
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-lecturas td input[name="viaticos"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-lecturas thead {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* Mantener encabezado encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-lecturas tfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2; /* Mantener pie encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-lecturas th, .empleados-table-lecturas td {
+    padding: 4px 6px; /* Reducir padding */
+    text-align: left;
+    border: 1px solid #ddd;
+    font-size: 10px; /* Tamaño del texto */
+    line-height: 1; /* Reducir espaciado interno */
+}
+
+.empleados-table-lecturas td select {
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 5px;
+    width: 100%;
+    border: 1px solid #ccc;
+}
+
+/* Botón guardar asistencia */
+.empleados-table-lecturas tfoot .btn-lecturas {
+    width: 30%;
+    padding: 10px;
+    background-color: #184875;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.empleados-table-lecturas tfoot .btn-lecturas:hover {
+    background-color: #a1c0dd;
+}
+
+/* Contenedor de las leyendas */
+.leyendas-container-lectura {
+    display: flex;
+    flex-direction: column; /* Apilar tablas verticalmente */
+    gap: 10px; /* Espaciado entre las tablas de leyenda */
+    /*flex: 1; /* Ocupa menos espacio que la tabla principal */
+    max-height: 480px; /* Limitar altura total */
+    width: 30%;
+}
+
+/* Tablas de leyenda (Asistencia y Viáticos) */
+.asistencia-legenda-container-lectura, 
+.viaticos-legenda-container-lectura {
+    flex: 1; /* Cada tabla ocupa igual espacio vertical dentro del contenedor */
+    max-height: 400px; /* Altura máxima para cada tabla */
+    overflow-y: auto; /* Scroll si exceden la altura */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.asistencia-legenda-lectura, 
+.viaticos-legenda-lectura {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+}
+
+.asistencia-legenda-lectura th, 
+.viaticos-legenda-lectura th {
+    background-color: #184875;
+    color: white;
+    font-size: 10px;
+}
+
+.asistencia-legenda-lectura th, 
+.viaticos-legenda-lectura th, 
+.asistencia-legenda-lectura td, 
+.viaticos-legenda-lectura td {
+    padding: 6px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.asistencia-legenda-lectura td, 
+.viaticos-legenda-lectura td {
+    color: #333;
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .tabla-container {
+        flex-direction: column; /* Columna en pantallas pequeñas */
+        align-items: center;
+        gap: 10px;
+    }
+
+    .empleados-table-container-lectura,
+    .asistencia-legenda-container {
+        width: 100%; /* Ancho completo en pantallas pequeñas */
+    }
+}
+
+/* Encabezados */
+.empleados-table-lecturas th:nth-child(1),
+.empleados-table-lecturas td:nth-child(1) {
+    width: 2%; /* Número de fila */
+}
+
+.empleados-table-lecturas th:nth-child(2),
+.empleados-table-lecturas td:nth-child(2) {
+    width: 8%; /* DNI */
+}
+
+.empleados-table-lecturas th:nth-child(3),
+.empleados-table-lecturas td:nth-child(3) {
+    width: 20%; /* Nombres y apellidos */
+}
+
+.empleados-table-lecturas th:nth-child(4),
+.empleados-table-lecturas td:nth-child(4) {
+    width: 15%; /* Cargo */
+}
+
+.empleados-table-lecturas th:nth-child(5),
+.empleados-table-lecturas td:nth-child(5) {
+    width: 6%; /* Pasajes */
+}
+
+.empleados-table-lecturas th:nth-child(6),
+.empleados-table-lecturas td:nth-child(6) {
+    width: 10%; /* Ruta */
+}
+
+.empleados-table-lecturas th:nth-child(7),
+.empleados-table-lecturas td:nth-child(7) {
+    width: 8%; /* Viáticos */
+}
+
+.empleados-table-lecturas th:nth-child(8),
+.empleados-table-lecturas td:nth-child(8) {
+    width: 15%; /* Tipo de asistencia */
+}
+
+/* Estilo específico para la columna de eliminar */
+.empleados-table-lecturas th:nth-child(9), 
+.empleados-table-lecturas td:nth-child(9) {
+    text-align: center;
+    width: 5% ; /* Ajusta según sea necesario */
+    padding: 0 ;
+}
+
+.fila-flex {
+    display: flex;
+    align-items: center; /* Alineación vertical centrada */
+    gap: 10px; /* Espacio entre los elementos */
+    height: 45px;
+}
+
+/* Ajustes para el selector */
+#nuevo-empleado-selector {
+    width: 150px; /* Ajusta el ancho del selector */
+    height: 35px; /* Asegura que la altura coincida con los otros elementos */
+    padding: 5px; /* Espaciado interno */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+}
+
+#fila-agregar-empleado-lectura {
+    background-color: #ffffff; /* Cambiar el fondo a blanco */
+    height: 10px;
+}
+
+#empleado-a-anadir-label {
+    color: #000000; /* Cambiar el color del texto a negro */
+    font-weight: bold; /* Poner el texto en negrita */
+}
+
+/* Estilo para el contenedor del botón */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2px;
+}
+
+/* Estilo personalizado para el botón "Añadir Empleado" */
+#agregar-empleado-btn-lectura {
+    height: 35px; /* Altura igual al selector */
+    padding: 5px 10px; /* Espaciado interno */
+    background-color: #4CAF50; /* Fondo verde */
+    color: white; /* Texto blanco */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambiar el cursor a mano */
+    font-size: 20px;
+}
+
+#agregar-empleado-btn-lectura:hover {
+    background-color: #45a049; /* Efecto hover para el botón */
+}
+
+/* Estilo para el contenedor de Choices.js */
+.choices {
+    width: 50%; /* Ocupa todo el ancho del contenedor padre */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+    height: 35px; /* Altura del contenedor pequeño */
+}
+
+/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
+.choices__input {
+    height: 35px; /* Ajustar la altura del input */
+    padding: 5px; /* Espaciado interno */
+    font-size: 12px; /* Tamaño de la fuente */
+}
+
+/* Estilo para las opciones de Choices.js */
+.choices__list--dropdown .choices__item {
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    padding: 5px 10px; /* Espaciado de las opciones */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+}
+
+/* Estilo para la opción seleccionada */
+.choices__list--dropdown .choices__item--selectable.is-selected {
+    background-color: #184875; /* Fondo azul para la opción seleccionada */
+    color: white; /* Texto blanco */
+}
+
+/* Estilo al hacer hover sobre una opción */
+.choices__list--dropdown .choices__item--selectable:hover {
+    background-color: #184875; /* Fondo azul oscuro al hacer hover */
+    color: white; /* Texto blanco al hacer hover */
+}
+
+/* Estilo cuando la lista está abierta */
+.choices__list--dropdown {
+    max-height: 200px; /* Limitar la altura de la lista de opciones */
+    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
+}
+
+
+/* DISTRIBUCIÓN*/
+.input-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0;
+    border: 2px solid #ddd;
+    border-radius: 18px;
+    padding: 10px;
+    margin-top: 4px;
+    width: 60%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+.input-container label {
+    font-size: 1rem;
+    color: #000000;
+}
+
+.input-container select, .input-container input, .input-container button {
+    padding: 8px 15px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.input-container button {
+    background-color: #184875;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+.input-container button:hover {
+    background-color: #1f5f7c;
+}
+
+/* Contenedor para ambas tablas */
+.tabla-container-distribucion {
+    display: flex;
+    justify-content: flex-start; /* Espaciado uniforme entre tablas */
+    align-items: flex-start; /* Alineación superior */
+    gap: 20px; /* Espaciado entre tablas */
+    margin-top: 0;
+    padding: 10px;
+    max-width: 100%;
+}
+
+/* Tabla de empleados */
+.empleados-table-container-distribucion {
+    width: 100%; /* Reducir ancho */
+    max-height: 480px; /* Limitar la altura */
+    overflow-y: auto; /* Habilitar scroll */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.empleados-table-distribucion {
+    width: 100%; /* Ancho completo */
+    border-collapse: collapse;
+    table-layout: fixed; /* Fijar ancho de columnas */
+    min-height: 500px;
+}
+
+/* Estilos específicos para cada tipo de input */
+.empleados-table-distribucion td input[name="pasajes"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-distribucion td input[name="ruta"] {
+    color: #000000; /* Texto azul oscuro */
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-distribucion td input[name="viaticos"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-distribucion thead {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* Mantener encabezado encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-distribucion tfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2; /* Mantener pie encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-distribucion th, .empleados-table-distribucion td {
+    padding: 4px 6px; /* Reducir padding */
+    text-align: left;
+    border: 1px solid #ddd;
+    font-size: 10px; /* Tamaño del texto */
+    line-height: 1; /* Reducir espaciado interno */
+}
+
+.empleados-table-distribucion td select {
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 5px;
+    width: 100%;
+    border: 1px solid #ccc;
+}
+
+/* Botón guardar asistencia */
+.empleados-table-distribucion tfoot .btn-distribucion {
+    width: 30%;
+    padding: 10px;
+    background-color: #184875;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.empleados-table-distribucion tfoot .btn-distribucion:hover {
+    background-color: #a1c0dd;
+}
+
+/* Contenedor de las leyendas */
+.leyendas-container-distribucion {
+    display: flex;
+    flex-direction: column; /* Apilar tablas verticalmente */
+    gap: 10px; /* Espaciado entre las tablas de leyenda */
+    /*flex: 1; /* Ocupa menos espacio que la tabla principal */
+    max-height: 480px; /* Limitar altura total */
+    width: 30%;
+}
+
+/* Tablas de leyenda (Asistencia y Viáticos) */
+.asistencia-legenda-container-distribucion, 
+.viaticos-legenda-container-distribucion {
+    flex: 1; /* Cada tabla ocupa igual espacio vertical dentro del contenedor */
+    max-height: 400px; /* Altura máxima para cada tabla */
+    overflow-y: auto; /* Scroll si exceden la altura */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.asistencia-legenda-distribucion, 
+.viaticos-legenda-distribucion {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+}
+
+.asistencia-legenda-distribucion th, 
+.viaticos-legenda-distribucion th {
+    background-color: #184875;
+    color: white;
+    font-size: 10px;
+}
+
+.asistencia-legenda-distribucion th, 
+.viaticos-legenda-distribucion th, 
+.asistencia-legenda-distribucion td, 
+.viaticos-legenda-distribucion td {
+    padding: 6px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.asistencia-legenda-distribucion td, 
+.viaticos-legenda-distribucion td {
+    color: #333;
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .tabla-container {
+        flex-direction: column; /* Columna en pantallas pequeñas */
+        align-items: center;
+        gap: 10px;
+    }
+
+    .empleados-table-container-distribucion,
+    .asistencia-legenda-container {
+        width: 100%; /* Ancho completo en pantallas pequeñas */
+    }
+}
+
+/* Encabezados */
+.empleados-table-distribucion th:nth-child(1),
+.empleados-table-distribucion td:nth-child(1) {
+    width: 2%; /* Número de fila */
+}
+
+.empleados-table-distribucion th:nth-child(2),
+.empleados-table-distribucion td:nth-child(2) {
+    width: 8%; /* DNI */
+}
+
+.empleados-table-distribucion th:nth-child(3),
+.empleados-table-distribucion td:nth-child(3) {
+    width: 20%; /* Nombres y apellidos */
+}
+
+.empleados-table-distribucion th:nth-child(4),
+.empleados-table-distribucion td:nth-child(4) {
+    width: 15%; /* Cargo */
+}
+
+.empleados-table-distribucion th:nth-child(5),
+.empleados-table-distribucion td:nth-child(5) {
+    width: 6%; /* Pasajes */
+}
+
+.empleados-table-distribucion th:nth-child(6),
+.empleados-table-distribucion td:nth-child(6) {
+    width: 10%; /* Ruta */
+}
+
+.empleados-table-distribucion th:nth-child(7),
+.empleados-table-distribucion td:nth-child(7) {
+    width: 8%; /* Viáticos */
+}
+
+.empleados-table-distribucion th:nth-child(8),
+.empleados-table-distribucion td:nth-child(8) {
+    width: 15%; /* Tipo de asistencia */
+}
+
+/* Estilo específico para la columna de eliminar */
+.empleados-table-distribucion th:nth-child(9), 
+.empleados-table-distribucion td:nth-child(9) {
+    text-align: center;
+    width: 5% ; /* Ajusta según sea necesario */
+    padding: 0 ;
+}
+
+.fila-flex {
+    display: flex;
+    align-items: center; /* Alineación vertical centrada */
+    gap: 10px; /* Espacio entre los elementos */
+    height: 45px;
+}
+
+/* Ajustes para el selector */
+#nuevo-empleado-selector {
+    width: 150px; /* Ajusta el ancho del selector */
+    height: 35px; /* Asegura que la altura coincida con los otros elementos */
+    padding: 5px; /* Espaciado interno */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+}
+
+#fila-agregar-empleado-distribucion {
+    background-color: #ffffff; /* Cambiar el fondo a blanco */
+    height: 10px;
+}
+
+#empleado-a-anadir-label {
+    color: #000000; /* Cambiar el color del texto a negro */
+    font-weight: bold; /* Poner el texto en negrita */
+}
+
+/* Estilo para el contenedor del botón */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2px;
+}
+
+/* Estilo personalizado para el botón "Añadir Empleado" */
+#agregar-empleado-btn-distribucion {
+    height: 35px; /* Altura igual al selector */
+    padding: 5px 10px; /* Espaciado interno */
+    background-color: #4CAF50; /* Fondo verde */
+    color: white; /* Texto blanco */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambiar el cursor a mano */
+    font-size: 20px;
+}
+
+#agregar-empleado-btn-distribucion:hover {
+    background-color: #45a049; /* Efecto hover para el botón */
+}
+
+/* Estilo para el contenedor de Choices.js */
+.choices {
+    width: 50%; /* Ocupa todo el ancho del contenedor padre */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+    height: 35px; /* Altura del contenedor pequeño */
+}
+
+/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
+.choices__input {
+    height: 35px; /* Ajustar la altura del input */
+    padding: 5px; /* Espaciado interno */
+    font-size: 12px; /* Tamaño de la fuente */
+}
+
+/* Estilo para las opciones de Choices.js */
+.choices__list--dropdown .choices__item {
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    padding: 5px 10px; /* Espaciado de las opciones */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+}
+
+/* Estilo para la opción seleccionada */
+.choices__list--dropdown .choices__item--selectable.is-selected {
+    background-color: #184875; /* Fondo azul para la opción seleccionada */
+    color: white; /* Texto blanco */
+}
+
+/* Estilo al hacer hover sobre una opción */
+.choices__list--dropdown .choices__item--selectable:hover {
+    background-color: #184875; /* Fondo azul oscuro al hacer hover */
+    color: white; /* Texto blanco al hacer hover */
+}
+
+/* Estilo cuando la lista está abierta */
+.choices__list--dropdown {
+    max-height: 200px; /* Limitar la altura de la lista de opciones */
+    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
+}
+
+
+/* CATASTRO*/
+.input-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0;
+    border: 2px solid #ddd;
+    border-radius: 18px;
+    padding: 10px;
+    margin-top: 4px;
+    width: 60%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+.input-container label {
+    font-size: 1rem;
+    color: #000000;
+}
+
+.input-container select, .input-container input, .input-container button {
+    padding: 8px 15px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.input-container button {
+    background-color: #184875;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+.input-container button:hover {
+    background-color: #1f5f7c;
+}
+
+/* Contenedor para ambas tablas */
+.tabla-container-catastro {
+    display: flex;
+    justify-content: flex-start; /* Espaciado uniforme entre tablas */
+    align-items: flex-start; /* Alineación superior */
+    gap: 20px; /* Espaciado entre tablas */
+    margin-top: 0;
+    padding: 10px;
+    max-width: 100%;
+}
+
+/* Tabla de empleados */
+.empleados-table-container-catastro {
+    width: 100%; /* Reducir ancho */
+    max-height: 480px; /* Limitar la altura */
+    overflow-y: auto; /* Habilitar scroll */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.empleados-table-catastro {
+    width: 100%; /* Ancho completo */
+    border-collapse: collapse;
+    table-layout: fixed; /* Fijar ancho de columnas */
+    min-height: 500px;
+}
+
+/* Estilos específicos para cada tipo de input */
+.empleados-table-catastro td input[name="pasajes"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-catastro td input[name="ruta"] {
+    color: #000000; /* Texto azul oscuro */
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-catastro td input[name="viaticos"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-catastro thead {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* Mantener encabezado encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-catastro tfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2; /* Mantener pie encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-catastro th, .empleados-table-catastro td {
+    padding: 4px 6px; /* Reducir padding */
+    text-align: left;
+    border: 1px solid #ddd;
+    font-size: 10px; /* Tamaño del texto */
+    line-height: 1; /* Reducir espaciado interno */
+}
+
+.empleados-table-catastro td select {
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 5px;
+    width: 100%;
+    border: 1px solid #ccc;
+}
+
+/* Botón guardar asistencia */
+.empleados-table-catastro tfoot .btn-catastro {
+    width: 30%;
+    padding: 10px;
+    background-color: #184875;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.empleados-table-catastro tfoot .btn-catastro:hover {
+    background-color: #a1c0dd;
+}
+
+/* Contenedor de las leyendas */
+.leyendas-container-catastro {
+    display: flex;
+    flex-direction: column; /* Apilar tablas verticalmente */
+    gap: 10px; /* Espaciado entre las tablas de leyenda */
+    /*flex: 1; /* Ocupa menos espacio que la tabla principal */
+    max-height: 480px; /* Limitar altura total */
+    width: 30%;
+}
+
+/* Tablas de leyenda (Asistencia y Viáticos) */
+.asistencia-legenda-container-catastro, 
+.viaticos-legenda-container-catastro {
+    flex: 1; /* Cada tabla ocupa igual espacio vertical dentro del contenedor */
+    max-height: 400px; /* Altura máxima para cada tabla */
+    overflow-y: auto; /* Scroll si exceden la altura */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.asistencia-legenda-catastro, 
+.viaticos-legenda-catastro {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+}
+
+.asistencia-legenda-catastro th, 
+.viaticos-legenda-catastro th {
+    background-color: #184875;
+    color: white;
+    font-size: 10px;
+}
+
+.asistencia-legenda-catastro th, 
+.viaticos-legenda-catastro th, 
+.asistencia-legenda-catastro td, 
+.viaticos-legenda-catastro td {
+    padding: 6px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.asistencia-legenda-catastro td, 
+.viaticos-legenda-catastro td {
+    color: #333;
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .tabla-container {
+        flex-direction: column; /* Columna en pantallas pequeñas */
+        align-items: center;
+        gap: 10px;
+    }
+
+    .empleados-table-container-catastro,
+    .asistencia-legenda-container {
+        width: 100%; /* Ancho completo en pantallas pequeñas */
+    }
+}
+
+/* Encabezados */
+.empleados-table-catastro th:nth-child(1),
+.empleados-table-catastro td:nth-child(1) {
+    width: 2%; /* Número de fila */
+}
+
+.empleados-table-catastro th:nth-child(2),
+.empleados-table-catastro td:nth-child(2) {
+    width: 8%; /* DNI */
+}
+
+.empleados-table-catastro th:nth-child(3),
+.empleados-table-catastro td:nth-child(3) {
+    width: 20%; /* Nombres y apellidos */
+}
+
+.empleados-table-catastro th:nth-child(4),
+.empleados-table-catastro td:nth-child(4) {
+    width: 15%; /* Cargo */
+}
+
+.empleados-table-catastro th:nth-child(5),
+.empleados-table-catastro td:nth-child(5) {
+    width: 6%; /* Pasajes */
+}
+
+.empleados-table-catastro th:nth-child(6),
+.empleados-table-catastro td:nth-child(6) {
+    width: 10%; /* Ruta */
+}
+
+.empleados-table-catastro th:nth-child(7),
+.empleados-table-catastro td:nth-child(7) {
+    width: 8%; /* Viáticos */
+}
+
+.empleados-table-catastro th:nth-child(8),
+.empleados-table-catastro td:nth-child(8) {
+    width: 15%; /* Tipo de asistencia */
+}
+
+/* Estilo específico para la columna de eliminar */
+.empleados-table-catastro th:nth-child(9), 
+.empleados-table-catastro td:nth-child(9) {
+    text-align: center;
+    width: 5% ; /* Ajusta según sea necesario */
+    padding: 0 ;
+}
+
+.fila-flex {
+    display: flex;
+    align-items: center; /* Alineación vertical centrada */
+    gap: 10px; /* Espacio entre los elementos */
+    height: 45px;
+}
+
+/* Ajustes para el selector */
+#nuevo-empleado-selector {
+    width: 150px; /* Ajusta el ancho del selector */
+    height: 35px; /* Asegura que la altura coincida con los otros elementos */
+    padding: 5px; /* Espaciado interno */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+}
+
+#fila-agregar-empleado-catastro {
+    background-color: #ffffff; /* Cambiar el fondo a blanco */
+    height: 10px;
+}
+
+#empleado-a-anadir-label {
+    color: #000000; /* Cambiar el color del texto a negro */
+    font-weight: bold; /* Poner el texto en negrita */
+}
+
+/* Estilo para el contenedor del botón */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2px;
+}
+
+/* Estilo personalizado para el botón "Añadir Empleado" */
+#agregar-empleado-btn-catastro {
+    height: 35px; /* Altura igual al selector */
+    padding: 5px 10px; /* Espaciado interno */
+    background-color: #4CAF50; /* Fondo verde */
+    color: white; /* Texto blanco */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambiar el cursor a mano */
+    font-size: 20px;
+}
+
+#agregar-empleado-btn-catastro:hover {
+    background-color: #45a049; /* Efecto hover para el botón */
+}
+
+/* Estilo para el contenedor de Choices.js */
+.choices {
+    width: 50%; /* Ocupa todo el ancho del contenedor padre */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+    height: 35px; /* Altura del contenedor pequeño */
+}
+
+/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
+.choices__input {
+    height: 35px; /* Ajustar la altura del input */
+    padding: 5px; /* Espaciado interno */
+    font-size: 12px; /* Tamaño de la fuente */
+}
+
+/* Estilo para las opciones de Choices.js */
+.choices__list--dropdown .choices__item {
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    padding: 5px 10px; /* Espaciado de las opciones */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+}
+
+/* Estilo para la opción seleccionada */
+.choices__list--dropdown .choices__item--selectable.is-selected {
+    background-color: #184875; /* Fondo azul para la opción seleccionada */
+    color: white; /* Texto blanco */
+}
+
+/* Estilo al hacer hover sobre una opción */
+.choices__list--dropdown .choices__item--selectable:hover {
+    background-color: #184875; /* Fondo azul oscuro al hacer hover */
+    color: white; /* Texto blanco al hacer hover */
+}
+
+/* Estilo cuando la lista está abierta */
+.choices__list--dropdown {
+    max-height: 200px; /* Limitar la altura de la lista de opciones */
+    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
+}
+
+
+/* INSPECCIONES*/
+.input-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0;
+    border: 2px solid #ddd;
+    border-radius: 18px;
+    padding: 10px;
+    margin-top: 4px;
+    width: 60%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+.input-container label {
+    font-size: 1rem;
+    color: #000000;
+}
+
+.input-container select, .input-container input, .input-container button {
+    padding: 8px 15px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.input-container button {
+    background-color: #184875;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+.input-container button:hover {
+    background-color: #1f5f7c;
+}
+
+/* Contenedor para ambas tablas */
+.tabla-container-inspecciones {
+    display: flex;
+    justify-content: flex-start; /* Espaciado uniforme entre tablas */
+    align-items: flex-start; /* Alineación superior */
+    gap: 20px; /* Espaciado entre tablas */
+    margin-top: 0;
+    padding: 10px;
+    max-width: 100%;
+}
+
+/* Tabla de empleados */
+.empleados-table-container-inspecciones {
+    width: 100%; /* Reducir ancho */
+    max-height: 480px; /* Limitar la altura */
+    overflow-y: auto; /* Habilitar scroll */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.empleados-table-inspecciones {
+    width: 100%; /* Ancho completo */
+    border-collapse: collapse;
+    table-layout: fixed; /* Fijar ancho de columnas */
+    min-height: 500px;
+}
+
+/* Estilos específicos para cada tipo de input */
+.empleados-table-inspecciones td input[name="pasajes"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-inspecciones td input[name="ruta"] {
+    color: #000000; /* Texto azul oscuro */
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-inspecciones td input[name="viaticos"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-inspecciones thead {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* Mantener encabezado encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-inspecciones tfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2; /* Mantener pie encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-inspecciones th, .empleados-table-inspecciones td {
+    padding: 4px 6px; /* Reducir padding */
+    text-align: left;
+    border: 1px solid #ddd;
+    font-size: 10px; /* Tamaño del texto */
+    line-height: 1; /* Reducir espaciado interno */
+}
+
+.empleados-table-inspecciones td select {
+    padding: 4px;
+    font-size: 10px;
+    width: 100%;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+/* Botón guardar asistencia */
+.empleados-table-inspecciones tfoot .btn-inspecciones {
+    width: 30%;
+    padding: 10px;
+    background-color: #184875;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.empleados-table-inspecciones tfoot .btn-inspecciones:hover {
+    background-color: #a1c0dd;
+}
+
+/* Contenedor de las leyendas */
+.leyendas-container-inspecciones {
+    display: flex;
+    flex-direction: column; /* Apilar tablas verticalmente */
+    gap: 10px; /* Espaciado entre las tablas de leyenda */
+    /*flex: 1; /* Ocupa menos espacio que la tabla principal */
+    max-height: 480px; /* Limitar altura total */
+    width: 30%;
+}
+
+/* Tablas de leyenda (Asistencia y Viáticos) */
+.asistencia-legenda-container-inspecciones, 
+.viaticos-legenda-container-inspecciones {
+    flex: 1; /* Cada tabla ocupa igual espacio vertical dentro del contenedor */
+    max-height: 400px; /* Altura máxima para cada tabla */
+    overflow-y: auto; /* Scroll si exceden la altura */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.asistencia-legenda-inspecciones, 
+.viaticos-legenda-inspecciones {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+}
+
+.asistencia-legenda-inspecciones th, 
+.viaticos-legenda-inspecciones th {
+    background-color: #184875;
+    color: white;
+    font-size: 10px;
+}
+
+.asistencia-legenda-inspecciones th, 
+.viaticos-legenda-inspecciones th, 
+.asistencia-legenda-inspecciones td, 
+.viaticos-legenda-inspecciones td {
+    padding: 6px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.asistencia-legenda-inspecciones td, 
+.viaticos-legenda-inspecciones td {
+    color: #333;
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .tabla-container {
+        flex-direction: column; /* Columna en pantallas pequeñas */
+        align-items: center;
+        gap: 10px;
+    }
+
+    .empleados-table-container-inspecciones,
+    .asistencia-legenda-container {
+        width: 100%; /* Ancho completo en pantallas pequeñas */
+    }
+}
+
+/* Encabezados */
+.empleados-table-inspecciones th:nth-child(1),
+.empleados-table-inspecciones td:nth-child(1) {
+    width: 2%; /* Número de fila */
+}
+
+.empleados-table-inspecciones th:nth-child(2),
+.empleados-table-inspecciones td:nth-child(2) {
+    width: 8%; /* DNI */
+}
+
+.empleados-table-inspecciones th:nth-child(3),
+.empleados-table-inspecciones td:nth-child(3) {
+    width: 20%; /* Nombres y apellidos */
+}
+
+.empleados-table-inspecciones th:nth-child(4),
+.empleados-table-inspecciones td:nth-child(4) {
+    width: 15%; /* Cargo */
+}
+
+.empleados-table-inspecciones th:nth-child(5),
+.empleados-table-inspecciones td:nth-child(5) {
+    width: 6%; /* Pasajes */
+}
+
+.empleados-table-inspecciones th:nth-child(6),
+.empleados-table-inspecciones td:nth-child(6) {
+    width: 10%; /* Ruta */
+}
+
+.empleados-table-inspecciones th:nth-child(7),
+.empleados-table-inspecciones td:nth-child(7) {
+    width: 8%; /* Viáticos */
+}
+
+.empleados-table-inspecciones th:nth-child(8),
+.empleados-table-inspecciones td:nth-child(8) {
+    width: 15%; /* Tipo de asistencia */
+}
+
+/* Estilo específico para la columna de eliminar */
+.empleados-table-inspecciones th:nth-child(9), 
+.empleados-table-inspecciones td:nth-child(9) {
+    text-align: center;
+    width: 5% ; /* Ajusta según sea necesario */
+    padding: 0 ;
+}
+
+.fila-flex {
+    display: flex;
+    align-items: center; /* Alineación vertical centrada */
+    gap: 10px; /* Espacio entre los elementos */
+    height: 45px;
+}
+
+/* Ajustes para el selector */
+#nuevo-empleado-selector {
+    width: 150px; /* Ajusta el ancho del selector */
+    height: 35px; /* Asegura que la altura coincida con los otros elementos */
+    padding: 5px; /* Espaciado interno */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+}
+
+#fila-agregar-empleado-inspecciones {
+    background-color: #ffffff; /* Cambiar el fondo a blanco */
+    height: 10px;
+}
+
+#empleado-a-anadir-label {
+    color: #000000; /* Cambiar el color del texto a negro */
+    font-weight: bold; /* Poner el texto en negrita */
+}
+
+/* Estilo para el contenedor del botón */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2px;
+}
+
+/* Estilo personalizado para el botón "Añadir Empleado" */
+#agregar-empleado-btn-inspecciones {
+    height: 35px; /* Altura igual al selector */
+    padding: 5px 10px; /* Espaciado interno */
+    background-color: #4CAF50; /* Fondo verde */
+    color: white; /* Texto blanco */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambiar el cursor a mano */
+    font-size: 20px;
+}
+
+#agregar-empleado-btn-inspecciones:hover {
+    background-color: #45a049; /* Efecto hover para el botón */
+}
+
+/* Estilo para el contenedor de Choices.js */
+.choices {
+    width: 50%; /* Ocupa todo el ancho del contenedor padre */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+    height: 35px; /* Altura del contenedor pequeño */
+}
+
+/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
+.choices__input {
+    height: 35px; /* Ajustar la altura del input */
+    padding: 5px; /* Espaciado interno */
+    font-size: 12px; /* Tamaño de la fuente */
+}
+
+/* Estilo para las opciones de Choices.js */
+.choices__list--dropdown .choices__item {
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    padding: 5px 10px; /* Espaciado de las opciones */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+}
+
+/* Estilo para la opción seleccionada */
+.choices__list--dropdown .choices__item--selectable.is-selected {
+    background-color: #184875; /* Fondo azul para la opción seleccionada */
+    color: white; /* Texto blanco */
+}
+
+/* Estilo al hacer hover sobre una opción */
+.choices__list--dropdown .choices__item--selectable:hover {
+    background-color: #184875; /* Fondo azul oscuro al hacer hover */
+    color: white; /* Texto blanco al hacer hover */
+}
+
+/* Estilo cuando la lista está abierta */
+.choices__list--dropdown {
+    max-height: 200px; /* Limitar la altura de la lista de opciones */
+    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
+}
+
+
+/* MEDIDORES*/
+.input-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0;
+    border: 2px solid #ddd;
+    border-radius: 18px;
+    padding: 10px;
+    margin-top: 4px;
+    width: 60%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+.input-container label {
+    font-size: 1rem;
+    color: #000000;
+}
+
+.input-container select, .input-container input, .input-container button {
+    padding: 8px 15px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.input-container button {
+    background-color: #184875;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+.input-container button:hover {
+    background-color: #1f5f7c;
+}
+
+/* Contenedor para ambas tablas */
+.tabla-container-medidores {
+    display: flex;
+    justify-content: flex-start; /* Espaciado uniforme entre tablas */
+    align-items: flex-start; /* Alineación superior */
+    gap: 20px; /* Espaciado entre tablas */
+    margin-top: 0;
+    padding: 10px;
+    max-width: 100%;
+}
+
+/* Tabla de empleados */
+.empleados-table-container-medidores {
+    width: 100%; /* Reducir ancho */
+    max-height: 480px; /* Limitar la altura */
+    overflow-y: auto; /* Habilitar scroll */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.empleados-table-medidores {
+    width: 100%; /* Ancho completo */
+    border-collapse: collapse;
+    table-layout: fixed; /* Fijar ancho de columnas */
+    min-height: 500px;
+}
+
+/* Estilos específicos para cada tipo de input */
+.empleados-table-medidores td input[name="pasajes"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-medidores td input[name="ruta"] {
+    color: #000000; /* Texto azul oscuro */
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-medidores td input[name="viaticos"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-medidores thead {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* Mantener encabezado encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-medidores tfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2; /* Mantener pie encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-medidores th, .empleados-table-medidores td {
+    padding: 4px 6px; /* Reducir padding */
+    text-align: left;
+    border: 1px solid #ddd;
+    font-size: 10px; /* Tamaño del texto */
+    line-height: 1; /* Reducir espaciado interno */
+}
+
+.empleados-table-medidores td select {
+    padding: 4px;
+    font-size: 10px;
+    width: 100%;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+/* Botón guardar asistencia */
+.empleados-table-medidores tfoot .btn-medidores {
+    width: 30%;
+    padding: 10px;
+    background-color: #184875;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.empleados-table-medidores tfoot .btn-medidores:hover {
+    background-color: #a1c0dd;
+}
+
+/* Contenedor de las leyendas */
+.leyendas-container-medidores {
+    display: flex;
+    flex-direction: column; /* Apilar tablas verticalmente */
+    gap: 10px; /* Espaciado entre las tablas de leyenda */
+    /*flex: 1; /* Ocupa menos espacio que la tabla principal */
+    max-height: 480px; /* Limitar altura total */
+    width: 30%;
+}
+
+/* Tablas de leyenda (Asistencia y Viáticos) */
+.asistencia-legenda-container-medidores, 
+.viaticos-legenda-container-medidores {
+    flex: 1; /* Cada tabla ocupa igual espacio vertical dentro del contenedor */
+    max-height: 400px; /* Altura máxima para cada tabla */
+    overflow-y: auto; /* Scroll si exceden la altura */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.asistencia-legenda-medidores, 
+.viaticos-legenda-medidores {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+}
+
+.asistencia-legenda-medidores th, 
+.viaticos-legenda-medidores th {
+    background-color: #184875;
+    color: white;
+    font-size: 10px;
+}
+
+.asistencia-legenda-medidores th, 
+.viaticos-legenda-medidores th, 
+.asistencia-legenda-medidores td, 
+.viaticos-legenda-medidores td {
+    padding: 6px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.asistencia-legenda-medidores td, 
+.viaticos-legenda-medidores td {
+    color: #333;
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .tabla-container {
+        flex-direction: column; /* Columna en pantallas pequeñas */
+        align-items: center;
+        gap: 10px;
+    }
+
+    .empleados-table-container-medidores,
+    .asistencia-legenda-container {
+        width: 100%; /* Ancho completo en pantallas pequeñas */
+    }
+}
+
+/* Encabezados */
+.empleados-table-medidores th:nth-child(1),
+.empleados-table-medidores td:nth-child(1) {
+    width: 2%; /* Número de fila */
+}
+
+.empleados-table-medidores th:nth-child(2),
+.empleados-table-medidores td:nth-child(2) {
+    width: 8%; /* DNI */
+}
+
+.empleados-table-medidores th:nth-child(3),
+.empleados-table-medidores td:nth-child(3) {
+    width: 20%; /* Nombres y apellidos */
+}
+
+.empleados-table-medidores th:nth-child(4),
+.empleados-table-medidores td:nth-child(4) {
+    width: 15%; /* Cargo */
+}
+
+.empleados-table-medidores th:nth-child(5),
+.empleados-table-medidores td:nth-child(5) {
+    width: 6%; /* Pasajes */
+}
+
+.empleados-table-medidores th:nth-child(6),
+.empleados-table-medidores td:nth-child(6) {
+    width: 10%; /* Ruta */
+}
+
+.empleados-table-medidores th:nth-child(7),
+.empleados-table-medidores td:nth-child(7) {
+    width: 8%; /* Viáticos */
+}
+
+.empleados-table-medidores th:nth-child(8),
+.empleados-table-medidores td:nth-child(8) {
+    width: 15%; /* Tipo de asistencia */
+}
+
+/* Estilo específico para la columna de eliminar */
+.empleados-table-medidores th:nth-child(9), 
+.empleados-table-medidores td:nth-child(9) {
+    text-align: center;
+    width: 5% ; /* Ajusta según sea necesario */
+    padding: 0 ;
+}
+
+.fila-flex {
+    display: flex;
+    align-items: center; /* Alineación vertical centrada */
+    gap: 10px; /* Espacio entre los elementos */
+    height: 45px;
+}
+
+/* Ajustes para el selector */
+#nuevo-empleado-selector {
+    width: 150px; /* Ajusta el ancho del selector */
+    height: 35px; /* Asegura que la altura coincida con los otros elementos */
+    padding: 5px; /* Espaciado interno */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+}
+
+#fila-agregar-empleado-medidores {
+    background-color: #ffffff; /* Cambiar el fondo a blanco */
+    height: 10px;
+}
+
+#empleado-a-anadir-label {
+    color: #000000; /* Cambiar el color del texto a negro */
+    font-weight: bold; /* Poner el texto en negrita */
+}
+
+/* Estilo para el contenedor del botón */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2px;
+}
+
+/* Estilo personalizado para el botón "Añadir Empleado" */
+#agregar-empleado-btn-medidores {
+    height: 35px; /* Altura igual al selector */
+    padding: 5px 10px; /* Espaciado interno */
+    background-color: #4CAF50; /* Fondo verde */
+    color: white; /* Texto blanco */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambiar el cursor a mano */
+    font-size: 20px;
+}
+
+#agregar-empleado-btn-medidores:hover {
+    background-color: #45a049; /* Efecto hover para el botón */
+}
+
+/* Estilo para el contenedor de Choices.js */
+.choices {
+    width: 50%; /* Ocupa todo el ancho del contenedor padre */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+    height: 35px; /* Altura del contenedor pequeño */
+}
+
+/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
+.choices__input {
+    height: 35px; /* Ajustar la altura del input */
+    padding: 5px; /* Espaciado interno */
+    font-size: 12px; /* Tamaño de la fuente */
+}
+
+/* Estilo para las opciones de Choices.js */
+.choices__list--dropdown .choices__item {
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    padding: 5px 10px; /* Espaciado de las opciones */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+}
+
+/* Estilo para la opción seleccionada */
+.choices__list--dropdown .choices__item--selectable.is-selected {
+    background-color: #184875; /* Fondo azul para la opción seleccionada */
+    color: white; /* Texto blanco */
+}
+
+/* Estilo al hacer hover sobre una opción */
+.choices__list--dropdown .choices__item--selectable:hover {
+    background-color: #184875; /* Fondo azul oscuro al hacer hover */
+    color: white; /* Texto blanco al hacer hover */
+}
+
+/* Estilo cuando la lista está abierta */
+.choices__list--dropdown {
+    max-height: 200px; /* Limitar la altura de la lista de opciones */
+    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
+}
+
+
+/* PERSUASIVAS*/
+.input-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0;
+    border: 2px solid #ddd;
+    border-radius: 18px;
+    padding: 10px;
+    margin-top: 4px;
+    width: 60%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+.input-container label {
+    font-size: 1rem;
+    color: #000000;
+}
+
+.input-container select, .input-container input, .input-container button {
+    padding: 8px 15px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.input-container button {
+    background-color: #184875;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+.input-container button:hover {
+    background-color: #1f5f7c;
+}
+
+/* Contenedor para ambas tablas */
+.tabla-container-persuasivas {
+    display: flex;
+    justify-content: flex-start; /* Espaciado uniforme entre tablas */
+    align-items: flex-start; /* Alineación superior */
+    gap: 20px; /* Espaciado entre tablas */
+    margin-top: 0;
+    padding: 10px;
+    max-width: 100%;
+}
+
+/* Tabla de empleados */
+.empleados-table-container-persuasivas {
+    width: 100%; /* Reducir ancho */
+    max-height: 480px; /* Limitar la altura */
+    overflow-y: auto; /* Habilitar scroll */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.empleados-table-persuasivas {
+    width: 100%; /* Ancho completo */
+    border-collapse: collapse;
+    table-layout: fixed; /* Fijar ancho de columnas */
+    min-height: 500px;
+}
+
+/* Estilos específicos para cada tipo de input */
+.empleados-table-persuasivas td input[name="pasajes"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-persuasivas td input[name="ruta"] {
+    color: #000000; /* Texto azul oscuro */
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-persuasivas td input[name="viaticos"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-persuasivas thead {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* Mantener encabezado encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-persuasivas tfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2; /* Mantener pie encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-persuasivas th, .empleados-table-persuasivas td {
+    padding: 4px 6px; /* Reducir padding */
+    text-align: left;
+    border: 1px solid #ddd;
+    font-size: 10px; /* Tamaño del texto */
+    line-height: 1; /* Reducir espaciado interno */
+}
+
+.empleados-table-persuasivas td select {
+    padding: 4px;
+    font-size: 10px;
+    width: 100%;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+/* Botón guardar asistencia */
+.empleados-table-persuasivas tfoot .btn-persuasivas {
+    width: 30%;
+    padding: 10px;
+    background-color: #184875;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.empleados-table-persuasivas tfoot .btn-persuasivas:hover {
+    background-color: #a1c0dd;
+}
+
+/* Contenedor de las leyendas */
+.leyendas-container-persuasivas {
+    display: flex;
+    flex-direction: column; /* Apilar tablas verticalmente */
+    gap: 10px; /* Espaciado entre las tablas de leyenda */
+    /*flex: 1; /* Ocupa menos espacio que la tabla principal */
+    max-height: 480px; /* Limitar altura total */
+    width: 30%;
+}
+
+/* Tablas de leyenda (Asistencia y Viáticos) */
+.asistencia-legenda-container-persuasivas, 
+.viaticos-legenda-container-persuasivas {
+    flex: 1; /* Cada tabla ocupa igual espacio vertical dentro del contenedor */
+    max-height: 400px; /* Altura máxima para cada tabla */
+    overflow-y: auto; /* Scroll si exceden la altura */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.asistencia-legenda-persuasivas, 
+.viaticos-legenda-persuasivas {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+}
+
+.asistencia-legenda-persuasivas th, 
+.viaticos-legenda-persuasivas th {
+    background-color: #184875;
+    color: white;
+    font-size: 10px;
+}
+
+.asistencia-legenda-persuasivas th, 
+.viaticos-legenda-persuasivas th, 
+.asistencia-legenda-persuasivas td, 
+.viaticos-legenda-persuasivas td {
+    padding: 6px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.asistencia-legenda-persuasivas td, 
+.viaticos-legenda-persuasivas td {
+    color: #333;
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .tabla-container {
+        flex-direction: column; /* Columna en pantallas pequeñas */
+        align-items: center;
+        gap: 10px;
+    }
+
+    .empleados-table-container-persuasivas,
+    .asistencia-legenda-container {
+        width: 100%; /* Ancho completo en pantallas pequeñas */
+    }
+}
+
+/* Encabezados */
+.empleados-table-persuasivas th:nth-child(1),
+.empleados-table-persuasivas td:nth-child(1) {
+    width: 2%; /* Número de fila */
+}
+
+.empleados-table-persuasivas th:nth-child(2),
+.empleados-table-persuasivas td:nth-child(2) {
+    width: 8%; /* DNI */
+}
+
+.empleados-table-persuasivas th:nth-child(3),
+.empleados-table-persuasivas td:nth-child(3) {
+    width: 20%; /* Nombres y apellidos */
+}
+
+.empleados-table-persuasivas th:nth-child(4),
+.empleados-table-persuasivas td:nth-child(4) {
+    width: 15%; /* Cargo */
+}
+
+.empleados-table-persuasivas th:nth-child(5),
+.empleados-table-persuasivas td:nth-child(5) {
+    width: 6%; /* Pasajes */
+}
+
+.empleados-table-persuasivas th:nth-child(6),
+.empleados-table-persuasivas td:nth-child(6) {
+    width: 10%; /* Ruta */
+}
+
+.empleados-table-persuasivas th:nth-child(7),
+.empleados-table-persuasivas td:nth-child(7) {
+    width: 8%; /* Viáticos */
+}
+
+.empleados-table-persuasivas th:nth-child(8),
+.empleados-table-persuasivas td:nth-child(8) {
+    width: 15%; /* Tipo de asistencia */
+}
+
+/* Estilo específico para la columna de eliminar */
+.empleados-table-persuasivas th:nth-child(9), 
+.empleados-table-persuasivas td:nth-child(9) {
+    text-align: center;
+    width: 5% ; /* Ajusta según sea necesario */
+    padding: 0 ;
+}
+
+.fila-flex {
+    display: flex;
+    align-items: center; /* Alineación vertical centrada */
+    gap: 10px; /* Espacio entre los elementos */
+    height: 45px;
+}
+
+/* Ajustes para el selector */
+#nuevo-empleado-selector {
+    width: 150px; /* Ajusta el ancho del selector */
+    height: 35px; /* Asegura que la altura coincida con los otros elementos */
+    padding: 5px; /* Espaciado interno */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+}
+
+#fila-agregar-empleado-persuasivas {
+    background-color: #ffffff; /* Cambiar el fondo a blanco */
+    height: 10px;
+}
+
+#empleado-a-anadir-label {
+    color: #000000; /* Cambiar el color del texto a negro */
+    font-weight: bold; /* Poner el texto en negrita */
+}
+
+/* Estilo para el contenedor del botón */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2px;
+}
+
+/* Estilo personalizado para el botón "Añadir Empleado" */
+#agregar-empleado-btn-persuasivas {
+    height: 35px; /* Altura igual al selector */
+    padding: 5px 10px; /* Espaciado interno */
+    background-color: #4CAF50; /* Fondo verde */
+    color: white; /* Texto blanco */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambiar el cursor a mano */
+    font-size: 20px;
+}
+
+#agregar-empleado-btn-persuasivas:hover {
+    background-color: #45a049; /* Efecto hover para el botón */
+}
+
+/* Estilo para el contenedor de Choices.js */
+.choices {
+    width: 50%; /* Ocupa todo el ancho del contenedor padre */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+    height: 35px; /* Altura del contenedor pequeño */
+}
+
+/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
+.choices__input {
+    height: 35px; /* Ajustar la altura del input */
+    padding: 5px; /* Espaciado interno */
+    font-size: 12px; /* Tamaño de la fuente */
+}
+
+/* Estilo para las opciones de Choices.js */
+.choices__list--dropdown .choices__item {
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    padding: 5px 10px; /* Espaciado de las opciones */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+}
+
+/* Estilo para la opción seleccionada */
+.choices__list--dropdown .choices__item--selectable.is-selected {
+    background-color: #184875; /* Fondo azul para la opción seleccionada */
+    color: white; /* Texto blanco */
+}
+
+/* Estilo al hacer hover sobre una opción */
+.choices__list--dropdown .choices__item--selectable:hover {
+    background-color: #184875; /* Fondo azul oscuro al hacer hover */
+    color: white; /* Texto blanco al hacer hover */
+}
+
+/* Estilo cuando la lista está abierta */
+.choices__list--dropdown {
+    max-height: 200px; /* Limitar la altura de la lista de opciones */
+    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
+}
+
+/* ADMINISTRITVO ASISTENCIAS*/
+.input-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0;
+    border: 2px solid #ddd;
+    border-radius: 18px;
+    padding: 10px;
+    margin-top: 4px;
+    width: 60%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+.input-container label {
+    font-size: 1rem;
+    color: #000000;
+}
+
+.input-container select, .input-container input, .input-container button {
+    padding: 8px 15px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.input-container button {
+    background-color: #184875;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+.input-container button:hover {
+    background-color: #1f5f7c;
+}
+
+/* Contenedor para ambas tablas */
+.tabla-container-administrativo_1 {
+    display: flex;
+    justify-content: flex-start; /* Espaciado uniforme entre tablas */
+    align-items: flex-start; /* Alineación superior */
+    gap: 20px; /* Espaciado entre tablas */
+    margin-top: 0;
+    padding: 10px;
+    max-width: 100%;
+}
+
+/* Tabla de empleados */
+.empleados-table-container-administrativo_1 {
+    width: 100%; /* Reducir ancho */
+    max-height: 480px; /* Limitar la altura */
+    overflow-y: auto; /* Habilitar scroll */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.empleados-table-administrativo_1 {
+    width: 100%; /* Ancho completo */
+    border-collapse: collapse;
+    table-layout: fixed; /* Fijar ancho de columnas */
+    min-height: 500px;
+}
+
+/* Estilos específicos para cada tipo de input */
+.empleados-table-administrativo_1 td input[name="pasajes"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-administrativo_1 td input[name="ruta"] {
+    color: #000000; /* Texto azul oscuro */
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-administrativo_1 td input[name="viaticos"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-administrativo_1 thead {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* Mantener encabezado encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-administrativo_1 tfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2; /* Mantener pie encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-administrativo_1 th, .empleados-table-administrativo_1 td {
+    padding: 4px 6px; /* Reducir padding */
+    text-align: left;
+    border: 1px solid #ddd;
+    font-size: 10px; /* Tamaño del texto */
+    line-height: 1; /* Reducir espaciado interno */
+}
+
+.empleados-table-administrativo_1 td select {
+    padding: 4px;
+    font-size: 10px;
+    width: 100%;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+/* Botón guardar asistencia */
+.empleados-table-administrativo_1 tfoot .btn-administrativo_1 {
+    width: 30%;
+    padding: 10px;
+    background-color: #184875;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.empleados-table-administrativo_1 tfoot .btn-administrativo_1:hover {
+    background-color: #a1c0dd;
+}
+
+/* Contenedor de las leyendas */
+.leyendas-container-administrativo_1 {
+    display: flex;
+    flex-direction: column; /* Apilar tablas verticalmente */
+    gap: 10px; /* Espaciado entre las tablas de leyenda */
+    /*flex: 1; /* Ocupa menos espacio que la tabla principal */
+    max-height: 480px; /* Limitar altura total */
+    width: 30%;
+}
+
+/* Tablas de leyenda (Asistencia y Viáticos) */
+.asistencia-legenda-container-administrativo_1, 
+.viaticos-legenda-container-administrativo_1 {
+    flex: 1; /* Cada tabla ocupa igual espacio vertical dentro del contenedor */
+    max-height: 400px; /* Altura máxima para cada tabla */
+    overflow-y: auto; /* Scroll si exceden la altura */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.asistencia-legenda-administrativo_1, 
+.viaticos-legenda-administrativo_1 {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+}
+
+.asistencia-legenda-administrativo_1 th, 
+.viaticos-legenda-administrativo_1 th {
+    background-color: #184875;
+    color: white;
+    font-size: 10px;
+}
+
+.asistencia-legenda-administrativo_1 th, 
+.viaticos-legenda-administrativo_1 th, 
+.asistencia-legenda-administrativo_1 td, 
+.viaticos-legenda-administrativo_1 td {
+    padding: 6px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.asistencia-legenda-administrativo_1 td, 
+.viaticos-legenda-administrativo_1 td {
+    color: #333;
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .tabla-container {
+        flex-direction: column; /* Columna en pantallas pequeñas */
+        align-items: center;
+        gap: 10px;
+    }
+
+    .empleados-table-container-administrativo_1,
+    .asistencia-legenda-administrativo_1 {
+        width: 100%; /* Ancho completo en pantallas pequeñas */
+    }
+}
+
+/* Encabezados */
+.empleados-table-administrativo_1 th:nth-child(1),
+.empleados-table-administrativo_1 td:nth-child(1) {
+    width: 2%; /* Número de fila */
+}
+
+.empleados-table-administrativo_1 th:nth-child(2),
+.empleados-table-administrativo_1 td:nth-child(2) {
+    width: 8%; /* DNI */
+}
+
+.empleados-table-administrativo_1 th:nth-child(3),
+.empleados-table-administrativo_1 td:nth-child(3) {
+    width: 20%; /* Nombres y apellidos */
+}
+
+.empleados-table-administrativo_1 th:nth-child(4),
+.empleados-table-administrativo_1 td:nth-child(4) {
+    width: 15%; /* Cargo */
+}
+
+.empleados-table-administrativo_1 th:nth-child(5),
+.empleados-table-administrativo_1 td:nth-child(5) {
+    width: 6%; /* Pasajes */
+}
+
+.empleados-table-administrativo_1 th:nth-child(6),
+.empleados-table-administrativo_1 td:nth-child(6) {
+    width: 10%; /* Ruta */
+}
+
+.empleados-table-administrativo_1 th:nth-child(7),
+.empleados-table-administrativo_1 td:nth-child(7) {
+    width: 8%; /* Viáticos */
+}
+
+.empleados-table-administrativo_1 th:nth-child(8),
+.empleados-table-administrativo_1 td:nth-child(8) {
+    width: 15%; /* Tipo de asistencia */
+}
+
+/* Estilo específico para la columna de eliminar */
+.empleados-table-administrativo_1 th:nth-child(9), 
+.empleados-table-administrativo_1 td:nth-child(9) {
+    text-align: center;
+    width: 5% ; /* Ajusta según sea necesario */
+    padding: 0 ;
+}
+
+.fila-flex {
+    display: flex;
+    align-items: center; /* Alineación vertical centrada */
+    gap: 10px; /* Espacio entre los elementos */
+    height: 45px;
+}
+
+/* Ajustes para el selector */
+#nuevo-empleado-selector {
+    width: 150px; /* Ajusta el ancho del selector */
+    height: 35px; /* Asegura que la altura coincida con los otros elementos */
+    padding: 5px; /* Espaciado interno */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+}
+
+#fila-agregar-empleado-administrativo_1 {
+    background-color: #ffffff; /* Cambiar el fondo a blanco */
+    height: 10px;
+}
+
+#empleado-a-anadir-label {
+    color: #000000; /* Cambiar el color del texto a negro */
+    font-weight: bold; /* Poner el texto en negrita */
+}
+
+/* Estilo para el contenedor del botón */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2px;
+}
+
+/* Estilo personalizado para el botón "Añadir Empleado" */
+#agregar-empleado-btn-administrativo_1 {
+    height: 35px; /* Altura igual al selector */
+    padding: 5px 10px; /* Espaciado interno */
+    background-color: #4CAF50; /* Fondo verde */
+    color: white; /* Texto blanco */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambiar el cursor a mano */
+    font-size: 20px;
+}
+
+#agregar-empleado-btn-administrativo_1:hover {
+    background-color: #45a049; /* Efecto hover para el botón */
+}
+
+/* Estilo para el contenedor de Choices.js */
+.choices {
+    width: 50%; /* Ocupa todo el ancho del contenedor padre */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+    height: 35px; /* Altura del contenedor pequeño */
+}
+
+/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
+.choices__input {
+    height: 35px; /* Ajustar la altura del input */
+    padding: 5px; /* Espaciado interno */
+    font-size: 12px; /* Tamaño de la fuente */
+}
+
+/* Estilo para las opciones de Choices.js */
+.choices__list--dropdown .choices__item {
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    padding: 5px 10px; /* Espaciado de las opciones */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+}
+
+/* Estilo para la opción seleccionada */
+.choices__list--dropdown .choices__item--selectable.is-selected {
+    background-color: #184875; /* Fondo azul para la opción seleccionada */
+    color: white; /* Texto blanco */
+}
+
+/* Estilo al hacer hover sobre una opción */
+.choices__list--dropdown .choices__item--selectable:hover {
+    background-color: #184875; /* Fondo azul oscuro al hacer hover */
+    color: white; /* Texto blanco al hacer hover */
+}
+
+/* Estilo cuando la lista está abierta */
+.choices__list--dropdown {
+    max-height: 200px; /* Limitar la altura de la lista de opciones */
+    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
+}
+
+
+
+
+/* ADMINISTRATIVO */
+.input-container-administrativo-1 {
+    display: flex;
+    flex-wrap: wrap; /* Permite que los elementos se ajusten en varias líneas si es necesario */
+    gap: 15px; /* Espaciado entre elementos */
+    padding: 10px;
+    width: 100%;
+    max-width: 6500px;
+    margin: 0 auto;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    justify-content: space-between; /* Distribuye los elementos en la fila */
+}
+
+/* Cada campo debe estar alineado en fila */
+.input-group {
+    display: flex;
+    flex-direction: column; /* Mantiene la etiqueta arriba y el input debajo */
+    flex: 1; /* Permite que los elementos ocupen el mismo espacio */
+    min-width: 180px; /* Ancho mínimo para evitar que sean demasiado pequeños */
+}
+
+/* Ajustar las etiquetas */
+.input-group label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #000000;
+    margin-bottom: 5px;
+}
+
+/* Estilo personalizado para el label de "Buscar" */
+.label-buscar {
+    font-size: 14px; /* Tamaño de fuente más grande */
+    font-weight: bold; /* Negrita para resaltar */
+    color: white !important;/* Color azul para destacar */
+    text-transform: uppercase; /* Convertir a mayúsculas */
+    letter-spacing: 1px; /* Espaciado entre letras */
+    margin-right: 10px; /* Espacio a la derecha */
+    display: inline-block; /* Para que mantenga su alineación */
+}
+
+
+/* Ajustar los inputs y selects */
+.input-group select, 
+.input-group input {
+    padding: 5px;
+    font-size: 12px;
+    border: 1px solid #ccc;
+    background-color: #f8f8f8;
+    border-radius: 4px;
+    width: 100%;
+}
+
+/* Asegurar que el botón también se alinee correctamente */
+.button-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.btn-buscar {
+    background-color: #184875;  /* Color verde */
+    color: white;  /* Color de texto blanco */
+    border: none;
+    padding: 5px 10px;
+    text-align: center;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 5px;  /* Bordes redondeados */
+    transition: background-color 0.3s ease;  /* Efecto suave de cambio de color */
+}
+
+.btn-buscar:hover {
+    background-color: #1f5f7c;
+}
+
+
+
+
+
+
+
+.table-container-administrativo {
+    margin-top: 15px;
+    
+}
+
+
+#tabla-asistencia-administrativo {
+    border-collapse: collapse;
+    width: 100%;
+    text-align: left; /* Alinea todo el texto a la izquierda */
+    font-size: 12px; /* Reduce el tamaño de la fuente */
+    min-height: 750px;
+}
+
+#tabla-asistencia-administrativo th,
+#tabla-asistencia-administrativo td {
+    border: 1px solid #ddd;
+    padding: 4px; /* Disminuye el padding de las celdas */
+}
+
+#tabla-asistencia-administrativo th {
+    background-color: #f4f4f4;
+    position: sticky;
+    top: 0;
+}
+
+.sunday {
+    background-color: #ffcccc;
+}
+
+.sunday-column {
+    background-color: #ffcccc; /* Rojo claro */
+}
+
+
+/* Estilo para el pie de la tabla (tfoot) */
+#tabla-asistencia-administrativo tfoot {
+    background-color: #f4f4f4;  /* Fondo similar al encabezado */
+    font-weight: bold;
+    position: sticky;
+    bottom: 0;
+    width: 100%;
+}
+
+/* Estilo para las celdas del pie de la tabla */
+#tabla-asistencia-administrativo tfoot td {
+    padding: 12px 15px;
+    text-align: center;
+    border-top: 2px solid #ddd;  /* Línea superior para separar el pie */
+}
+
+/* Estilo para el botón de descarga */
+.btn-admin {
+    background-color: #184875;  /* Color verde */
+    color: white;  /* Color de texto blanco */
+    border: none;
+    padding: 5px 10px;
+    text-align: center;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 5px;  /* Bordes redondeados */
+    transition: background-color 0.3s ease;  /* Efecto suave de cambio de color */
+}
+
+/* Efecto al pasar el mouse sobre el botón */
+.btn-admin:hover {
+    background-color: #1f5f7c;  /* Color verde más oscuro al pasar el mouse */
+}
+
+/* Estilo para el contenedor de la tabla con desplazamiento */
+.scrollable-table {
+    overflow: auto;
+    max-height: 750px;  /* Limitar la altura de la tabla */
+    border: 1px solid #ccc;
+    padding: 10px;
+    border-radius: 10px;
+}
+
+
+/* Estilos generales para los botones */
+button {
+    padding: 6px 14px; /* Espaciado interno */
+    font-size: 12px; /* Tamaño de la fuente */
+    font-weight: bold; /* Negrita */
+    color: white; /* Color del texto */
+    border: none; /* Sin borde */
+    border-radius: 8px; /* Bordes redondeados */
+    cursor: pointer; /* Cursor en forma de mano al pasar sobre el botón */
+    transition: all 0.3s ease; /* Suaviza las transiciones */
+    font-family: Arial, sans-serif; /* Fuente */
+}
+
+/* Estilo específico para el botón Asistencias */
+#btn-asistencias {
+    background-color: #4CAF50; /* Fondo azul oscuro */
+}
+
+#btn-asistencias:hover {
+    background-color: #218838; /* Fondo azul más claro al pasar el mouse */
+    transform: scale(1.05); /* Aumenta ligeramente el tamaño */
+}
+
+/* Estilo específico para el botón Pasajes */
+#btn-pasajes {
+    background-color: #4CAF50; /* Fondo verde */
+}
+
+#btn-pasajes:hover {
+    background-color: #218838; /* Fondo verde más oscuro al pasar el mouse */
+    transform: scale(1.05); /* Aumenta ligeramente el tamaño */
+}
+
+/* Efecto de enfoque (focus) cuando se selecciona un botón */
+button:focus {
+    outline: none; /* Elimina el borde de enfoque predeterminado */
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.2); /* Sombra al enfocarse */
+}
+
+/* Estilo adicional para un estado deshabilitado */
+button:disabled {
+    background-color: #cccccc; /* Fondo gris */
+    cursor: not-allowed; /* Cursor en forma de cruz */
+}
+
+#btn-viaticos {
+    background-color: #4CAF50; /* Fondo verde */
+}
+
+#btn-viaticos:hover {
+    background-color: #218838; /* Fondo verde más oscuro al pasar el mouse */
+    transform: scale(1.05); /* Aumenta ligeramente el tamaño */
+}
+
+#btn-consolidado {
+    background-color: #ffa600; /* Fondo verde */
+}
+
+#btn-consolidado:hover {
+    background-color: #da7b00; /* Fondo verde más oscuro al pasar el mouse */
+    transform: scale(1.05); /* Aumenta ligeramente el tamaño */
+}
+#btn-consolidado-pasajes{
+    background-color: #ffa600; /* Fondo verde */
+}
+
+#btn-consolidado-pasajes:hover {
+    background-color: #da7b00; /* Fondo verde más oscuro al pasar el mouse */
+    transform: scale(1.05); /* Aumenta ligeramente el tamaño */
+}
+
+/* Estilo para el botón de descarga */
+.btn-completo {
+    background-color: #4CAF50;  /* Color verde */
+    color: white;  /* Color de texto blanco */
+    border: none;
+    padding: 5px 10px;
+    text-align: center;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 5px;  /* Bordes redondeados */
+    transition: background-color 0.3s ease;  /* Efecto suave de cambio de color */
+}
+
+/* Efecto al pasar el mouse sobre el botón */
+.btn-completo:hover {
+    background-color: #218838;  /* Color verde más oscuro al pasar el mouse */
+}
+
+
+#spinner {
+    display: none;
+    font-weight: bold;
+    color: #184875;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+#spinner::after {
+    content: " ";
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    margin-left: 5px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+#spinner-boleta {
+    display: none;
+    font-weight: bold;
+    color: #184875;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+#spinner-boleta::after {
+    content: " ";
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    margin-left: 5px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+
+/* NORTE*/
+.input-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0;
+    border: 2px solid #ddd;
+    border-radius: 18px;
+    padding: 10px;
+    margin-top: 4px;
+    width: 60%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+.input-container label {
+    font-size: 1rem;
+    color: #000000;
+}
+
+.input-container select, .input-container input, .input-container button {
+    padding: 8px 15px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.input-container button {
+    background-color: #184875;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+.input-container button:hover {
+    background-color: #1f5f7c;
+}
+
+/* Contenedor para ambas tablas */
+.tabla-container-norte {
+    display: flex;
+    justify-content: flex-start; /* Espaciado uniforme entre tablas */
+    align-items: flex-start; /* Alineación superior */
+    gap: 20px; /* Espaciado entre tablas */
+    margin-top: 0;
+    padding: 10px;
+    max-width: 100%;
+}
+
+/* Tabla de empleados */
+.empleados-table-container-norte {
+    width: 100%; /* Reducir ancho */
+    max-height: 480px; /* Limitar la altura */
+    overflow-y: auto; /* Habilitar scroll */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.empleados-table-norte {
+    width: 100%; /* Ancho completo */
+    border-collapse: collapse;
+    table-layout: fixed; /* Fijar ancho de columnas */
+    min-height: 500px;
+}
+
+/* Estilos específicos para cada tipo de input */
+.empleados-table-norte td input[name="pasajes"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-norte td input[name="ruta"] {
+    color: #000000; /* Texto azul oscuro */
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-norte td input[name="viaticos"] {
+    color: #003366; /* Texto azul oscuro */
+    font-weight: bold;
+    width: 100%; /* Ancho del input casi completo */
+    padding: 4px;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.empleados-table-norte thead {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* Mantener encabezado encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-norte tfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2; /* Mantener pie encima */
+    background-color: #184875;
+    color: white;
+}
+
+.empleados-table-norte th, .empleados-table-norte td {
+    padding: 4px 6px; /* Reducir padding */
+    text-align: left;
+    border: 1px solid #ddd;
+    font-size: 10px; /* Tamaño del texto */
+    line-height: 1; /* Reducir espaciado interno */
+}
+
+.empleados-table-norte td select {
+    padding: 4px;
+    font-size: 10px;
+    width: 100%;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+/* Botón guardar asistencia */
+.empleados-table-norte tfoot .btn-norte {
+    width: 30%;
+    padding: 10px;
+    background-color: #184875;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.empleados-table-norte tfoot .btn-norte:hover {
+    background-color: #a1c0dd;
+}
+
+/* Contenedor de las leyendas */
+.leyendas-container-norte {
+    display: flex;
+    flex-direction: column; /* Apilar tablas verticalmente */
+    gap: 10px; /* Espaciado entre las tablas de leyenda */
+    /*flex: 1; /* Ocupa menos espacio que la tabla principal */
+    max-height: 480px; /* Limitar altura total */
+    width: 30%;
+}
+
+/* Tablas de leyenda (Asistencia y Viáticos) */
+.asistencia-legenda-container-norte, 
+.viaticos-legenda-container-norte {
+    flex: 1; /* Cada tabla ocupa igual espacio vertical dentro del contenedor */
+    max-height: 400px; /* Altura máxima para cada tabla */
+    overflow-y: auto; /* Scroll si exceden la altura */
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+
+.asistencia-legenda-norte, 
+.viaticos-legenda-norte {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+}
+
+.asistencia-legenda-norte th, 
+.viaticos-legenda-norte th {
+    background-color: #184875;
+    color: white;
+    font-size: 10px;
+}
+
+.asistencia-legenda-norte th, 
+.viaticos-legenda-norte th, 
+.asistencia-legenda-norte td, 
+.viaticos-legenda-norte td {
+    padding: 6px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.asistencia-legenda-norte td, 
+.viaticos-legenda-norte td {
+    color: #333;
+}
+
+/* Responsividad */
+@media screen and (max-width: 768px) {
+    .tabla-container {
+        flex-direction: column; /* Columna en pantallas pequeñas */
+        align-items: center;
+        gap: 10px;
+    }
+
+    .empleados-table-container-norte,
+    .asistencia-legenda-container {
+        width: 100%; /* Ancho completo en pantallas pequeñas */
+    }
+}
+
+/* Encabezados */
+.empleados-table-norte th:nth-child(1),
+.empleados-table-norte td:nth-child(1) {
+    width: 2%; /* Número de fila */
+}
+
+.empleados-table-norte th:nth-child(2),
+.empleados-table-norte td:nth-child(2) {
+    width: 8%; /* DNI */
+}
+
+.empleados-table-norte th:nth-child(3),
+.empleados-table-norte td:nth-child(3) {
+    width: 20%; /* Nombres y apellidos */
+}
+
+.empleados-table-norte th:nth-child(4),
+.empleados-table-norte td:nth-child(4) {
+    width: 15%; /* Cargo */
+}
+
+.empleados-table-norte th:nth-child(5),
+.empleados-table-norte td:nth-child(5) {
+    width: 6%; /* Pasajes */
+}
+
+.empleados-table-norte th:nth-child(6),
+.empleados-table-norte td:nth-child(6) {
+    width: 10%; /* Ruta */
+}
+
+.empleados-table-norte th:nth-child(7),
+.empleados-table-norte td:nth-child(7) {
+    width: 8%; /* Viáticos */
+}
+
+.empleados-table-norte th:nth-child(8),
+.empleados-table-norte td:nth-child(8) {
+    width: 15%; /* Tipo de asistencia */
+}
+
+/* Estilo específico para la columna de eliminar */
+.empleados-table-norte th:nth-child(9), 
+.empleados-table-norte td:nth-child(9) {
+    text-align: center;
+    width: 5% ; /* Ajusta según sea necesario */
+    padding: 0 ;
+}
+
+.fila-flex {
+    display: flex;
+    align-items: center; /* Alineación vertical centrada */
+    gap: 10px; /* Espacio entre los elementos */
+    height: 45px;
+}
+
+/* Ajustes para el selector */
+#nuevo-empleado-selector {
+    width: 150px; /* Ajusta el ancho del selector */
+    height: 35px; /* Asegura que la altura coincida con los otros elementos */
+    padding: 5px; /* Espaciado interno */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+}
+
+#fila-agregar-empleado-norte {
+    background-color: #ffffff; /* Cambiar el fondo a blanco */
+    height: 10px;
+}
+
+#empleado-a-anadir-label {
+    color: #000000; /* Cambiar el color del texto a negro */
+    font-weight: bold; /* Poner el texto en negrita */
+}
+
+/* Estilo para el contenedor del botón */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2px;
+}
+
+/* Estilo personalizado para el botón "Añadir Empleado" */
+#agregar-empleado-btn-norte {
+    height: 35px; /* Altura igual al selector */
+    padding: 5px 10px; /* Espaciado interno */
+    background-color: #4CAF50; /* Fondo verde */
+    color: white; /* Texto blanco */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambiar el cursor a mano */
+    font-size: 20px;
+}
+
+#agregar-empleado-btn-norte:hover {
+    background-color: #45a049; /* Efecto hover para el botón */
+}
+
+/* Estilo para el contenedor de Choices.js */
+.choices {
+    width: 50%; /* Ocupa todo el ancho del contenedor padre */
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    border: 1px solid #ccc; /* Borde gris claro */
+    border-radius: 5px; /* Bordes redondeados */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+    height: 35px; /* Altura del contenedor pequeño */
+}
+
+/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
+.choices__input {
+    height: 35px; /* Ajustar la altura del input */
+    padding: 5px; /* Espaciado interno */
+    font-size: 12px; /* Tamaño de la fuente */
+}
+
+/* Estilo para las opciones de Choices.js */
+.choices__list--dropdown .choices__item {
+    background-color: white; /* Fondo blanco */
+    color: black; /* Texto negro */
+    padding: 5px 10px; /* Espaciado de las opciones */
+    font-size: 12px; /* Tamaño de fuente pequeño */
+}
+
+/* Estilo para la opción seleccionada */
+.choices__list--dropdown .choices__item--selectable.is-selected {
+    background-color: #184875; /* Fondo azul para la opción seleccionada */
+    color: white; /* Texto blanco */
+}
+
+/* Estilo al hacer hover sobre una opción */
+.choices__list--dropdown .choices__item--selectable:hover {
+    background-color: #184875; /* Fondo azul oscuro al hacer hover */
+    color: white; /* Texto blanco al hacer hover */
+}
+
+/* Estilo cuando la lista está abierta */
+.choices__list--dropdown {
+    max-height: 200px; /* Limitar la altura de la lista de opciones */
+    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
+}
+
+
+/* BOLETAS */
+#boleta-container {
+    background-color: #fff;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+    max-width: 800px;
+    margin: auto;
+}
+
+#boleta-container h2 {
+    text-align: center;
+    color: #2c3e50;
+    margin-bottom: 15px;
+    font-size: 18px;
+}
+
+/* Contenedor principal con borde personalizado */
+.boleta-form-wrapper {
+    background-color: #fff;
+    padding: 15px;
+    border: 1.5px solid #ccc;
+    border-radius: 10px;
+    margin-top: 10px;
+}
+
+.boleta-input-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.boleta-field {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 120px;
+}
+
+.boleta-label {
+    font-weight: bold;
+    color: #34495e;
+    margin-bottom: 1px;
+    font-size: 12px;
+    height: 20px;     /* Altura fija para todos los labels */
+    line-height: 10px;
+}
+
+#boleta-mes, 
+#boleta-fecha, 
+#boleta-file {
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.3s;
+    font-size: 12px;
+}
+
+#boleta-mes:focus, 
+#boleta-fecha:focus, 
+#boleta-file:focus {
+    border-color: #3498db;
+}
+
+#boleta-btn {
+    padding: 8px 16px;
+    background-color: #184875;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 12px;
+    transition: background-color 0.3s;
+    margin-top: 18px;
+}
+
+#boleta-btn:hover {
+    background-color: #2980b9;
+}
+
+@media (max-width: 768px) {
+    .boleta-input-container {
+        flex-direction: column;
+    }
+
+    #boleta-btn {
+        width: 100%;
+    }
+}
+
+/* Contenedor principal con borde personalizado */
+.boleta-form-wrapper_1 {
+    background-color: #fff;
+    padding: 15px;
+    border: 1.5px solid #ccc;
+    border-radius: 10px;
+    margin-top: 10px; 
+}
+
+.form-row-horizontal {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 20px;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 30px;
+    margin: 0 auto;
+
+    border: 1px solid #ccc;         /* Borde más grueso */
+    border-radius: 8px;
+
+    padding: 20px;                  /* Espacio interno entre borde y contenido */
+    background-color: #f9f9f9;      /* (Opcional) color de fondo sutil para resaltar */
+}
+
+/* Cada input ocupa una proporción razonable */
+.input-group-reporte {
+    flex: 1;
+    min-width: 250px;
+    display: flex;
+    flex-direction: column;
+}
+
+.button-container {
+    align-self: end;
+}
+
+.input-group-reporte label {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.input-group-reporte select,
+.input-group-reporte input[type="file"] {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+/* Botón */
+.btn-generar {
+    padding: 10px 20px;
+    background-color: #184875;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.btn-generar:hover {
+    background-color: #12365e;
+}
+
+/* Spinner */
+#spinner-boleta {
+    font-weight: bold;
+    color: #184875;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* Previsualización */
+.reporte-form-wrapper_1 {
+    border-top: 1px solid #ccc;
+    margin-top: 15px;
+    padding-top: 10px;
+}
+
+.reporte-preview-wrapper h3 {
+    color: #184875;
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+
+.preview-container {
+    border: 1px dashed #ccc;
+    padding: 20px;
+    border-radius: 8px;
+    background-color: #fff;
+    min-height: 100px;
+    text-align: center;
+}
+
+#reporte-preview p {
+    font-size: 14px; /* Ajusta este valor según lo que desees */
+    color: #333;      /* (Opcional) Mejora la legibilidad */
+    line-height: 1.5; /* (Opcional) Mejora el espaciado entre líneas */
+}
+
+
+#download-btn-1 {
+    margin-top: 15px;
+    padding: 10px 16px;
+    background-color: #0e6d34;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#download-btn-1:hover {
+    background-color: #0b5a2a;
+}
+
+
+/*FOTOCONSULTA*/
+#fc-container {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+#fc-seccion-izquierda {
+  flex: 0 0 650px;
+  height: 80vh;
+  border: 2px solid #ccc;
+  border-radius: 20px;
+  background-color: #fff;
+  padding: 15px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+#fc-seccion-derecha {
+  flex: 1; /* Más ancha */
+  height: 80vh;
+  border: 2px solid #ccc;
+  border-radius: 20px;
+  background-color: #fff;
+  padding: 15px;
+  box-sizing: border-box;
+}
+
+/* Grupo de entrada */
+.fc-input-group label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.fc-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+#fc-codigo-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+#fc-buscar-btn {
+  padding: 8px 16px;
+  background-color: #184875;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#fc-buscar-btn:hover {
+  background-color: #2980b9;
+}
+
+/* Contenedor de opciones */
+/* Contenedor de opciones */
+.fc-opciones-container {
+  width: 100%;
+  padding: 10px;
+  background-color: #fff;
+  border: 2px solid #ccc;
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+
+/* Recuadro fijo que contiene el scroll */
+.fc-opciones-recuadro {
+  width: 100%;
+  max-width: 100%;
+  height: 60px; /* altura fija para el recuadro */
+  border: 2px solid #ccc;
+  border-radius: 10px;
+  background-color: #fff;
+  overflow-x: auto;  /* scroll horizontal si es necesario */
+  overflow-y: hidden; /* sin scroll vertical */
+  box-sizing: border-box;
+  padding: 5px 10px;
+}
+
+/* Contenedor scroll de opciones dentro del recuadro */
+.fc-opciones-scroll {
+  display: flex;
+  gap: 10px;
+  white-space: nowrap;
+  align-items: center;
+  height: 100%; /* para ocupar toda la altura del recuadro */
+  padding-bottom: 5px;
+  scrollbar-width: thin; /* Firefox */
+}
+
+/* Opcional: para navegadores Webkit como Chrome */
+.fc-opciones-recuadro::-webkit-scrollbar {
+  height: 6px;
+}
+.fc-opciones-recuadro::-webkit-scrollbar-thumb {
+  background-color: #aaa;
+  border-radius: 3px;
+}
+.fc-opciones-recuadro::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.fc-opcion {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  background-color: #f1f1f1;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.fc-opciones {
+  margin-top: 10px;
+  /* Aquí puedes poner lo que quieras más abajo */
+}
+
+
+
+/* MÓDULO GENERAR FICHAS */
+#modulo-actividad {
+    padding: 16px;
+    border: 2px solid #ccc;
+    border-radius: 20px;
+    background-color: #fff;
+}
+
+.grupo-entrada-horizontal {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.grupo-entrada-horizontal label {
+    font-weight: bold;
+    margin-right: 4px;
+}
+
+.campo-entrada {
+    display: flex;
+    align-items: center;
+}
+
+.campo-entrada select,
+.campo-entrada input[type="file"] {
+    padding: 6px 8px;
+    font-size: 14px;
+    border-radius: 8px;
+    border: 2px solid #ccc;
+}
+
+#boton-subir-reporte {
+    padding: 8px 28px;
+    background-color: #184875;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+#boton-subir-reporte:hover {
+    background-color: #2980b9;
+}
+
+.contenedor-opciones-actividad {
+    margin-top: 20px;
+}
+
+#selector-actividad,
+#cargador-reporte {
+  width: 200px; /* Ajusta el ancho según lo necesites */
+}
+
+
+#modulo-actividad-derecha {
+  width: 50%; /* Más ancha */
+  height: 80vh;
+  border: 2px solid #ccc;
+  border-radius: 20px;
+  background-color: #fff;
+  padding: 15px;
+  box-sizing: border-box;
+}
+
+.form-mapeo {
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    max-width: 100%;
+}
+
+.grid-mapeo {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* 2 columnas */
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.campo-mapeo {
+    display: flex;
+    flex-direction: column;
+}
+
+.label-mapeo {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.select-mapeo {
+    padding: 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #f1f1f1;
+}
+
+.btn-generar {
+    padding: 10px 20px;
+    background-color: #184875;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.btn-generar:hover {
+    background-color: #2980b9;
+}
+
+.label-mapeo {
+    font-size: 14px;
+}
+
+.select-mapeo {
+    font-size: 10px;
+}
+
+.btn-descargar {
+    padding: 10px 20px;
+    background-color: #2e7d32; /* verde oscuro */
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.btn-descargar:hover {
+    background-color: #388e3c; /* verde más brillante al pasar el mouse */
+}
+
+.loader {
+  border: 8px solid #f3f3f3; /* color de fondo */
+  border-top: 8px solid #3498db; /* color del spinner */
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: girar 1s linear infinite;
+  margin: auto;
+}
+
+@keyframes girar {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+
+.boton-azul {
+        background-color: #2980b9;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+
+.boton-azul:hover {
+        background-color: #184875;
+    }
+
+.boton-verde {
+        background-color: #388e3c;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+
+.boton-verde:hover {
+        background-color: #2e7d32;
+    }
+
+
+/*ANALISIS LECTURAS*/
+#modulo-actividad-2 {
+    width: 50%;
+    padding: 16px;
+    border: 2px solid #ccc;
+    border-radius: 20px;
+    background-color: #fff;
+}
+
+.grupo-entrada-horizontal-2 {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.grupo-entrada-horizontal-2 label {
+    font-weight: bold;
+    margin-right: 4px;
+}
+
+.campo-entrada-2 {
+    display: flex;
+    align-items: center;
+}
+
+.campo-entrada-2 select,
+.campo-entrada-2 input[type="file"] {
+    padding: 6px 8px;
+    font-size: 14px;
+    border-radius: 8px;
+    border: 2px solid #ccc;
+}
+
+#boton-subir-reporte-2 {
+    padding: 8px 28px;
+    background-color: #184875;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+#boton-subir-reporte-2:hover {
+    background-color: #2980b9;
+}
+
+.contenedor-opciones-actividad {
+    margin-top: 20px;
+}
+
+#cargador-reporte-2 {
+  width: 400px; 
+}
+
+#fc-seccion-derecha-2 {
+  flex: 1; /* Más ancha */
+  height: 80vh;
+  border: 2px solid #ccc;
+  border-radius: 20px;
+  background-color: #fff;
+  padding: 15px;
+  box-sizing: border-box;
+}
+
+tr.resaltado {
+    background-color: #d0e4ff !important;
+}
+
+
+/* MAPAS */
+#mapa h2 {
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+
+#modulo-mapa-2 {
+    width: 45%;
+    padding: 12px;
+    border: 2px solid #ccc;
+    border-radius: 16px;
+    background-color: #fff;
+    box-sizing: border-box;
+}
+
+.grupo-entrada-mapa-2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.grupo-entrada-mapa-2 label {
+    font-weight: bold;
+    font-size: 13px;
+    margin-right: 4px;
+}
+
+.campo-mapa-2 {
+    display: flex;
+    align-items: center;
+}
+
+/* Inputs más pequeños y uniformes */
+.campo-mapa-2 input[type="file"],
+#fc-este-input-2,
+#fc-norte-input-2 {
+    padding: 4px 6px;
+    font-size: 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    width: 140px;
+}
+
+/* Botón más compacto */
+#boton-subir-mapa-2 {
+    padding: 6px 16px;
+    font-size: 12px;
+    background-color: #184875;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+#boton-subir-mapa-2:hover {
+    background-color: #2980b9;
+}
+
+/* Contenedor para tabla o resultados */
+#contenedor-tabla-reporte-2 {
+    margin-top: 15px;
+}
+
+#fc-seccion-mapa-2 {
+    flex: 1;
+    height: 80vh;
+    border: 2px solid #ccc;
+    border-radius: 16px;
+    background-color: #fff;
+    padding: 15px;
+    box-sizing: border-box;
+}
+
+/* Fila resaltada en tablas (si aplica) */
+tr.resaltado {
+    background-color: #d0e4ff !important;
+}
+
+
+/* Estilo del contenedor principal */
+.fc-opciones-operario {
+    margin-top: 20px;
+    padding: 16px;
+    border: 2px solid #ccc;
+    border-radius: 12px;
+    background-color: #fff;
+}
+
+/* Estilo del label "Fecha trabajada" */
+.fc-opciones-operario label {
+    font-weight: bold;
+    font-size: 14px;
+    margin-right: 8px;
+}
+
+/* Estilo del input de fecha */
+.fc-opciones-operario input[type="date"] {
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 2px solid #ccc;
+    font-size: 13px;
+}
+
+/* Contenedor de lista de operarios */
+#lista-operarios {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 108px;
+    max-height: 690px;        /* ajusta según el espacio que quieras usar */
+    overflow-y: auto;         /* activa scroll vertical si es necesario */
+    padding-right: 4px;       /* espacio para la barra */
+}
+
+/* Aplica al <ul> que contiene <li> */
+#lista-operarios ul {
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* espacio vertical entre operarios */
+    padding: 0;
+    margin: 0;
+}
+
+#lista-operarios li {
+    list-style: none;
+    padding: 8px 12px;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+    font-size: 14px;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+
+#ventana-detalle {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.4);
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+#contenido-ventana {
+    background-color: white;
+    padding: 20px;
+    border-radius: 12px;
+    border: 2px solid #ccc;
+    width: 80%;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+}
+
+#cerrar-ventana {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 22px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#tabla-detalle-container {
+    max-height: 60vh;
+    overflow-y: auto;
+    position: relative;
+}
+
+/* Asegura el ancho completo y separación de celdas */
+#tabla-detalle-container table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+/* Cabecera fija */
+#tabla-detalle-container thead th {
+    position: sticky;
+    top: 0;
+    background-color: #f2f2f2;
+    z-index: 1;
+    border-bottom: 2px solid #ccc;
+    padding: 8px;
+}
+
+/* Celdas normales */
+#tabla-detalle-container td {
+    padding: 8px;
+    border: 1px solid #ddd;
+    background-color: white;
+}
+
+#fc-seccion-mapa-2 {
+  height: 80vh;
+  border: 2px solid #ccc;
+  border-radius: 20px;
+  background-color: #fff;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+#mapa-operario {
+  width: 100%;
+  height: 500px;
+  border-radius: 10px;
+}
+
+/* Contenedor del resumen debajo del mapa */
+#fc-mapa-detalle-operario {
+    margin-top: 10px;
+    border: 2px solid #ccc;
+    border-radius: 10px;
+    padding: 10px;
+    background-color: white;
+    width: 1000px;
+    height: 160px; /* Altura fija */
+    overflow-x: auto;  /* Scroll horizontal */
+    overflow-y: hidden;
+    box-sizing: border-box;
+}
+
+/* Contenedor interno en fila (tarjetas de puntos) */
+#fc-mapa-detalle-operario .fila-detalle {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 15px;
+    min-width: fit-content;
+}
+
+/* Estilo de cada tarjeta */
+#fc-mapa-detalle-operario .tarjeta-detalle {
+    flex: 0 0 auto;
+    text-align: center;
+    min-width: 100px;
+    font-size: 12px;
+}
+
+/* Ícono dentro del círculo */
+#fc-mapa-detalle-operario .icono-circulo {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin: 0 auto 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #4678a6;
+    color: white;
+}
+
+#fc-mapa-detalle-operario .flecha-detalle{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #c0392b;
+    font-size: 20px;
+}
+
+.operario-seleccionado {
+  background-color: #d1ecf1;       /* Color celeste claro */
+  border-color: #17a2b8;           /* Borde celeste fuerte */
+  font-weight: bold;               /* Negrita para más contraste */
+}
+
+.icono-circulo {
+    cursor: pointer; /* 👈 hace que aparezca la mano */
+}
+
+.loader2 {
+    border: 8px solid #f3f3f3;
+    border-top: 8px solid #184875;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: girar 1s linear infinite;
+    margin: auto;
+}
+
+@keyframes girar {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes latido {
+    0%   { transform: scale(1); }
+    25%  { transform: scale(1.03); }
+    50%  { transform: scale(1.05); }
+    75%  { transform: scale(1.03); }
+    100% { transform: scale(1); }
+}
+
+
+.tarjeta-detalle.resaltada {
+    border: 3px solid #a1c0dd;
+    background-color: #e6f3ff;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 119, 255, 0.4);
+    transition: background-color 0.3s, border 0.3s;
+    animation: latido 1.2s ease-in-out infinite;
+
+}
+
+.section {
+    display: none;
+}
+
+.section.active {
+    display: block;
+}
+
+#recaudacion h2,
+#lecturas h2,
+#distribucion h2,
+#catastro h2,
+#inspecciones h2,
+#medidores h2,
+#persuasivas h2,
+#norte h2,
+#administrativo_1 h2 {
+    display: none;
+}
+
+#asistencias .input-container {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap; /* permite que se acomoden si no hay espacio */
+    justify-content: flex-start; /* evita separación extrema */
+    width: 100%; /* OCUPA TODO EL ANCHO */
+    padding: 10px 20px;
+    gap: 12px;
+    border: 2px solid #ccc;
+    border-radius: 16px;
+    background-color: #f9f9f9;
+}
+
+#asistencias .input-container label {
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+#asistencias .input-container select,
+#asistencias .input-container input[type="date"] {
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    width: auto;
+    max-width: 100%; /* evita desbordes */
+    flex: 0 0 auto;   /* que no crezca al 100% */
+}
+
+/* RENOMBRADO */
+.table-container-renombrado {
+    border: 2px solid #ccc; /* Puedes cambiar #ccc por cualquier color */
+    border-radius: 12px; /* Redondeado */
+    background-color: #ffffff; /* Fondo blanco */
+    padding: 16px; /* Espaciado interno opcional */
+    margin-top: 15px;
+}
+
+/*VENTANA FLOTANTE LEYENDA CONSOLIDADO*/
+.ventana-flotante {
+    position: fixed;
+    top: 100px;
+    left: 100px;
+    width: 250px;
+    background: white;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    z-index: 9999;
+    display: none; /* Oculta por defecto */
+}
+
+.barra-titulo {
+    background: #184875;
+    color: white;
+    padding: 8px;
+    cursor: move;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+}
+
+.cerrar {
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.contenido-leyenda {
+    padding: 10px;
+}
+
+.leyenda-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.color-cuadro {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    border: 1px solid #ccc;
+}
+
+
+/* Fondo oscuro */
+.modal {
+  display: none; /* Oculto por defecto */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6); /* Fondo oscuro */
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Contenedor del contenido */
+.modal-content {
+  background: #fff; /* Fondo blanco */
+  padding: 20px 30px;
+  border-radius: 12px;
+  border: 2px solid #222; /* Borde oscuro */
+  text-align: center;
+  width: 300px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  animation: fadeIn 0.3s ease;
+}
+
+/* Título */
+.modal-content h2 {
+  font-size: 18px;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+/* Botones */
+.modal-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-buttons button {
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background-color: #2c3e50;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.modal-buttons button:hover {
+  background-color: #34495e;
+}
+
+/* Animación */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.loader {
+  border: 8px solid #f3f3f3; /* Gris claro */
+  border-top: 8px solid #3498db; /* Azul */
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Fondo oscuro degradado */
+#spinner-mapa .overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6); /* negro semi-transparente */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+/* Loader circular */
+.loader {
+  border: 8px solid #f3f3f3; /* Gris claro */
+  border-top: 8px solid #a1c0dd; /* Azul */
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  animation: spin 1s linear infinite;
+}
+
+/* Animación del spinner */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+
+#contenedor-rectangulo {
+    display: flex; /* Habilita el Flexbox */
+    align-items: center; /* Centra los elementos verticalmente */
+    gap: 15px; /* Espacio entre los elementos */
+    width: 100%; /* El contenedor ocupa todo el ancho disponible */
+    
+    /* Estilos del rectángulo */
+    background-color: white;
+    border: 2px solid #ccc; /* Grosor de 2px y color gris claro */
+    border-radius: 10px; /* Bordes redondeados */
+    padding: 15px; /* Espacio interno para que los elementos no toquen los bordes */
+}
+
+#contenedor-rectangulo label {
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+#actividad-input {
+    flex-grow: 1;
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    max-width: 600px;
+}
+
+#btn-renombrar_1 {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    border: none;
+    background-color: #184875;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    width: auto;
+}
+
+#resultado-log {
+    max-height: 600px; /* Define una altura máxima para el contenedor */
+    overflow-y: auto; /* Habilita el desplazamiento vertical cuando el contenido excede la altura */
+    border: 1px solid #ccc; /* Opcional: añade un borde para delimitar el área de desplazamiento */
+    padding: 10px; /* Opcional: añade espacio interno para que el contenido no se pegue a los bordes */
+}
+
+
+/* SECCIÓN CONTROL DE MATERIALES */
+/* --- Main Tabs Styling (pestañas del módulo principal) --- */
+.main-tabs-wrapper {
+    background-color: white; /* Fondo blanco para todo el wrapper */
+    border: 2px solid #ccc; /* Borde gris de 2px */
+    border-radius: 10px; /* Bordes redondeados */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    padding-top: 15px; /* Espacio para que las pestañas no toquen el borde superior */
+}
+
+.main-tabs {
+    display: flex;
+    justify-content: flex-start; /* Alinea las pestañas a la izquierda */
+    border-bottom: none; /* Quitamos el borde inferior que solían tener las nav-tabs */
+    margin-left: 15px; /* Pequeño margen para que no estén pegadas al borde */
+    margin-bottom: -2px; /* Superpone las pestañas ligeramente sobre el borde del rectángulo */
+}
+
+.main-tab-button {
+    background-color: #e0e0e0;
+    border: 1px solid #ccc;
+    border-bottom: none; /* Quitamos el borde inferior para que se vea unida al content-rectangle */
+    padding: 10px 20px;
+    cursor: pointer;
+    font-size: 0.95em;
+    font-weight: bold;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    border-radius: 8px 8px 0 0; /* Solo bordes superiores redondeados */
+    margin-right: 5px; /* Espacio entre pestañas */
+    color: #555;
+}
+
+.main-tab-button:hover {
+    background-color: #d0d0d0;
+}
+
+.main-tab-button.active {
+    background-color: white; /* Fondo blanco para la pestaña activa */
+    color: #184875;
+    border-color: #ccc;
+    border-bottom-color: white; /* Simula que la pestaña activa se une al contenido */
+}
+
+.main-content-rectangle {
+    /* El borde ya lo tiene el wrapper, así que aquí solo padding */
+    padding: 25px;
+    background-color: white; /* Fondo blanco */
+    border-radius: 0 0 10px 10px; /* Bordes redondeados solo abajo */
+    /* El borde y shadow ahora lo maneja .main-tabs-wrapper */
+}
+
+.main-tab-content {
+    display: none;
+    /* No padding aquí, el padding ya está en .main-content-rectangle */
+}
+
+.main-tab-content.active {
+    display: block;
+}
+
+/* --- Two-Column Layout for ASIGNACIÓN Tab --- */
+.two-column-layout {
+    display: flex;
+    flex-wrap: wrap; /* Permite que las columnas se apilen en pantallas pequeñas */
+    gap: 40px; /* Espacio entre las columnas */
+}
+
+.form-column, .preview-column {
+    flex: 1; /* Ambas columnas intentan ocupar el mismo espacio */
+    min-width: 300px; /* Ancho mínimo para que no se compriman demasiado */
+}
+
+.form-column {
+    padding-right: 20px; /* Espacio entre el formulario y la tabla */
+    border-right: 1px dashed #e0e0e0; /* Separador visual */
+}
+/* Quitar borde derecho en móviles */
+@media (max-width: 768px) {
+    .form-column {
+        border-right: none;
+        padding-right: 0;
+    }
+}
+
+
+.input-group {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.input-group label {
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #555;
+}
+
+input[type="text"],
+input[type="date"],
+input[type="file"],
+select {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 1em;
+    width: 100%;
+    box-sizing: border-box;
+    background-color: #fcfcfc;
+}
+
+input[type="file"] {
+    padding: 8px; /* Un poco menos de padding para el input file */
+}
+
+/* --- Button Styling --- */
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: bold;
+    transition: background-color 0.3s ease;
+    white-space: nowrap;
+    text-transform: uppercase;
+    /* Eliminamos el width: 100% y lo definimos específicamente */
+    width: fit-content; /* Ocupa solo el ancho de su contenido + padding */
+    min-width: 120px; /* Asegura un ancho mínimo para que no sean diminutos */
+    display: block; /* Para que ocupen su propia línea y se aplique margin-left/right */
+    /* Por defecto, los alineamos a la izquierda */
+    margin-left: 0;
+    margin-right: auto;
+}
+
+.btn.primary, .btn.upload-btn {
+    background-color: #184875;
+    color: white;
+    margin-top: 10px;
+    /* Alineación específica para este botón si se quiere diferente */
+}
+
+.btn.primary, .btn.upload-btn:hover {
+    background-color: #143a5e;
+}
+
+.btn.save-btn {
+    background-color: #28a745;
+    color: white;
+    margin-top: 20px;
+    /* Alineación específica para este botón si se quiere diferente */
+}
+
+.btn.save-btn:hover {
+    background-color: #218838;
+}
+
+.button-right-align {
+    display: flex;
+    justify-content: flex-end; /* Alinea el contenido (el botón) a la derecha */
+    margin-top: 20px; /* Espacio superior para separarlo de la tabla */
+    padding: 0 5px; /* Pequeño padding horizontal si el contenedor tiene ancho completo */
+}
+
+.btn.save-btn-entrega {
+    background-color: #28a745;
+    color: white;
+    /* Los estilos de .btn ya le dan min-width y fit-content,
+       que son adecuados para que no se estire y se mantenga a la derecha. */
+    margin-left: auto; /* Asegura que el botón se empuje lo más a la derecha posible */
+    margin-right: 0; /* Por si acaso, para anular cualquier margen por defecto */
+    display: block; /* Para que margin-left: auto funcione correctamente */
+}
+
+.btn.save-btn-entrega:hover {
+    background-color: #218838;
+}
+
+/* --- Preview Table Styling --- */
+.preview-label {
+    font-weight: bold;
+    color: #555;
+    margin-bottom: 10px;
+    display: block; /* Para que ocupe su propia línea */
+}
+
+.preview-table-container {
+    max-height: 350px; /* Altura máxima para el scroll */
+    overflow-y: auto; /* Habilita el scroll vertical */
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.05); /* Sombra interna para efecto de profundidad */
+}
+
+#preview-asignacion-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+}
+
+#preview-asignacion-table thead th {
+    background-color: #184875;
+    color: white;
+    padding: 12px 15px;
+    text-align: left;
+    font-size: 0.85em;
+    position: sticky; /* Cabecera fija */
+    top: 0;
+    z-index: 1; /* Asegura que la cabecera esté por encima del contenido al hacer scroll */
+}
+
+#preview-asignacion-table tbody td {
+    padding: 10px 15px;
+    border: 1px solid #eee;
+    font-size: 0.85em;
+}
+
+#preview-asignacion-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+#preview-asignacion-table tbody tr:hover {
+    background-color: #f1f1f1;
+}
+
+
+/* --- ENTREGA Tab Specifics --- */
+.entrega-filters {
+    display: flex;
+    flex-wrap: wrap; /* Permitirá que se envuelvan en pantallas pequeñas */
+    align-items: center;
+    gap: 10px; /* Reducimos el espaciado entre los elementos a 10px */
+    margin-bottom: 25px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.entrega-filters label {
+    font-weight: bold;
+    color: #555;
+    white-space: nowrap; /* Evita que el texto de la etiqueta se rompa */
+    /* No le damos flex-grow para que ocupe solo el espacio necesario */
+}
+
+.entrega-filters input[type="date"] {
+    /* Eliminamos flex-grow: 1; para que no se estire excesivamente */
+    width: fit-content; /* Ocupa solo el ancho necesario para la fecha */
+    max-width: 150px; /* Un poco más compacto */
+    margin-right: 5px; /* Pequeño espacio extra antes del botón */
+}
+
+.entrega-filters .search-btn {
+    width: fit-content;
+    min-width: 80px;
+    /* Eliminamos margin-left: auto; para que esté pegado al input */
+    margin-left: 0;
+    margin-right: 0; /* Aseguramos que no haya margen a la derecha */
+}
+
+/* Responsive adjustments para ENTREGA filters */
+@media (max-width: 768px) {
+    .entrega-filters {
+        flex-direction: column; /* Apila los elementos verticalmente en móvil */
+        align-items: stretch; /* Estira los elementos para ocupar todo el ancho */
+    }
+    .entrega-filters label,
+    .entrega-filters input[type="date"],
+    .entrega-filters .search-btn {
+        width: 100%; /* Ocupa todo el ancho en móvil */
+        max-width: unset; /* Ignora el max-width para móvil */
+        margin-left: 0;
+        margin-right: 0;
+    }
+    .entrega-filters input[type="date"] {
+        margin-bottom: 10px; /* Espacio entre la fecha y el botón en móvil */
+    }
+}
+
+.entrega-table-container {
+    max-height: 450px; /* Altura máxima para la tabla de entrega */
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+}
+
+#entrega-materiales-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+}
+
+#entrega-materiales-table thead th {
+    background-color: #184875;
+    color: white;
+    padding: 8px 5px; /* Padding más pequeño para compactar cabeceras */
+    text-align: center;
+    font-size: 0.8em; /* Tamaño de fuente más pequeño */
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    white-space: nowrap; /* Evita que el texto de la cabecera se rompa */
+}
+
+#entrega-materiales-table tbody td {
+    padding: 5px 3px; /* Padding más pequeño para celdas */
+    border: 1px solid #eee;
+    font-size: 0.75em; /* Tamaño de fuente más pequeño para celdas */
+    text-align: center;
+}
+
+#entrega-materiales-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+#entrega-materiales-table tbody tr:hover {
+    background-color: #f1f1f1;
+}
+
+#entrega-materiales-table input[type="number"] {
+    width: 50px; /* Aún más pequeño para inputs de cantidad */
+    padding: 4px;
+    font-size: 0.7em;
+    text-align: center;
+    border-radius: 3px;
+    border: 1px solid #ddd;
+}
+
+/* --- NUEVOS ESTILOS PARA AUTOCOMPLETADO EN TABLA --- */
+.autocomplete-wrapper {
+    position: relative; /* Esencial para posicionar los resultados respecto al input */
+    display: inline-block; /* Ocupa solo el espacio necesario */
+    width: 100%; /* Ocupa todo el ancho de la celda */
+}
+
+.material-search {
+    width: 100%; /* El input ocupa todo el ancho del wrapper */
+    padding: 6px; /* Ajustado para que sea compacto dentro de la celda */
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.75em; /* Un poco más grande que el texto de la celda */
+    box-sizing: border-box; /* Incluye padding y border en el width */
+}
+
+.autocomplete-results {
+    position: absolute;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    max-height: 150px; /* Limita la altura del menú de resultados */
+    overflow-y: auto; /* Scroll si hay muchos resultados */
+    z-index: 100; /* Asegura que el menú esté por encima de otros elementos */
+    width: calc(100% + 10px); /* Ocupa el ancho del input + un poco más si la celda es muy pequeña */
+    left: -5px; /* Ajuste para que se vea centrado con el input */
+    top: 100%; /* Aparece justo debajo del input */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    display: block; /* Por defecto visible para el prototipo. En JS se mostraría/ocultaría. */
+    list-style: none; /* Si usas ul/li */
+    padding: 0;
+    margin: 0;
+}
+
+/* Estilo para cada opción de resultado */
+.result-item {
+    padding: 8px 10px;
+    cursor: pointer;
+    font-size: 0.8em;
+    color: #333;
+    display: block; /* Para que cada elemento ocupe su propia línea */
+}
+
+.result-item:hover {
+    background-color: #f0f0f0;
+    color: #0056b3;
+}
+
+/* Ocultar los resultados por defecto, se mostrarían con JS */
+/* En el prototipo, lo mantendremos visible en la primera fila para ejemplificar */
+.autocomplete-results:not(:has(.result-item)) {
+    display: none; /* Oculta si no hay elementos dentro (para otras filas de ejemplo) */
+}
+/* Para la primera fila, forzamos la visibilidad para el prototipo */
+tr:first-child .autocomplete-results {
+    display: block;
+}
+
+/* Ajustes a la tabla de entrega para los nuevos inputs */
+#entrega-materiales-table tbody td {
+    padding: 2px 3px; /* Reducimos el padding para acomodar el autocomplete */
+    vertical-align: top; /* Alinea el contenido de la celda arriba */
+}
+
+#entrega-materiales-table input[type="number"] {
+    width: 45px; /* Un poco más pequeño para los números */
+    font-size: 0.7em;
+    padding: 3px;
+}
+
+/* Botón '+' en la columna 'Agregar' */
+.btn.add-btn {
+    background-color: #ffc107; /* Naranja */
+    color: white;
+    padding: 4px 8px; /* Compacto */
+    border-radius: 50%; /* Redondo */
+    width: 30px; /* Ancho y alto para que sea redondo */
+    height: 30px;
+    display: inline-flex; /* Para centrar el '+' */
+    justify-content: center;
+    align-items: center;
+    font-size: 1.2em;
+    font-weight: bold;
+    min-width: unset; /* Quitar min-width de .btn general */
+    margin: 0; /* Centrar manualmente si se desea */
+}
+
+.btn.add-btn:hover {
+    background-color: #e0a800;
+}
+
+/* Contenedor para el botón GUARDAR de la tabla de Entrega */
+.button-right-align {
+    display: flex;
+    justify-content: flex-end; /* Alinea el contenido a la derecha */
+    margin-top: 20px;
+}
+
+.btn.save-btn-entrega {
+    background-color: #28a745;
+    color: white;
+    /* Los estilos de .btn ya le dan min-width y fit-content */
+}
+
+.btn.save-btn-entrega:hover {
+    background-color: #218838;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .main-tabs {
+        flex-wrap: wrap;
+        margin-left: 0;
+    }
+    .main-tab-button {
+        flex-grow: 1;
+        margin-right: 0;
+        border-radius: 0;
+    }
+    .main-content-rectangle {
+        padding: 15px;
+    }
+    .two-column-layout {
+        flex-direction: column;
+        gap: 30px;
+    }
+    .form-column, .preview-column {
+        min-width: unset;
+        flex: auto;
+    }
+    .btn.upload-btn,
+    .btn.save-btn {
+        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .entrega-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .entrega-filters input[type="date"],
+    .entrega-filters .search-btn {
+        width: 100%;
+        max-width: unset;
+        margin-left: 0;
+        margin-right: 0;
+    }
+    #entrega-materiales-table thead th,
+    #entrega-materiales-table tbody td {
+        white-space: normal; /* Permitir que el texto se envuelva en móvil */
+    }
+}
+
+
+/* --- DEVOLUCIÓN Tab Specifics --- */
+.devolucion-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 25px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.devolucion-filters label {
+    font-weight: bold;
+    color: #555;
+    white-space: nowrap;
+}
+
+.devolucion-filters input[type="date"] {
+    width: fit-content;
+    max-width: 150px;
+    margin-right: 5px;
+}
+
+.devolucion-filters .search-btn {
+    width: fit-content;
+    min-width: 80px;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.devolucion-table-container {
+    max-height: 500px;
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+}
+
+#devolucion-materiales-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+}
+
+#devolucion-materiales-table thead th {
+    background-color: #184875;
+    color: white;
+    padding: 6px 4px;
+    text-align: center;
+    font-size: 0.75em;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    white-space: nowrap;
+}
+
+#devolucion-materiales-table tbody td {
+    padding: 4px 3px;
+    border: 1px solid #eee;
+    font-size: 0.7em;
+    text-align: center;
+    vertical-align: middle; /* Centra verticalmente el contenido de las celdas */
+}
+
+#devolucion-materiales-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+#devolucion-materiales-table tbody tr:hover {
+    background-color: #f1f1f1;
+}
+
+#devolucion-materiales-table input[type="number"] {
+    width: 45px;
+    padding: 3px;
+    font-size: 0.7em;
+    text-align: center;
+    border-radius: 3px;
+    border: 1px solid #ddd;
+    box-sizing: border-box;
+    background-color: white; /* Asegura un color base blanco por defecto */
+}
+
+
+
+/* --- NUEVAS REGLAS DE COLOR PARA COLUMNAS DE DEVOLUCIÓN --- */
+
+
+
+/* 2. COLUMNA 'DEVUELTO' (Verde Pastel) - 2ª desde el final */
+#devolucion-materiales-table tbody tr:not(.operario-separator) td:nth-last-child(2) {
+    background-color: #d4edda;
+}
+
+#devolucion-materiales-table tbody tr:not(.operario-separator) td:nth-last-child(2) input[type="number"] {
+    background-color: #e2f4e5;
+    border-color: #c3e6cb;
+}
+
+/* 3. COLUMNA 'PENDIENTE DEVOLVER' (Rojo Pastel) - Última desde el final */
+#devolucion-materiales-table tbody tr:not(.operario-separator) td:last-child {
+    background-color: #f8d7da;
+}
+
+#devolucion-materiales-table tbody tr:not(.operario-separator) td:last-child input[type="number"] {
+    background-color: #faeaea;
+    border-color: #f5c6cb;
+}
+
+
+/* --- REGLA DEL SEPARADOR (GRIS) CON PRIORIDAD ALTA --- */
+.operario-separator td {
+    background-color: #ddd !important; /* Mantenemos !important para asegurar el color gris */
+    height: 10px;
+    padding: 0;
+    border: none;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* Botón GUARDAR de Devolución */
+.btn.save-btn-devolucion {
+    background-color: #28a745;
+    color: white;
+    margin-left: auto;
+    margin-right: 0;
+    display: block;
+}
+
+.btn.save-btn-devolucion:hover {
+    background-color: #218838;
+}
+
+
+/* Responsive adjustments para DEVOLUCIÓN filters */
+@media (max-width: 768px) {
+    .devolucion-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .devolucion-filters label,
+    .devolucion-filters input[type="date"],
+    .devolucion-filters .search-btn {
+        width: 100%;
+        max-width: unset;
+        margin-left: 0;
+        margin-right: 0;
+    }
+    .devolucion-filters input[type="date"] {
+        margin-bottom: 10px;
+    }
+    #devolucion-materiales-table thead th,
+    #devolucion-materiales-table tbody td {
+        white-space: normal;
+        font-size: 0.7em;
+    }
+    /* No hay operario-group-header que centrar */
+}
+
+
+
+
+/* --- HISTÓRICO Tab Specifics --- */
+.historico-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px; /* Espaciado compacto */
+    margin-bottom: 25px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.historico-filters label {
+    font-weight: bold;
+    color: #555;
+    white-space: nowrap;
+    margin-left: 10px; /* Separación entre el input anterior y el label */
+}
+
+.historico-filters label:first-child {
+    margin-left: 0; /* No margin-left para el primer label */
+}
+
+.historico-filters input[type="text"],
+.historico-filters input[type="date"] {
+    width: fit-content;
+    max-width: 150px; /* Ancho máximo para el input */
+    flex-grow: 0; /* Evita que los inputs se estiren */
+    padding: 8px;
+}
+
+.historico-filters .search-btn {
+    width: fit-content;
+    min-width: 80px;
+    margin-left: auto; /* Empuja el botón a la derecha si hay espacio */
+    margin-right: 0;
+}
+
+.historico-table-container {
+    max-height: 500px; /* Altura máxima para la tabla de histórico */
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+}
+
+#historico-reporte-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+}
+
+#historico-reporte-table thead th {
+    background-color: #184875; /* Color azul oscuro de los botones SUBIR/BUSCAR */
+    color: white;
+    padding: 6px 4px;
+    text-align: center;
+    font-size: 0.75em;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    white-space: nowrap;
+}
+
+#historico-reporte-table tbody td {
+    padding: 4px 3px;
+    border: 1px solid #eee;
+    font-size: 0.7em;
+    text-align: center;
+}
+
+#historico-reporte-table tbody tr:nth-child(even):not(.actividad-group-separator) {
+    background-color: #f9f9f9;
+}
+
+#historico-reporte-table tbody tr:hover:not(.actividad-group-separator) {
+    background-color: #f1f1f1;
+}
+
+/* Estilo para la fila separadora de ACTIVIDAD (Gris y negrita) */
+.actividad-group-separator td {
+    background-color: #ddd; /* Color gris */
+    font-weight: bold;
+    color: #343a40;
+    text-align: left; /* Alinea el nombre de la actividad a la izquierda */
+    padding: 8px 10px;
+    border-bottom: 2px solid #ccc;
+    border-top: 2px solid #ccc;
+    font-size: 0.85em;
+}
+
+/* Responsive adjustments para HISTÓRICO filters */
+@media (max-width: 768px) {
+    .historico-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .historico-filters label,
+    .historico-filters input[type="text"],
+    .historico-filters input[type="date"],
+    .historico-filters .search-btn {
+        width: 100%;
+        max-width: unset;
+        margin-left: 0;
+        margin-right: 0;
+    }
+    .historico-filters input[type="date"] {
+        margin-bottom: 10px;
+    }
+    #historico-reporte-table thead th,
+    #historico-reporte-table tbody td {
+        white-space: normal;
+        font-size: 0.7em;
+    }
+    .actividad-group-separator td {
+        text-align: center; /* Centrar la actividad en móvil */
+    }
+}
+
+
+/* --- ESTILOS PARA LA VENTANA FLOTANTE (MODAL) --- */
+
+/* 1. El fondo oscuro (overlay) */
+.modal-overlay {
+  display: none; /* Oculto por defecto */
+  position: fixed; /* Cubre toda la pantalla */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6); /* Fondo oscurecido */
+  z-index: 999; /* Detrás de la ventana, delante de todo lo demás */
+}
+
+/* 2. La ventana flotante (modal) */
+.modal-ventana {
+  display: none; /* Oculta por defecto */
+  position: fixed; /* Flotante */
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%); /* Centrado perfecto */
+  background-color: white;
+  padding: 25px;
+  border-radius: 10px; /* Bordes redondeados */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  z-index: 1000; /* Encima de todo */
+  width: 90%;
+  max-width: 400px; /* Ancho máximo */
+}
+
+/* 3. Estilos del contenido del modal */
+.modal-ventana h2 {
+  margin-top: 0;
+  text-align: center;
+}
+
+.modal-ventana label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.modal-input-fecha {
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box; /* Para que el padding no afecte el ancho */
+  margin-bottom: 20px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+/* 4. El botón "GENERAR" solicitado */
+.modal-boton-azul {
+  width: 100%;
+  padding: 12px;
+  background-color: #007bff; /* Fondo color azul */
+  color: white;
+  border: none;
+  border-radius: 5px; /* Bordes redondeados */
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.modal-boton-azul:hover {
+  background-color: #0056b3;
+}
+
+/* 5. El botón de cerrar (X) */
+.modal-cerrar {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-size: 24px;
+  font-weight: bold;
+  color: #888;
+  cursor: pointer;
+}
+
+.modal-cerrar:hover {
+  color: #000;
+}
+
+
+/* --- CONTENEDOR PRINCIPAL (Fondo gris de la página) --- */
+#fc-container-dbf {
+    font-family: sans-serif;
+    background-color: #f5f5f5; /* El fondo gris general */
+    padding: 20px;
+    border-radius: 10px;
+}
+
+/* --- EL RECTÁNGULO BLANCO ÚNICO (Aquí va todo) --- */
+/* Esta clase controla la caja blanca con borde gris */
+.fila-superior {
+    /* 1. Estética del recuadro */
+    background-color: #ffffff;  /* Fondo blanco */
+    border: 2px solid #cccccc;  /* Borde gris 2px */
+    border-radius: 15px;        /* Bordes redondeados */
+    padding: 20px;              /* Espacio interno */
+
+    /* 2. Alineación de los elementos (Actividad + Campos ocultos) */
+    display: flex;              
+    align-items: flex-end;      /* Alinea todo abajo */
+    gap: 15px;                  /* Espacio entre grupos */
+    flex-wrap: wrap;            /* Para pantallas pequeñas */
+}
+
+/* --- GRUPO OCULTO (Fecha, Archivo, Botón) --- */
+
+.grupo-flex {
+    display: flex;
+    align-items: flex-end;
+    gap: 15px;
+}
+
+/* --- ESTILOS DE INPUTS Y ETIQUETAS --- */
+.grupo-dato label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+    font-size: 16px;
+}
+
+.grupo-dato input, .grupo-dato select {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    height: 38px; 
+    box-sizing: border-box;
+}
+
+/* --- BOTÓN CONVERTIR (AZUL) --- */
+#btn-convertir {
+    background-color: #184875;
+    color: white;
+    font-weight: bold;
+    border: none;
+    border-radius: 10px;
+    padding: 0 25px;
+    height: 38px;
+    cursor: pointer;
+}
+#btn-convertir:hover { background-color: #0056b3; }
+
+/* --- RESULTADO Y TABLA --- */
+.caja-resultado {
+    margin-top: 20px;
+    border: 2px solid #aaa;
+    border-radius: 15px;
+    padding: 20px;
+    background: white;
+}
+
+.tabla-estilo { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+.tabla-estilo th, .tabla-estilo td { border: 1px solid #ddd; padding: 8px; }
+
+/* --- BOTÓN DESCARGAR (VERDE) --- */
+.zona-descarga {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 15px;
+}
+
+#btn-descargar-1 {
+    background-color: #28a745; 
+    color: white;
+    font-weight: bold;
+    border: none;
+    border-radius: 10px; 
+    padding: 10px 30px;
+    cursor: pointer;
+}
+#btn-descargar-1:hover { background-color: #218838; }
+
+
+/* --- ESTILOS PARA PESTAÑAS (TABS) --- */
+.tabs-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #ccc;
+    padding-bottom: 10px;
+}
+
+.tab-button {
+    padding: 10px 15px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    background-color: #a1c0dd;
+    border-radius: 5px 5px 0 0;
+    border-bottom: none;
+    opacity: 0.7;
+}
+
+.tab-button:hover {
+    background-color: #a1c0dd;
+}
+
+/* Estilo para la pestaña activa */
+.tab-button.active {
+    background-color: #184875;
+    border-color: #ccc;
+    border-bottom: 2px solid #184875; /* Truco para "unir" con la tabla */
+    margin-bottom: -2px; /* Sube el botón para tapar la línea */
+    opacity: 1;
+}
+
+
+/* --- ESTILOS ADICIONALES PARA LA TABLA DE PREVISUALIZACIÓN --- */
+
+/* 1. Habilita el scroll y define la altura (ya lo tenías, pero revisado) */
+.tabla-scroll-container {
+    overflow-x: auto;  /* Scroll Horizontal */
+    overflow-y: auto;  /* Scroll Vertical */
+    max-height: 550px; /* Altura máxima de la tabla */
+    width: 100%;
+    border: 1px solid #ddd;
+}
+
+/* 2. Hace la letra de la tabla más pequeña */
+.tabla-estilo {
+    font-size: 12px; /* <-- TAMAÑO DE LETRA MÁS PEQUEÑO */
+    border-collapse: collapse;
+    width: 100%; 
+}
+
+/* 3. Celdas de Datos (tbody) */
+.tabla-estilo td {
+    padding: 6px 8px;
+    border: 1px solid #e0e0e0;
+    text-align: left;
+    vertical-align: top;
+}
+
+/* 4. CELDAS DE CABECERA (th) - ¡LA PARTE CLAVE! */
+.tabla-estilo th {
+    position: sticky;  /* <-- HACE QUE SE PEGUE */
+    top: 0;            /* <-- LA PEGA ARRIBA DEL CONTENEDOR DE SCROLL */
+    background-color: #f0f0f0; /* <-- FONDO PARA QUE NO SE VEA EL TEXTO DE ABAJO */
+    
+    /* Estilos visuales que ya tenías */
+    padding: 6px 8px;
+    border: 1px solid #e0e0e0;
+    text-align: left;
+    vertical-align: top;
+    font-weight: bold; /* Asegura que la cabecera sea negrita */
+    z-index: 10;       /* Asegura que esté por encima del contenido */
+}
+
+/* 5. Hace que la columna OBSERS (la 9na) sea ancha y el texto se parta */
+.tabla-estilo th:nth-child(17),
+.tabla-estilo td:nth-child(17) {
+    min-width: 350px; /* <-- ANCHO MÍNIMO PARA OBSERS */
+    width: 45%;       /* <-- Intenta que ocupe el 45% del espacio */
+    white-space: normal; /* Permite que el texto largo se ajuste (wrap) */
+}
+
+
+/* GENERAR CARGAS */
+/* --- 1. RECTÁNGULO DE CONTROLES (Blanco con borde) --- */
+.fila-superior-1 {
+    background-color: #ffffff;
+    border: 2px solid #cccccc;
+    border-radius: 15px;
+    padding: 20px;
+    display: flex;
+    align-items: flex-end;
+    gap: 15px;
+    flex-wrap: wrap;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+
+/* --- 3. Estilos de inputs (label, select, input) --- */
+.grupo-dato-1 label {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 5px;
+    font-size: 14px;
+    color: #333;
+}
+
+.grupo-dato-1 select, 
+.grupo-dato-1 input {
+    padding: 8px 12px;
+    border: 1px solid #999;
+    border-radius: 10px;
+    height: 40px;
+    box-sizing: border-box;
+}
+
+/* --- 4. Botón GENERAR (Azul) --- */
+#btn-convertir-1 {
+    background-color: #184875;
+    color: white;
+    font-weight: bold;
+    border: none;
+    border-radius: 10px;
+    padding: 0 25px;
+    height: 38px;
+    cursor: pointer;
+}
+#btn-convertir-1:hover { background-color: #0056b3; }
+
+/* --- 5. Caja de Resultados (la que contiene pestañas y tabla) --- */
+.caja-resultado-1 {
+    margin-top: 20px;
+    background: white;
+    border: 2px solid #cccccc;
+    border-radius: 15px;
+    padding: 20px;
+}
+
+/* --- 6. Pestañas (Tabs) --- */
+.tabs-container-1 {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #ccc;
+    padding-bottom: 10px;
+}
+
+/* (Asegúrate que tu JS cree los botones con la clase 'tab-button') */
+.tabs-container-1 .tab-button {
+    padding: 10px 15px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    background-color: #f0f0f0;
+    border-radius: 5px 5px 0 0;
+    border-bottom: none;
+    opacity: 0.7;
+}
+.tabs-container-1 .tab-button.active {
+    background-color: #ffffff;
+    border-color: #ccc;
+    border-bottom: 2px solid #ffffff;
+    margin-bottom: -2px;
+    opacity: 1;
+}
+
+/* --- 7. Contenedor de Scroll de Tabla --- */
+.tabla-scroll-container-1 {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 550px;
+    width: 100%;
+    border: 1px solid #ddd;
+}
+
+/* --- 8. Estilos de la Tabla (Letra pequeña, cabecera fija) --- */
+.tabla-estilo-1 {
+    font-size: 12px;
+    border-collapse: collapse;
+    width: 100%; 
+}
+
+/* Celdas de Datos */
+.tabla-estilo-1 td {
+    padding: 6px 8px;
+    border: 1px solid #e0e0e0;
+    text-align: left;
+    vertical-align: top;
+}
+
+/* Celdas de Cabecera (Fija) */
+.tabla-estilo-1 th {
+    position: sticky;
+    top: 0;
+    background-color: #f0f0f0;
+    padding: 6px 8px;
+    border: 1px solid #e0e0e0;
+    text-align: left;
+    vertical-align: top;
+    font-weight: bold;
+    z-index: 10;
+}
+
+/* Ancho de columnas (Asumiendo 9 columnas, como en el módulo anterior) */
+/* Columnas normales uniformes */
+.tabla-estilo-1 th:not(:nth-child(9)),
+.tabla-estilo-1 td:not(:nth-child(9)) {
+    white-space: nowrap; 
+}
+
+
+/* --- 9. Botón DESCARGAR (Verde) --- */
+.zona-descarga-1 {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 15px; /* Separación de la tabla */
+}
+
+#btn-descargar-2 {
+    background-color: #28a745; 
+    color: white;
+    font-weight: bold;
+    border: none;
+    border-radius: 20px; 
+    padding: 10px 30px;
+    cursor: pointer;
+}
+#btn-descargar-2:hover { 
+    background-color: #218838; 
+}
+
+
+/* --- ESTILO PARA COLUMNA ANGOSTA (nrcx_med) --- */
+.tabla-estilo-1 .col-angosta {
+    min-width: 120px;
+    width: 120px;
+    max-width: 120px; /* Forzar ancho */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* Muestra '...' si el texto es muy largo */
+}
+
+
+/* GENERAR CARTAS */
+/* TUS ESTILOS PERSONALIZADOS (ID #cartas) */
+        #cartas {
+            --primary-color: #28a745;
+            --primary-hover: #218838;
+            --border-color: #cbd5e0;
+            --bg-light: #f7fafc;
+            --text-color: #2d3748;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-color);
+            box-sizing: border-box;
+            width: 100%;
+        }
+
+        #cartas.section {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        #cartas h2 {
+            margin-top: 0;
+            margin-bottom: 25px;
+            color: #1a202c;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #edf2f7;
+            padding-bottom: 10px;
+        }
+
+        #cartas .control-panel {
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            background-color: #fff;
+            width: 100%;
+            box-sizing: border-box;
+            display: flex;
+            align-items: flex-end;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        #cartas .input-group {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        #cartas .input-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            color: #4a5568;
+        }
+
+        #cartas input[type="file"],
+        #cartas input[type="date"] {
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background-color: var(--bg-light);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #cartas input[type="file"]:hover,
+        #cartas input[type="date"]:hover {
+            border-color: #a0aec0;
+        }
+
+        #cartas .btn-generar {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+            height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+        }
+
+        #cartas .btn-generar:hover {
+            background-color: var(--primary-hover);
+        }
+
+        #cartas .btn-generar:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* Área de Previsualización */
+        #cartas .preview-panel {
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            margin-top: 25px;
+            padding: 20px;
+            min-height: 500px; /* Aumentado para ver bien el PDF */
+            background-color: #f8fff9;
+            width: 100%;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        #cartas .preview-header {
+            font-weight: bold;
+            color: #718096;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        /* Iframe para mostrar el PDF generado */
+        #pdfFrame {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            display: none; /* Oculto al inicio */
+        }
+
+
+        /* Estilos para la navegación interna de pestañas */
+#cartas .tab-nav {
+    display: flex;
+    background-color: #f7fafc;
+    border-bottom: 2px solid #cbd5e0;
+    margin-bottom: 20px;
+    border-radius: 8px 8px 0 0;
+}
+
+#cartas .tab-link {
+    background: none;
+    border: none;
+    padding: 15px 20px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #718096;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+    flex: 1; /* Distribuye el espacio equitativamente */
+}
+
+#cartas .tab-link:hover {
+    background-color: #e2e8f0;
+    color: #2d3748;
+}
+
+#cartas .tab-link.active {
+    color: #28a745; /* Tu color verde primario */
+    border-bottom: 3px solid #28a745;
+    background-color: #fff;
+}
+
+/* Ocultar/Mostrar contenido de las sub-pestañas */
+.sub-tab-content {
+    display: none; /* Oculto por defecto */
+    animation: fadeIn 0.4s;
+}
+
+.sub-tab-content.active {
+    display: block; /* Solo se muestra si tiene la clase active */
+}
+
+/* Subtítulos internos */
+.section-header-internal h3 {
+    margin-top: 0;
+    color: #4a5568;
+    font-size: 1.2rem;
+    margin-bottom: 15px;
+    border-bottom: 1px dashed #cbd5e0;
+    padding-bottom: 5px;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+
+/* --- GRID DE CARGAS COMPACTO --- */
+
+/* Contenedor con scroll interno para que el botón siempre se vea */
+.loads-grid {
+    display: grid;
+    /* Forzar exactamente 4 columnas */
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 8px; /* Espacio reducido entre tarjetas */
+    margin-top: 10px;
+    
+    /* TRUCO: Altura máxima y scroll solo en esta área */
+    max-height: 400px; 
+    overflow-y: auto;
+    
+    /* Borde opcional para delimitar el área de scroll */
+    border: 1px solid #e2e8f0;
+    padding: 10px;
+    border-radius: 6px;
+    background-color: #f8fafc;
+}
+
+/* Tarjeta individual (Versión Mini) */
+.load-card {
+    background: #fff;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px; /* Bordes menos redondeados ahorran espacio visual */
+    padding: 6px 8px;   /* Relleno muy reducido */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.load-card:hover {
+    border-color: #3182ce;
+    background-color: #ebf8ff;
+}
+
+/* Título de la Carga */
+.load-title {
+    font-weight: 700;
+    color: #4a5568;
+    margin-bottom: 4px;
+    font-size: 0.8rem; /* Letra más pequeña */
+    border-bottom: 1px solid #edf2f7;
+    padding-bottom: 2px;
+}
+
+/* Selector (Dropdown) Compacto */
+.operario-select {
+    width: 100%;
+    padding: 2px 4px; /* Padding mínimo */
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    background-color: #fff;
+    font-size: 0.75rem; /* Letra pequeña para que quepan nombres largos */
+    height: 24px; /* Altura fija pequeña */
+    outline: none;
+}
+
+.operario-select:focus {
+    border-color: #3182ce;
+    box-shadow: 0 0 0 1px #3182ce;
+}
+
+/* Reemplaza la clase .operario-select por esta */
+.operario-input {
+    width: 100%;
+    padding: 2px 4px;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    background-color: #fff;
+    font-size: 0.75rem; 
+    height: 24px;
+    outline: none;
+    box-sizing: border-box; /* Importante para que no se salga */
+}
+
+.operario-input:focus {
+    border-color: #3182ce;
+    box-shadow: 0 0 0 1px #3182ce;
+    background-color: #fff;
+}
