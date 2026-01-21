@@ -4,13 +4,15 @@ import json
 import requests
 from datetime import datetime, timedelta
 
-# BASE_FOLDER = r"\\192.168.1.201\images\ordenes"
-BASE_FOLDER = r"D:\DEVESOFT"
-
+BASE_FOLDER = r"\\192.168.1.201\images\ordenes"
 ARCHIVO_INDEX = "index_archivos_2.json"
-# API_URL = "http://136.111.173.183:8000/subir-json"
-API_URL = "http://192.168.10.14:5000/api/imagenes"
+API_URL = "http://136.111.173.183:8000/api/imagenes"
 ERROR_LOG = "errores_api.txt"
+
+# BASE_FOLDER = r"D:\DEVESOFT"
+# API_URL = "http://192.168.10.14:5000/api/imagenes"
+
+
 
 index = []
 
