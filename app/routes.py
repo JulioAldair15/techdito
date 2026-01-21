@@ -5,7 +5,7 @@ from flask_bcrypt import check_password_hash
 from sqlalchemy.exc import SQLAlchemyError 
 from app import app, db
 from datetime import datetime, timedelta, date
-from sqlalchemy import extract, or_ 
+from sqlalchemy import extract, or_ , text
 from calendar import monthrange
 import traceback  # Importamos para imprimir detalles de errores
 from barcode import Code128
@@ -104,6 +104,62 @@ INDEX_PATH_2 = "index_archivos_2.json"
 #     level=logging.ERROR,
 #     format="%(asctime)s - %(levelname)s - %(message)s"
 # )
+
+
+@app.route('/api/imagenes', methods=['POST'])
+def insertar_imagenes():
+
+    if not request.is_json:
+        return jsonify({
+            "status": "error",
+            "message": "El contenido debe ser JSON"
+        }), 400
+
+    data = request.get_json()
+    imagenes = data.get("imagenes")
+
+    if not imagenes or not isinstance(imagenes, list):
+        return jsonify({
+            "status": "error",
+            "message": "El campo 'imagenes' debe ser una lista"
+        }), 400
+
+    sql = text("""
+        INSERT INTO imagenes (carpeta, filename, path, leyenda, origen)
+        VALUES (:carpeta, :filename, :path, :leyenda, :origen)
+        ON DUPLICATE KEY UPDATE
+            path = VALUES(path),
+            leyenda = VALUES(leyenda),
+            origen = VALUES(origen)
+    """)
+
+    try:
+        for img in imagenes:
+            if not img.get("carpeta") or not img.get("filename"):
+                continue
+
+            db.session.execute(sql, {
+                "carpeta": img["carpeta"],
+                "filename": img["filename"],
+                "path": img.get("path"),
+                "leyenda": img.get("leyenda"),
+                "origen": img.get("origen")
+            })
+
+        db.session.commit()
+
+        return jsonify({
+            "status": "ok",
+            "insertados": len(imagenes)
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
 
 @app.route('/subir-json', methods=['GET', 'POST'])
 def subir_json():

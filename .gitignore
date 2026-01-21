@@ -3,3 +3,9 @@
 config.py
 venv/
 __pycache__
+build
+dist
+
+indexadorLecturas.spec
+indexadorOrdenes.spec
+errores_api.txt

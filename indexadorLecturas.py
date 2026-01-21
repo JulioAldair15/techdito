@@ -1,21 +1,57 @@
+# indexador.py
 import os
 import json
-import calendar
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
+import calendar
 
-# BASE_FOLDER = r"\\192.168.1.201\images\lecturas"
-BASE_FOLDER = r"D:\Fotos\Camera"
+# BASE_FOLDER = r"\\192.168.1.201\images\ordenes"
+BASE_FOLDER = r"D:\\DEVESOFT"
+
 ARCHIVO_INDEX = "index_archivos_1.json"
-API_URL = "http://127.0.0.1:5000/subir-json"
+# API_URL = "http://136.111.173.183:8000/api/imagenes"
+API_URL = "http://192.168.10.14:5000/api/imagenes"
 ERROR_LOG = "errores_api.txt"
 
 index = []
 
-print("[LOG] Iniciando indexado de LECTURAS...")
+# Fecha límite: hace 7 días
+fecha_limite = datetime.now() - timedelta(days=7)
+
+# Construir índice
 for root, dirs, files in os.walk(BASE_FOLDER):
     for file in files:
         if file.lower().endswith(".jpg"):
+
+
+            #VALIDACION DE LA FECHA
+            ###############################################
+
+            ruta_completa = os.path.join(root, file)
+
+            try:
+                fecha_creacion = datetime.fromtimestamp(
+                    os.path.getctime(ruta_completa)
+                )
+                fecha_modificacion = datetime.fromtimestamp(
+                    os.path.getmtime(ruta_completa)
+                )
+            except Exception:
+                continue
+
+            # ✅ Usar la fecha más reciente (creación o modificación)
+            fecha_relevante = max(fecha_creacion, fecha_modificacion)
+
+            print(str(fecha_relevante))
+
+            # Solo archivos de la última semana
+            if fecha_relevante < fecha_limite:
+                continue
+
+            ###############################################
+
+
+
             # Ruta relativa desde BASE_FOLDER, estilo UNIX
             relative_path = os.path.relpath(root, BASE_FOLDER)
             carpeta_completa = relative_path.replace("\\", "/")  # ej: "202501/18"
@@ -34,49 +70,45 @@ for root, dirs, files in os.walk(BASE_FOLDER):
             else:
                 leyenda = "LECTURAS"
 
+
             index.append({
                 "carpeta": carpeta_completa,
                 "filename": file,
+                "path": os.path.join(root, file).replace("\\", "/"),
                 "leyenda": leyenda,
                 "origen": "lecturas"
             })
 
-            print(f"[LOG] Imagen: {file} (Carpeta: {carpeta_completa}, Leyenda: {leyenda})")
+print(f"[LOG] Indexado completo: {len(index)} archivos registrados.")
 
-# Guardar el índice
+# Guardar el JSON local (backup)
 with open(ARCHIVO_INDEX, "w", encoding="utf-8") as f:
-    json.dump(index, f, ensure_ascii=False)
+    json.dump({"imagenes": index}, f, ensure_ascii=False, indent=2)
 
-print(f"[LOG] Indexado completo de lecturas: {len(index)} archivos.")
-
-
-# -------------------------
-# Subir el archivo a la API
-# -------------------------
-try:
-    with open(ARCHIVO_INDEX, "rb") as f:
-        files = {
-            "archivo": (ARCHIVO_INDEX, f, "application/json")
-        }
-        data = {
-            "tipo": "lecturas"   # o "lecturas"
-        }
-
-        response = requests.post(API_URL, files=files, data=data, timeout=60)
-
-    # Si la API devuelve error
-    if response.status_code != 200:
-        error_msg = response.json().get("message", "Error desconocido")
-
-        raise Exception(error_msg)
-
-    print("[LOG] Archivo subido correctamente a la API")
-
-except Exception as e:
-    # Guardar error en TXT
-    with open(ERROR_LOG, "a", encoding="utf-8") as log:
-        log.write(
-            f"{datetime.now().isoformat()} - ERROR API LECTURAS: {str(e)}\n"
+# Enviar a la API
+if index:
+    # Enviar a la API
+    try:
+        response = requests.post(
+            API_URL,
+            json={"imagenes": index},
+            timeout=30
         )
 
-    print("[ERROR] No se pudo subir el archivo. Ver errores_api.txt")
+        if response.status_code in (200, 201):
+            print("[OK] Datos enviados correctamente a la API")
+            print("Respuesta:", response.json())
+        else:
+            raise Exception(
+                f"Status {response.status_code} - {response.text}"
+            )
+
+    except Exception as e:
+        error_msg = f"[{datetime.now()}] ERROR API: {str(e)}\n"
+        print(error_msg)
+
+        with open(ERROR_LOG, "a", encoding="utf-8") as f:
+            f.write(error_msg)
+
+else:
+    print("[INFO] No hay archivos nuevos para enviar.")

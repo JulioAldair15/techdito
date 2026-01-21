@@ -1,2 +1,23 @@
 2026-01-20T22:07:24.455686 - ERROR API LECTURAS: No se envió el archivo
 2026-01-20T22:07:48.936146 - ERROR API LECTURAS: No se envió el archivo
+[2026-01-20 23:33:29.091430] ERROR API: Status 500 - {
+  "message": "(pymysql.err.IntegrityError) (1048, \"Column 'leyenda' cannot be null\")\n[SQL: \n        INSERT INTO imagenes (carpeta, filename, path, leyenda, origen)\n        VALUES (%(carpeta)s, %(filename)s, %(path)s, %(leyenda)s, %(origen)s)\n        ON DUPLICATE KEY UPDATE\n            path = VALUES(path),\n            leyenda = VALUES(leyenda),\n            origen = VALUES(origen)\n    ]\n[parameters: {'carpeta': 'Imagenes', 'filename': 'descarga.jpg', 'path': 'D:/Imagenes/descarga.jpg', 'leyenda': None, 'origen': 'lecturas'}]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)",
+  "status": "error"
+}
+
+[2026-01-20 23:39:37.244298] ERROR API: Status 400 - {
+  "message": "El campo 'imagenes' debe ser una lista",
+  "status": "error"
+}
+
+2026-01-20T23:50:27.828852 - ERROR API ORDENES: El contenido debe ser JSON
+[2026-01-20 23:52:30.418254] ERROR API: Status 500 - {
+  "message": "(pymysql.err.IntegrityError) (1048, \"Column 'leyenda' cannot be null\")\n[SQL: \n        INSERT INTO imagenes (carpeta, filename, path, leyenda, origen)\n        VALUES (%(carpeta)s, %(filename)s, %(path)s, %(leyenda)s, %(origen)s)\n        ON DUPLICATE KEY UPDATE\n            path = VALUES(path),\n            leyenda = VALUES(leyenda),\n            origen = VALUES(origen)\n    ]\n[parameters: {'carpeta': 'DEVESOFT', 'filename': 'ferreteria - copia.jpg', 'path': 'D:/DEVESOFT/ferreteria - copia.jpg', 'leyenda': None, 'origen': None}]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)",
+  "status": "error"
+}
+
+[2026-01-20 23:53:54.526251] ERROR API: Status 500 - {
+  "message": "(pymysql.err.IntegrityError) (1048, \"Column 'origen' cannot be null\")\n[SQL: \n        INSERT INTO imagenes (carpeta, filename, path, leyenda, origen)\n        VALUES (%(carpeta)s, %(filename)s, %(path)s, %(leyenda)s, %(origen)s)\n        ON DUPLICATE KEY UPDATE\n            path = VALUES(path),\n            leyenda = VALUES(leyenda),\n            origen = VALUES(origen)\n    ]\n[parameters: {'carpeta': 'DEVESOFT', 'filename': 'ferreteria - copia.jpg', 'path': 'D:/DEVESOFT/ferreteria - copia.jpg', 'leyenda': None, 'origen': None}]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)",
+  "status": "error"
+}
+
