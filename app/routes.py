@@ -197,8 +197,8 @@ def login():
 @app.route('/inicio')
 @log_evento("pantalla_inicio")
 def inicio():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
+    # if 'user_id' not in session:
+    #     return redirect(url_for('login'))
 
     return render_template(
         'inicio.html',
