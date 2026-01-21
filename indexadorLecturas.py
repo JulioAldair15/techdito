@@ -5,7 +5,7 @@ import requests
 from datetime import datetime, timedelta
 import calendar
 
-BASE_FOLDER = r"\\192.168.1.201\images\ordenes"
+BASE_FOLDER = r"\\192.168.1.201\images\lecturas"
 ARCHIVO_INDEX = "index_archivos_1.json"
 API_URL = "http://136.111.173.183:8000/api/imagenes"
 ERROR_LOG = "errores_api.txt"
@@ -16,7 +16,7 @@ ERROR_LOG = "errores_api.txt"
 index = []
 
 # Fecha límite: hace 7 días
-fecha_limite = datetime.now() - timedelta(days=7)
+fecha_limite = datetime.now() - timedelta(days=30)
 
 # Construir índice
 for root, dirs, files in os.walk(BASE_FOLDER):
@@ -42,7 +42,7 @@ for root, dirs, files in os.walk(BASE_FOLDER):
             # ✅ Usar la fecha más reciente (creación o modificación)
             fecha_relevante = max(fecha_creacion, fecha_modificacion)
 
-            print(str(fecha_relevante))
+            # print(str(fecha_relevante))
 
             # Solo archivos de la última semana
             if fecha_relevante < fecha_limite:
