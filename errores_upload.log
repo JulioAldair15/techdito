@@ -1,0 +1,81 @@
+2026-01-20 21:38:18,965 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.10.14:5000
+2026-01-20 21:38:18,966 - INFO - [33mPress CTRL+C to quit[0m
+2026-01-20 21:38:18,971 - INFO -  * Restarting with stat
+2026-01-20 21:38:25,138 - WARNING -  * Debugger is active!
+2026-01-20 21:38:25,165 - INFO -  * Debugger PIN: 934-464-892
+2026-01-20 21:39:15,095 - INFO -  * Detected change in 'C:\\python\\techdito\\app\\routes.py', reloading
+2026-01-20 21:39:15,736 - INFO -  * Restarting with stat
+2026-01-20 21:39:34,328 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.10.14:5000
+2026-01-20 21:39:34,328 - INFO - [33mPress CTRL+C to quit[0m
+2026-01-20 21:39:34,330 - INFO -  * Restarting with stat
+2026-01-20 21:39:39,224 - WARNING -  * Debugger is active!
+2026-01-20 21:39:39,237 - INFO -  * Debugger PIN: 934-464-892
+2026-01-20 21:40:08,535 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.10.14:5000
+2026-01-20 21:40:08,536 - INFO - [33mPress CTRL+C to quit[0m
+2026-01-20 21:40:08,541 - INFO -  * Restarting with stat
+2026-01-20 21:40:14,207 - WARNING -  * Debugger is active!
+2026-01-20 21:40:14,220 - INFO -  * Debugger PIN: 934-464-892
+2026-01-20 21:41:37,529 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.10.14:5000
+2026-01-20 21:41:37,530 - INFO - [33mPress CTRL+C to quit[0m
+2026-01-20 21:41:37,532 - INFO -  * Restarting with stat
+2026-01-20 21:41:48,101 - WARNING -  * Debugger is active!
+2026-01-20 21:41:48,116 - INFO -  * Debugger PIN: 934-464-892
+2026-01-20 21:41:57,871 - INFO - 127.0.0.1 - - [20/Jan/2026 21:41:57] "[32mGET / HTTP/1.1[0m" 302 -
+2026-01-20 21:41:57,990 - INFO - 127.0.0.1 - - [20/Jan/2026 21:41:57] "GET /login HTTP/1.1" 200 -
+2026-01-20 21:41:58,056 - INFO - 127.0.0.1 - - [20/Jan/2026 21:41:58] "GET /static/css/login.css HTTP/1.1" 200 -
+2026-01-20 21:41:58,354 - INFO - 127.0.0.1 - - [20/Jan/2026 21:41:58] "GET /static/agua.jpg HTTP/1.1" 200 -
+2026-01-20 21:41:58,404 - INFO - 127.0.0.1 - - [20/Jan/2026 21:41:58] "GET /static/js/script.js HTTP/1.1" 200 -
+2026-01-20 21:41:59,263 - INFO - 127.0.0.1 - - [20/Jan/2026 21:41:59] "GET /static/gota.ico HTTP/1.1" 200 -
+2026-01-20 21:42:09,357 - INFO - 127.0.0.1 - - [20/Jan/2026 21:42:09] "GET /inicio HTTP/1.1" 200 -
+2026-01-20 21:42:09,417 - INFO - 127.0.0.1 - - [20/Jan/2026 21:42:09] "GET /static/css/inicio.css HTTP/1.1" 200 -
+2026-01-20 21:42:09,460 - INFO - 127.0.0.1 - - [20/Jan/2026 21:42:09] "[36mGET /static/js/script.js HTTP/1.1[0m" 304 -
+2026-01-20 21:42:11,893 - INFO - 127.0.0.1 - - [20/Jan/2026 21:42:11] "[36mGET /static/agua.jpg HTTP/1.1[0m" 304 -
+2026-01-20 21:42:17,981 - INFO - 127.0.0.1 - - [20/Jan/2026 21:42:17] "[35m[1mGET /api/dashboard-data?fecha=2026-01-21&zona=Todas HTTP/1.1[0m" 500 -
+2026-01-20 21:42:17,988 - INFO - 127.0.0.1 - - [20/Jan/2026 21:42:17] "[35m[1mGET /añadir-empleados HTTP/1.1[0m" 500 -
+2026-01-20 21:42:22,744 - INFO - 127.0.0.1 - - [20/Jan/2026 21:42:22] "[35m[1mGET /añadir-empleados HTTP/1.1[0m" 500 -
+2026-01-20 21:42:27,291 - INFO - 127.0.0.1 - - [20/Jan/2026 21:42:27] "[35m[1mGET /añadir-empleados HTTP/1.1[0m" 500 -
+2026-01-20 21:42:32,140 - INFO - 127.0.0.1 - - [20/Jan/2026 21:42:32] "[35m[1mGET /añadir-empleados HTTP/1.1[0m" 500 -
+2026-01-20 21:45:09,373 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.10.14:5000
+2026-01-20 21:45:09,373 - INFO - [33mPress CTRL+C to quit[0m
+2026-01-20 21:45:09,376 - INFO -  * Restarting with stat
+2026-01-20 21:45:17,086 - WARNING -  * Debugger is active!
+2026-01-20 21:45:17,097 - INFO -  * Debugger PIN: 934-464-892
+2026-01-20 21:46:03,917 - INFO -  * Detected change in 'C:\\python\\techdito\\app\\routes.py', reloading
+2026-01-20 21:46:04,687 - INFO -  * Restarting with stat
+2026-01-20 21:46:14,156 - WARNING -  * Debugger is active!
+2026-01-20 21:46:14,184 - INFO -  * Debugger PIN: 934-464-892
+2026-01-20 21:46:20,897 - INFO -  * Detected change in 'C:\\python\\techdito\\app\\routes.py', reloading
+2026-01-20 21:46:21,559 - INFO -  * Restarting with stat
+2026-01-20 21:46:29,675 - WARNING -  * Debugger is active!
+2026-01-20 21:46:29,687 - INFO -  * Debugger PIN: 934-464-892
+2026-01-20 21:46:46,125 - INFO -  * Detected change in 'C:\\python\\techdito\\app\\routes.py', reloading
+2026-01-20 21:46:46,651 - INFO -  * Restarting with stat
+2026-01-20 21:47:00,286 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.10.14:5000
+2026-01-20 21:47:00,286 - INFO - [33mPress CTRL+C to quit[0m
+2026-01-20 21:47:00,289 - INFO -  * Restarting with stat
+2026-01-20 21:47:03,729 - WARNING -  * Debugger is active!
+2026-01-20 21:47:03,740 - INFO -  * Debugger PIN: 934-464-892
+2026-01-20 21:48:08,415 - INFO -  * Detected change in 'C:\\python\\techdito\\app\\routes.py', reloading
+2026-01-20 21:48:09,001 - INFO -  * Restarting with stat
+2026-01-20 21:48:19,297 - WARNING -  * Debugger is active!
+2026-01-20 21:48:19,318 - INFO -  * Debugger PIN: 934-464-892
+2026-01-20 21:48:22,220 - INFO -  * Detected change in 'C:\\python\\techdito\\app\\routes.py', reloading
+2026-01-20 21:48:22,802 - INFO -  * Restarting with stat

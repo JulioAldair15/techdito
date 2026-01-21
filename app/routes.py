@@ -59,6 +59,7 @@ import cv2
 import zxingcpp
 import decimal
 import dbf
+import logging
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
@@ -96,6 +97,53 @@ INDEX_CACHE = {
 # Rutas a tus archivos
 INDEX_PATH_1 = "index_archivos_1.json"
 INDEX_PATH_2 = "index_archivos_2.json"
+
+# Configuración del log SOLO errores
+# logging.basicConfig(
+#     filename="errores_upload.log",
+#     level=logging.ERROR,
+#     format="%(asctime)s - %(levelname)s - %(message)s"
+# )
+
+@app.route('/subir-json', methods=['GET', 'POST'])
+def subir_json():
+    try:
+        # Validar campos
+        if 'archivo' not in request.files:
+            raise ValueError("No se envió el archivo")
+
+        archivo = request.files['archivo']
+        tipo = request.form.get('tipo', '')
+
+        if archivo.filename == '':
+            raise ValueError("Nombre de archivo vacío")
+
+        if not archivo.filename.lower().endswith('.json'):
+            raise ValueError("El archivo no es JSON")
+
+        # Definir nombre según leyenda
+        if tipo.lower() == 'lecturas':
+            nombre_archivo = 'index_archivos_1.json'
+        else:
+            nombre_archivo = 'index_archivos_2.json'
+
+        ruta_destino = os.path.join(os.getcwd(), nombre_archivo)
+
+        # Guardar archivo en la raíz del proyecto
+        archivo.save(ruta_destino)
+
+        return jsonify({
+            "mensaje": "Archivo subido correctamente",
+            "archivo_guardado": nombre_archivo
+        }), 200
+
+    except Exception as e:
+        # Log SOLO errores
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
 
 def obtener_index_actualizado():
     global INDEX_CACHE
@@ -197,8 +245,8 @@ def login():
 @app.route('/inicio')
 @log_evento("pantalla_inicio")
 def inicio():
-    # if 'user_id' not in session:
-    #     return redirect(url_for('login'))
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
     return render_template(
         'inicio.html',

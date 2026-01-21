@@ -1,0 +1,2 @@
+2026-01-20T22:07:24.455686 - ERROR API LECTURAS: No se envió el archivo
+2026-01-20T22:07:48.936146 - ERROR API LECTURAS: No se envió el archivo
