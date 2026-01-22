@@ -25,9 +25,9 @@ for root, dirs, files in os.walk(BASE_FOLDER):
             fecha_modificacion = datetime.fromtimestamp(os.path.getmtime(ruta_completa))
             fecha_mas_reciente = max(fecha_creacion, fecha_modificacion)
 
-            # FILTRO: solo imágenes recientes
-            if fecha_mas_reciente < fecha_limite:
-                continue  # saltar imagen antigua """
+            # # FILTRO: solo imágenes recientes
+            # if fecha_mas_reciente < fecha_limite:
+            #     continue  # saltar imagen antigua """
 
             carpeta = os.path.basename(root)
             index.append({
@@ -37,6 +37,8 @@ for root, dirs, files in os.walk(BASE_FOLDER):
                 "origen": "ordenes"
             })
 
+            print(f"[LOG] Imagen: {file} (Carpeta: {carpeta}, F. Reciente: ({fecha_mas_reciente})")
+
 # Guardar el índice
 # with open(ARCHIVO_INDEX, "w", encoding="utf-8") as f:
 #     json.dump(index, f, ensure_ascii=False)
@@ -44,29 +46,62 @@ for root, dirs, files in os.walk(BASE_FOLDER):
 # print(f"[LOG] Indexado completo: {len(index)} archivos registrados.")
 
 # Enviar a la API
-if index:
-    # Enviar a la API
-    try:
-        response = requests.post(
-            API_URL,
-            json={"imagenes": index},
-            timeout=30
-        )
+BATCH_SIZE = 200
 
-        if response.status_code in (200, 201):
-            print("[OK] Datos enviados correctamente a la API")
-            print("Respuesta:", response.json())
-        else:
-            raise Exception(
-                f"Status {response.status_code} - {response.text}"
+def chunk_list(data, size):
+    for i in range(0, len(data), size):
+        yield data[i:i + size]
+
+
+if index:
+    for i, bloque in enumerate(chunk_list(index, BATCH_SIZE), start=1):
+        try:
+            response = requests.post(
+                API_URL,
+                json={"imagenes": bloque},
+                timeout=60
             )
 
-    except Exception as e:
-        error_msg = f"[{datetime.now()}] ERROR (ordenes): {str(e)}\n"
-        print(error_msg)
+            if response.status_code in (200, 201):
+                print(f"[OK] Bloque {i} enviado ({len(bloque)} registros)")
+            else:
+                raise Exception(
+                    f"Status {response.status_code} - {response.text}"
+                )
 
-        with open(ERROR_LOG, "a", encoding="utf-8") as f:
-            f.write(error_msg)
+        except Exception as e:
+            error_msg = f"[{datetime.now()}] ERROR (ordenes) bloque {i}: {str(e)}\n"
+            print(error_msg)
+
+            with open(ERROR_LOG, "a", encoding="utf-8") as f:
+                f.write(error_msg)
 
 else:
     print("[INFO] No hay archivos nuevos para enviar.")
+
+# if index:
+#     # Enviar a la API
+#     try:
+#         response = requests.post(
+#             API_URL,
+#             json={"imagenes": index},
+#             timeout=30
+#         )
+
+#         if response.status_code in (200, 201):
+#             print("[OK] Datos enviados correctamente a la API")
+#             print("Respuesta:", response.json())
+#         else:
+#             raise Exception(
+#                 f"Status {response.status_code} - {response.text}"
+#             )
+
+#     except Exception as e:
+#         error_msg = f"[{datetime.now()}] ERROR (ordenes): {str(e)}\n"
+#         print(error_msg)
+
+#         with open(ERROR_LOG, "a", encoding="utf-8") as f:
+#             f.write(error_msg)
+
+# else:
+#     print("[INFO] No hay archivos nuevos para enviar.")

@@ -92,7 +92,7 @@ if index:
         response = requests.post(
             API_URL,
             json={"imagenes": index},
-            timeout=30
+            timeout=60
         )
 
         if response.status_code in (200, 201):
