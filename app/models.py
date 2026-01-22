@@ -312,3 +312,18 @@ class RegistroTrabajo(db.Model):
     hora_fin_ejecucion = db.Column(db.Time, nullable=True) 
     estado = db.Column(db.String(50), nullable=True)
     actividad = db.Column(db.String(100), nullable=True)
+
+
+class Imagen(db.Model):
+    __tablename__ = 'imagenes'
+
+    id = db.Column(db.BigInteger, primary_key=True)
+    carpeta = db.Column(db.String(255), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    path = db.Column(db.Text)
+    leyenda = db.Column(db.String(100))
+    origen = db.Column(db.String(50), nullable=False)
+
+    created_at = db.Column(db.TIMESTAMP, server_default=db.func.current_timestamp())
+    updated_at = db.Column(db.TIMESTAMP, server_default=db.func.current_timestamp(),
+                        onupdate=db.func.current_timestamp())

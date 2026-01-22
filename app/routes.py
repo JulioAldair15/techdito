@@ -1,6 +1,6 @@
 import os
 from flask import Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto, Imagen
 from flask_bcrypt import check_password_hash 
 from sqlalchemy.exc import SQLAlchemyError 
 from app import app, db
@@ -4329,7 +4329,7 @@ def formato_fecha_lectura(carpeta):
         return f"{mes_nombre} - {anio}"
     return carpeta
 
-def buscar_imagenes_por_codigo(codigo):
+def buscar_imagenes_por_codigo_v1(codigo):
     print(f"[LOG] Iniciando búsqueda en índice para código: {codigo}")
     resultados_por_carpeta = {}
 
@@ -4392,6 +4392,77 @@ def buscar_imagenes_por_codigo(codigo):
     print(f"[LOG] Resultados finales ordenados: {resultados}")
     return resultados
 
+def buscar_imagenes_por_codigo(codigo):
+    print(f"[LOG] Buscando imágenes en BD para código: {codigo}")
+
+    resultados_por_carpeta = {}
+
+    codigo = codigo.strip()
+    codigo_sin_ceros = codigo.lstrip("0")
+
+    # Query a la base de datos
+    imagenes = (
+        db.session.query(Imagen)
+        .filter(
+            Imagen.filename.ilike(f"%{codigo}%") |
+            Imagen.filename.ilike(f"%{codigo_sin_ceros}%")
+        )
+        .all()
+    )
+
+    for img in imagenes:
+        carpeta = img.carpeta
+        imagen = img.filename
+
+        if carpeta.isdigit() and len(carpeta) == 6:
+            import re
+            match = re.search(r'_C(\d+)_', imagen)
+            if match:
+                subcarpeta = match.group(1)
+                carpeta_completa = os.path.normpath(os.path.join(carpeta, subcarpeta))
+            else:
+                carpeta_completa = carpeta
+
+            leyenda = formato_fecha_lectura(carpeta)
+            clave_agrupacion = carpeta
+        else:
+            carpeta_completa = carpeta
+            leyenda = img.leyenda or LEYENDA.get(carpeta) or carpeta
+            clave_agrupacion = carpeta_completa
+
+        if clave_agrupacion not in resultados_por_carpeta:
+            resultados_por_carpeta[clave_agrupacion] = {
+                "carpeta": carpeta_completa,
+                "leyenda": leyenda,
+                "imagenes": []
+            }
+
+        resultados_por_carpeta[clave_agrupacion]["imagenes"].append(imagen)
+
+    # Separar ordenes y lecturas
+    ordenes = []
+    lecturas_subgrupos = []
+
+    for v in resultados_por_carpeta.values():
+        if " - " in v["leyenda"]:
+            lecturas_subgrupos.append(v)
+        else:
+            ordenes.append(v)
+
+    ordenes.sort(key=lambda x: x["leyenda"])
+    lecturas_subgrupos.sort(key=lambda x: x["leyenda"])
+
+    resultados = []
+    if lecturas_subgrupos:
+        resultados.append({
+            "leyenda": "LECTURAS",
+            "subgrupos": lecturas_subgrupos
+        })
+
+    resultados.extend(ordenes)
+
+    print(f"[LOG] Resultados finales: {resultados}")
+    return resultados
 
 
 @app.route("/buscar", methods=["POST"])
@@ -4429,8 +4500,8 @@ def servir_imagen(subpath, archivo):
 
 
 ## CODIGO PARA VER IMAGENES EN MAPA
-@app.route("/buscar-multiples-coincidencias", methods=["POST"])
-def buscar_multiples_coincidencias():
+@app.route("/buscar-multiples-coincidencias-v1", methods=["POST"])
+def buscar_multiples_coincidencias_v1():
     import time
     inicio = time.time()
 
@@ -4511,6 +4582,111 @@ def buscar_multiples_coincidencias():
 
     duracion = round(time.time() - inicio, 2)
     print(f"[LOG] Tiempo total de respuesta: {duracion}s")
+
+    return jsonify({"resultados": resultados})
+
+@app.route("/buscar-multiples-coincidencias", methods=["POST"])
+def buscar_multiples_coincidencias():
+    import time
+    import re
+    from sqlalchemy import and_, or_
+
+    inicio = time.time()
+
+    data = request.get_json()
+    pares = data.get("pares", [])
+
+    if not pares or not isinstance(pares, list):
+        return jsonify({"error": "Se requiere una lista de pares de códigos"}), 400
+
+    print(f"[LOG] Búsqueda múltiple BD para {len(pares)} pares")
+
+    # 🔄 combinaciones válidas
+    combinaciones = set()
+    for par in pares:
+        s = par.get("suministro", "").strip()
+        i = par.get("inspeccion", "").strip()
+        if not s or not i:
+            continue
+
+        combinaciones.add((s, i))
+        combinaciones.add((s.lstrip("0"), i))
+        combinaciones.add((s, i.lstrip("0")))
+        combinaciones.add((s.lstrip("0"), i.lstrip("0")))
+
+    if not combinaciones:
+        return jsonify({"resultados": []})
+
+    # 🔍 filtros SQL
+    filtros = [
+        and_(
+            Imagen.filename.ilike(f"%{suministro}%"),
+            Imagen.filename.ilike(f"%{inspeccion}%")
+        )
+        for suministro, inspeccion in combinaciones
+    ]
+
+    imagenes = (
+        db.session.query(Imagen)
+        .filter(or_(*filtros))
+        .all()
+    )
+
+    resultados_por_carpeta = {}
+
+    for img in imagenes:
+        filename = img.filename
+        carpeta = img.carpeta
+
+        # Lógica original intacta
+        if carpeta.isdigit() and len(carpeta) == 6:
+            match = re.search(r'_C(\d+)_', filename)
+            if match:
+                subcarpeta = match.group(1)
+                carpeta_completa = os.path.normpath(os.path.join(carpeta, subcarpeta))
+            else:
+                carpeta_completa = carpeta
+
+            leyenda = formato_fecha_lectura(carpeta)
+            clave_agrupacion = carpeta
+        else:
+            carpeta_completa = carpeta
+            leyenda = img.leyenda or LEYENDA.get(carpeta) or carpeta
+            clave_agrupacion = carpeta_completa
+
+        if clave_agrupacion not in resultados_por_carpeta:
+            resultados_por_carpeta[clave_agrupacion] = {
+                "carpeta": carpeta_completa,
+                "leyenda": leyenda,
+                "imagenes": []
+            }
+
+        resultados_por_carpeta[clave_agrupacion]["imagenes"].append(filename)
+
+    # 🔢 Ordenar resultados
+    ordenes = []
+    lecturas_subgrupos = []
+
+    for v in resultados_por_carpeta.values():
+        if " - " in v["leyenda"]:
+            lecturas_subgrupos.append(v)
+        else:
+            ordenes.append(v)
+
+    ordenes.sort(key=lambda x: x["leyenda"])
+    lecturas_subgrupos.sort(key=lambda x: x["leyenda"])
+
+    resultados = []
+    if lecturas_subgrupos:
+        resultados.append({
+            "leyenda": "LECTURAS",
+            "subgrupos": lecturas_subgrupos
+        })
+
+    resultados.extend(ordenes)
+
+    duracion = round(time.time() - inicio, 2)
+    print(f"[LOG] Tiempo total BD: {duracion}s")
 
     return jsonify({"resultados": resultados})
 
