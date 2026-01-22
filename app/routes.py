@@ -5,7 +5,7 @@ from flask_bcrypt import check_password_hash
 from sqlalchemy.exc import SQLAlchemyError 
 from app import app, db
 from datetime import datetime, timedelta, date
-from sqlalchemy import extract, or_ , text
+from sqlalchemy import extract, or_, text
 from calendar import monthrange
 import traceback  # Importamos para imprimir detalles de errores
 from barcode import Code128
@@ -59,7 +59,6 @@ import cv2
 import zxingcpp
 import decimal
 import dbf
-import logging
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
@@ -97,109 +96,6 @@ INDEX_CACHE = {
 # Rutas a tus archivos
 INDEX_PATH_1 = "index_archivos_1.json"
 INDEX_PATH_2 = "index_archivos_2.json"
-
-# Configuración del log SOLO errores
-# logging.basicConfig(
-#     filename="errores_upload.log",
-#     level=logging.ERROR,
-#     format="%(asctime)s - %(levelname)s - %(message)s"
-# )
-
-
-@app.route('/api/imagenes', methods=['POST'])
-def insertar_imagenes():
-
-    if not request.is_json:
-        return jsonify({
-            "status": "error",
-            "message": "El contenido debe ser JSON"
-        }), 400
-
-    data = request.get_json()
-    imagenes = data.get("imagenes")
-
-    if not imagenes or not isinstance(imagenes, list):
-        return jsonify({
-            "status": "error",
-            "message": "El campo 'imagenes' debe ser una lista"
-        }), 400
-
-    sql = text("""
-        INSERT INTO imagenes (carpeta, filename, path, leyenda, origen)
-        VALUES (:carpeta, :filename, :path, :leyenda, :origen)
-        ON DUPLICATE KEY UPDATE
-            path = VALUES(path),
-            leyenda = VALUES(leyenda),
-            origen = VALUES(origen)
-    """)
-
-    try:
-        for img in imagenes:
-            if not img.get("carpeta") or not img.get("filename"):
-                continue
-
-            db.session.execute(sql, {
-                "carpeta": img["carpeta"],
-                "filename": img["filename"],
-                "path": img.get("path"),
-                "leyenda": img.get("leyenda"),
-                "origen": img.get("origen")
-            })
-
-        db.session.commit()
-
-        return jsonify({
-            "status": "ok",
-            "insertados": len(imagenes)
-        }), 201
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-
-@app.route('/subir-json', methods=['GET', 'POST'])
-def subir_json():
-    try:
-        # Validar campos
-        if 'archivo' not in request.files:
-            raise ValueError("No se envió el archivo")
-
-        archivo = request.files['archivo']
-        tipo = request.form.get('tipo', '')
-
-        if archivo.filename == '':
-            raise ValueError("Nombre de archivo vacío")
-
-        if not archivo.filename.lower().endswith('.json'):
-            raise ValueError("El archivo no es JSON")
-
-        # Definir nombre según leyenda
-        if tipo.lower() == 'lecturas':
-            nombre_archivo = 'index_archivos_1.json'
-        else:
-            nombre_archivo = 'index_archivos_2.json'
-
-        ruta_destino = os.path.join(os.getcwd(), nombre_archivo)
-
-        # Guardar archivo en la raíz del proyecto
-        archivo.save(ruta_destino)
-
-        return jsonify({
-            "mensaje": "Archivo subido correctamente",
-            "archivo_guardado": nombre_archivo
-        }), 200
-
-    except Exception as e:
-        # Log SOLO errores
-
-        return jsonify({
-            "success": False,
-            "message": str(e)
-        }), 500
 
 def obtener_index_actualizado():
     global INDEX_CACHE
@@ -261,6 +157,49 @@ def log_evento(nombre_modulo):
 @app.route('/')
 def home():
     return redirect(url_for('login'))
+
+
+@app.route('/add-or-update-imagenes', methods=['POST'])
+def insertar_actualizar_imagenes():
+    
+    if not request.is_json:
+        return jsonify({ "success": False, "message": "El contenido debe ser JSON" }), 400
+    
+    data = request.get_json()
+    imagenes = data.get("imagenes")
+
+    if not imagenes or not isinstance(imagenes, list):
+        return jsonify({ "success": False, "message": "El campo 'imagenes' debe ser una lista" }), 400
+    
+    sql = text("""
+        INSERT INTO imagenes (carpeta, filename, path, leyenda, origen)
+        VALUES (:carpeta, :filename, :path, :leyenda, :origen)
+        ON DUPLICATE KEY UPDATE
+            path = VALUES(path),
+            leyenda = VALUES(leyenda),
+            origen = VALUES(origen),
+            updated_at = CURRENT_TIMESTAMP
+    """)
+
+    try:
+        for img in imagenes:
+            if not img.get("carpeta") or not img.get("filename"):
+                continue
+
+            db.session.execute(sql, {
+                "carpeta": img["carpeta"],
+                "filename": img["filename"],
+                "path": img.get("path"),
+                "leyenda": img.get("leyenda"),
+                "origen": img.get("origen")
+            })
+
+        db.session.commit()
+
+        return jsonify({ "success": True, "total": len(imagenes) }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({ "success": False, "message": str(e) }), 500
 
 
 @app.route('/login', methods=['GET', 'POST'])

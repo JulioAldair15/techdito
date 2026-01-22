@@ -1,0 +1,18 @@
+CREATE TABLE imagenes (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+
+    carpeta VARCHAR(255) NOT NULL,
+    filename VARCHAR(255) NOT NULL,
+    path TEXT NULL,
+
+    leyenda VARCHAR(100) NULL DEFAULT NULL,
+    origen VARCHAR(50) NOT NULL,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    -- Evita guardar la misma imagen dos veces
+    UNIQUE KEY uq_imagen (carpeta, filename)
+) ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=UTF8MB4_UNICODE_CI;

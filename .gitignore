@@ -8,4 +8,7 @@ dist
 
 indexadorLecturas.spec
 indexadorOrdenes.spec
+indexador-lecturas.spec
+indexador-ordenes.spec
+
 errores_api.txt
