@@ -4471,6 +4471,9 @@ def buscar():
     data = request.get_json()
     codigo = data.get("codigo", "").strip()
 
+    # completar con ceros a la izquierda hasta 11 dígitos
+    codigo = codigo.zfill(11)
+
     print(f"[LOG] Request recibido para buscar código: {codigo}")
 
     try:
