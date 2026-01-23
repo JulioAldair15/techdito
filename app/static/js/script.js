@@ -8874,6 +8874,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
     function renderizarResultados(grupos, codigo) {
+        if (grupos[0].leyenda !== "LECTURAS"){
+            categoria = "ordenes"
+        }else {
+            categoria = "lecturas"
+        }
+        
         const derecha = document.getElementById("fc-seccion-derecha-2");
         derecha.innerHTML = "";
 
@@ -9148,7 +9154,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
             mostrar = () => {
-                const ruta = `http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${grupo.carpeta}/${imagenesActuales[indiceImagenActual]}`;
+                const ruta = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${categoria}/${grupo.carpeta}/${imagenesActuales[indiceImagenActual]}`;
                 img.src = ruta;
                 offsetX = 0;
                 offsetY = 0;
@@ -9252,12 +9258,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 indiceImagenActual = 0;
                 rotacionActual = 0;
                 zoomActual = 1;
+                categoria = "lecturas"
+
                 mostrarImagen(grupoActual);
             }
         };
 
         btnOrdenes.onclick = () => {
             if (grupoOrdenes.length) {
+                categoria = "ordenes"
+
                 mostrarOpciones(grupoOrdenes);
             }
         };
