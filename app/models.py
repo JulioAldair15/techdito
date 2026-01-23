@@ -323,6 +323,7 @@ class Imagen(db.Model):
     path = db.Column(db.Text)
     leyenda = db.Column(db.String(100))
     origen = db.Column(db.String(50), nullable=False)
+    suministro = db.Column(db.String(15))
 
     created_at = db.Column(db.TIMESTAMP, server_default=db.func.current_timestamp())
     updated_at = db.Column(db.TIMESTAMP, server_default=db.func.current_timestamp(),
