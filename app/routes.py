@@ -4404,8 +4404,9 @@ def buscar_imagenes_por_codigo(codigo):
     imagenes = (
         db.session.query(Imagen)
         .filter(
-            Imagen.filename.ilike(f"%{codigo}%") |
-            Imagen.filename.ilike(f"%{codigo_sin_ceros}%")
+            Imagen.documento.in_([codigo, codigo_sin_ceros])
+            # Imagen.filename.ilike(f"%{codigo}%") |
+            # Imagen.filename.ilike(f"%{codigo_sin_ceros}%")
         )
         .all()
     )
