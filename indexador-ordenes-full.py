@@ -11,9 +11,6 @@ ARCHIVO_INDEX = "index_archivos_2.json"
 API_URL = "http://127.0.0.1:5000/add-or-update-imagenes"
 ERROR_LOG = "errores_api.txt"
 
-DIAS_RECIENTES = 3
-fecha_limite = datetime.now() - timedelta(days=DIAS_RECIENTES)
-
 BATCH_SIZE = 200
 
 index = []
@@ -45,15 +42,6 @@ for root, dirs, files in os.walk(BASE_FOLDER):
         if file.lower().endswith(".jpg"):
             ruta_completa = os.path.join(root, file)
 
-            # Obtener fecha de creación/modificación
-            fecha_creacion = datetime.fromtimestamp(os.path.getctime(ruta_completa))
-            fecha_modificacion = datetime.fromtimestamp(os.path.getmtime(ruta_completa))
-            fecha_mas_reciente = max(fecha_creacion, fecha_modificacion)
-
-            # # FILTRO: solo imágenes recientes
-            if fecha_mas_reciente < fecha_limite:
-                continue  # saltar imagen antigua """
-
             carpeta = os.path.basename(root)
             index.append({
                 "carpeta": carpeta,
@@ -64,7 +52,7 @@ for root, dirs, files in os.walk(BASE_FOLDER):
 
             total_imagenes += 1
 
-            print(f"[LOG] Imagen: {file} (Carpeta: {carpeta}, F. Reciente: ({fecha_mas_reciente})")
+            print(f"[LOG] Imagen: {file} (Carpeta: {carpeta}")
 
             if len(index) >= BATCH_SIZE:
                 enviar_batch(index, bloque_nro)
@@ -82,6 +70,5 @@ if index:
     enviar_batch(index, bloque_nro)
 
 print(f"[LOG] Proceso terminado. Total imágenes procesadas: {total_imagenes}")
-
 
 

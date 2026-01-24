@@ -12,9 +12,6 @@ ARCHIVO_INDEX = "index_archivos_1.json"
 API_URL = "http://127.0.0.1:5000/add-or-update-imagenes"
 ERROR_LOG = "errores_api.txt"
 
-DIAS_RECIENTES = 3
-fecha_limite = datetime.now() - timedelta(days=DIAS_RECIENTES)
-
 BATCH_SIZE = 200
 
 index = []
@@ -47,16 +44,6 @@ for root, dirs, files in os.walk(BASE_FOLDER):
         if file.lower().endswith(".jpg"):
             ruta_completa = os.path.join(root, file)
 
-            # Obtener fecha de creación/modificación
-            fecha_creacion = datetime.fromtimestamp(os.path.getctime(ruta_completa))
-            fecha_modificacion = datetime.fromtimestamp(os.path.getmtime(ruta_completa))
-            fecha_mas_reciente = max(fecha_creacion, fecha_modificacion)
-
-            # # FILTRO: solo imágenes recientes
-            if fecha_mas_reciente < fecha_limite:
-                print("Se salteara la imagen")
-                continue  # saltar imagen antigua """
-
             # Ruta relativa desde BASE_FOLDER, estilo UNIX
             relative_path = os.path.relpath(root, BASE_FOLDER)
             carpeta_completa = relative_path.replace("\\", "/")  # ej: "202501/18"
@@ -85,7 +72,7 @@ for root, dirs, files in os.walk(BASE_FOLDER):
 
             total_imagenes += 1
 
-            print(f"[LOG] Imagen: {file} (Carpeta: {carpeta_completa}, Leyenda: {leyenda}), F. Reciente: ({fecha_mas_reciente})")
+            print(f"[LOG] Imagen: {file} (Carpeta: {carpeta_completa}, Leyenda: {leyenda})")
 
             if len(index) >= BATCH_SIZE:
                 enviar_batch(index, bloque_nro)
@@ -104,5 +91,4 @@ if index:
     enviar_batch(index, bloque_nro)
 
 print(f"[LOG] Proceso terminado. Total imágenes procesadas: {total_imagenes}")
-
 
