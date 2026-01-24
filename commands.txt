@@ -9,7 +9,7 @@ pip install PyPDF2
 pip install reportlab
 pip install pandas
 pip install pdf2image
-pip install fitz
+pip install pymupdf
 pip install frontend
 pip install tools
 pip install fpdf

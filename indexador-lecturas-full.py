@@ -90,5 +90,9 @@ for root, dirs, files in os.walk(BASE_FOLDER):
 if index:
     enviar_batch(index, bloque_nro)
 
-print(f"[LOG] Proceso terminado. Total imágenes procesadas: {total_imagenes}")
+msg = f"[{datetime.now()}] (lecturas) - Total procesadas: {total_imagenes}\n"
 
+print(msg)
+
+with open("envio_api.txt", "a", encoding="utf-8") as f:
+    f.write(msg)
