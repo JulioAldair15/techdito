@@ -1,0 +1,16 @@
+[Unit]
+Description=Mi aplicación Flask
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/html/techdito
+Environment="PATH=/var/www/html/techdito/venv/bin"
+ExecStart=/var/www/html/techdito/venv/bin/gunicorn \
+    --workers 3 \
+    --bind unix:/var/www/html/techdito/techdito.sock \
+    main:app
+
+[Install]
+WantedBy=multi-user.target
