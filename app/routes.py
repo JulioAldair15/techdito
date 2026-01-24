@@ -6061,7 +6061,7 @@ def guardar_trabajo_diario():
 
 
 # TEMPLATE_DBF_PATH = r'\templates_excel\PLANTILLA_VL229082023.dbf' 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(_file_)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 TEMPLATE_DBF_PATH = os.path.join(
     BASE_DIR,
