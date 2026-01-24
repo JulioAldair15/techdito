@@ -6060,7 +6060,15 @@ def guardar_trabajo_diario():
 
 
 
-TEMPLATE_DBF_PATH = r'C:\RADIAN\ASISTENCIAS\app\templates_excel\PLANTILLA_VL229082023.dbf' 
+# TEMPLATE_DBF_PATH = r'\templates_excel\PLANTILLA_VL229082023.dbf' 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(_file_)))
+
+TEMPLATE_DBF_PATH = os.path.join(
+    BASE_DIR,
+    'app',
+    'templates_excel',
+    'PLANTILLA_VL229082023.dbf'
+)
 
 # 2. Carpeta temporal para guardar los DBF antes de zippear
 OUTPUT_DIR = 'temp_dbf_output'
