@@ -202,6 +202,7 @@ def insertar_actualizar_imagenes():
         return jsonify({ "success": False, "message": str(e) }), 500
 
 
+"""""""""""
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -232,6 +233,67 @@ def login():
         flash('Usuario o contraseña incorrectos', 'error')
         return redirect(url_for('login'))
 
+    return render_template('login.html')
+"""""
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        # 1. Extracción de datos según el tipo de cliente
+        if request.is_json:
+            # Datos provenientes de Android (Retrofit)
+            data = request.get_json()
+            user = data.get('user')
+            password = data.get('password')
+        else:
+            # Datos provenientes de la Web (Formulario HTML)
+            user = request.form.get('user')
+            password = request.form.get('password')
+
+        # 2. Validación de usuario en la Base de Datos
+        usuario = Usuario.query.filter_by(user=user).first()
+
+        if usuario and check_password_hash(usuario.contraseña, password):
+            # Hacer la sesión permanente y guardar datos
+            session.permanent = True
+            session['user_id'] = usuario.id_usuario
+            session['user_name'] = usuario.user
+            session['login_time'] = get_timestamp().isoformat()
+
+            # Lógica de nombre completo (tu código original)
+            if usuario.empleado:
+                nombre_real = usuario.empleado.nombres or ''
+                session['nombre_completo'] = nombre_real.strip()
+            else:
+                session['nombre_completo'] = usuario.user
+
+            # Auditoría login
+            registrar_evento(usuario.id_usuario, usuario.user, 'login')
+
+            # 3. Respuesta diferenciada
+            if request.is_json:
+                # Respuesta para Android
+                return jsonify({
+                    "success": True,
+                    "message": "Bienvenido al sistema",
+                    "user_id": usuario.id_usuario,
+                    "user_name": usuario.user
+                }), 200
+            
+            # Respuesta para Web
+            return redirect(url_for('inicio'))
+
+        # 4. Manejo de error de autenticación
+        if request.is_json:
+            return jsonify({
+                "success": False, 
+                "message": "Usuario o contraseña incorrectos"
+            }), 401
+            
+        flash('Usuario o contraseña incorrectos', 'error')
+        return redirect(url_for('login'))
+
+    # Si es GET, simplemente mostramos la página web
     return render_template('login.html')
 
 
