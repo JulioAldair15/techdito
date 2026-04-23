@@ -1,11 +1,12 @@
 import os
-from flask import Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto, Imagen
+from flask import Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado
 from flask_bcrypt import check_password_hash 
-from sqlalchemy.exc import SQLAlchemyError 
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func
 from app import app, db
 from datetime import datetime, timedelta, date
-from sqlalchemy import extract, or_, text
+from sqlalchemy import extract, or_ 
 from calendar import monthrange
 import traceback  # Importamos para imprimir detalles de errores
 from barcode import Code128
@@ -59,6 +60,8 @@ import cv2
 import zxingcpp
 import decimal
 import dbf
+from xhtml2pdf import pisa
+from openpyxl.utils import get_column_letter
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
@@ -158,50 +161,6 @@ def log_evento(nombre_modulo):
 def home():
     return redirect(url_for('login'))
 
-
-@app.route('/add-or-update-imagenes', methods=['POST'])
-def insertar_actualizar_imagenes():
-    
-    if not request.is_json:
-        return jsonify({ "success": False, "message": "El contenido debe ser JSON" }), 400
-    
-    data = request.get_json()
-    imagenes = data.get("imagenes")
-
-    if not imagenes or not isinstance(imagenes, list):
-        return jsonify({ "success": False, "message": "El campo 'imagenes' debe ser una lista" }), 400
-    
-    sql = text("""
-        INSERT INTO imagenes (carpeta, filename, path, leyenda, origen)
-        VALUES (:carpeta, :filename, :path, :leyenda, :origen)
-        ON DUPLICATE KEY UPDATE
-            path = VALUES(path),
-            leyenda = VALUES(leyenda),
-            origen = VALUES(origen),
-            updated_at = CURRENT_TIMESTAMP
-    """)
-
-    try:
-        for img in imagenes:
-            if not img.get("carpeta") or not img.get("filename"):
-                continue
-
-            db.session.execute(sql, {
-                "carpeta": img["carpeta"],
-                "filename": img["filename"],
-                "path": img.get("path"),
-                "leyenda": img.get("leyenda"),
-                "origen": img.get("origen")
-            })
-
-        db.session.commit()
-
-        return jsonify({ "success": True, "total": len(imagenes) }), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({ "success": False, "message": str(e) }), 500
-
-
 """""""""""
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -239,63 +198,66 @@ def login():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        # 1. Extracción de datos según el tipo de cliente
-        if request.is_json:
-            # Datos provenientes de Android (Retrofit)
+        # 1. Detectar si la petición es JSON (App Móvil) o Formulario (Web)
+        es_app_movil = request.is_json
+
+        if es_app_movil:
             data = request.get_json()
-            user = data.get('user')
+            username = data.get('user')
             password = data.get('password')
         else:
-            # Datos provenientes de la Web (Formulario HTML)
-            user = request.form.get('user')
+            username = request.form.get('user')
             password = request.form.get('password')
 
-        # 2. Validación de usuario en la Base de Datos
-        usuario = Usuario.query.filter_by(user=user).first()
+        # 2. Consulta a la tabla 'usuario'
+        usuario = Usuario.query.filter_by(user=username).first()
 
+        # 3. Verificación de credenciales
         if usuario and check_password_hash(usuario.contraseña, password):
-            # Hacer la sesión permanente y guardar datos
+            
+            # --- RESTRICCIÓN PARA OPERARIOS EN LA WEB ---
+            # Si el tipo es operario y NO viene de la app, bloqueamos.
+            if usuario.tipousu == 'operario' and not es_app_movil:
+                flash('Acceso denegado: Los operarios solo pueden ingresar mediante la App Móvil.', 'error')
+                return redirect(url_for('login'))
+
+            # 4. Configuración de sesión (Común para ambos)
             session.permanent = True
             session['user_id'] = usuario.id_usuario
             session['user_name'] = usuario.user
-            session['login_time'] = get_timestamp().isoformat()
+            session['login_time'] = datetime.now().isoformat()
+            session['rol'] = usuario.rol
 
-            # Lógica de nombre completo (tu código original)
+            # Obtener nombre del empleado mediante la relación backref 'empleado'
             if usuario.empleado:
-                nombre_real = usuario.empleado.nombres or ''
-                session['nombre_completo'] = nombre_real.strip()
+                nombre_display = f"{usuario.empleado.nombres} {usuario.empleado.apellidos}".strip()
+                session['nombre_completo'] = nombre_display
             else:
                 session['nombre_completo'] = usuario.user
 
-            # Auditoría login
+            # Auditoría (si tienes la función)
             registrar_evento(usuario.id_usuario, usuario.user, 'login')
 
-            # 3. Respuesta diferenciada
-            if request.is_json:
-                # Respuesta para Android
+            # 5. Respuesta diferenciada
+            if es_app_movil:
                 return jsonify({
                     "success": True,
-                    "message": "Bienvenido al sistema",
+                    "message": "Login correcto",
                     "user_id": usuario.id_usuario,
-                    "user_name": usuario.user
+                    "user_name": usuario.user,
+                    "nombres": session.get('nombre_completo')
                 }), 200
             
-            # Respuesta para Web
             return redirect(url_for('inicio'))
 
-        # 4. Manejo de error de autenticación
-        if request.is_json:
-            return jsonify({
-                "success": False, 
-                "message": "Usuario o contraseña incorrectos"
-            }), 401
+        # 6. Manejo de errores de credenciales
+        if es_app_movil:
+            return jsonify({"success": False, "message": "Usuario o clave incorrectos"}), 401
             
         flash('Usuario o contraseña incorrectos', 'error')
         return redirect(url_for('login'))
 
-    # Si es GET, simplemente mostramos la página web
     return render_template('login.html')
-
 
 
 # Ruta para la pantalla inicial después de iniciar sesión
@@ -4391,7 +4353,7 @@ def formato_fecha_lectura(carpeta):
         return f"{mes_nombre} - {anio}"
     return carpeta
 
-def buscar_imagenes_por_codigo_v1(codigo):
+def buscar_imagenes_por_codigo(codigo):
     print(f"[LOG] Iniciando búsqueda en índice para código: {codigo}")
     resultados_por_carpeta = {}
 
@@ -4454,87 +4416,12 @@ def buscar_imagenes_por_codigo_v1(codigo):
     print(f"[LOG] Resultados finales ordenados: {resultados}")
     return resultados
 
-def buscar_imagenes_por_codigo(codigo):
-    print(f"[LOG] Buscando imágenes en BD para código: {codigo}")
-
-    resultados_por_carpeta = {}
-
-    codigo = codigo.strip()
-    codigo_sin_ceros = codigo.lstrip("0")
-
-    # Query a la base de datos
-    imagenes = (
-        db.session.query(Imagen)
-        .filter(
-            Imagen.suministro.in_([codigo, codigo_sin_ceros])
-            # Imagen.filename.ilike(f"%{codigo}%") |
-            # Imagen.filename.ilike(f"%{codigo_sin_ceros}%")
-        )
-        .all()
-    )
-
-    for img in imagenes:
-        carpeta = img.carpeta
-        imagen = img.filename
-
-        if carpeta.isdigit() and len(carpeta) == 6:
-            import re
-            match = re.search(r'_C(\d+)_', imagen)
-            if match:
-                subcarpeta = match.group(1)
-                carpeta_completa = os.path.normpath(os.path.join(carpeta, subcarpeta))
-            else:
-                carpeta_completa = carpeta
-
-            leyenda = formato_fecha_lectura(carpeta)
-            clave_agrupacion = carpeta
-        else:
-            carpeta_completa = carpeta
-            leyenda = img.leyenda or LEYENDA.get(carpeta) or carpeta
-            clave_agrupacion = carpeta_completa
-
-        if clave_agrupacion not in resultados_por_carpeta:
-            resultados_por_carpeta[clave_agrupacion] = {
-                "carpeta": carpeta_completa,
-                "leyenda": leyenda,
-                "imagenes": []
-            }
-
-        resultados_por_carpeta[clave_agrupacion]["imagenes"].append(imagen)
-
-    # Separar ordenes y lecturas
-    ordenes = []
-    lecturas_subgrupos = []
-
-    for v in resultados_por_carpeta.values():
-        if " - " in v["leyenda"]:
-            lecturas_subgrupos.append(v)
-        else:
-            ordenes.append(v)
-
-    ordenes.sort(key=lambda x: x["leyenda"])
-    lecturas_subgrupos.sort(key=lambda x: x["leyenda"])
-
-    resultados = []
-    if lecturas_subgrupos:
-        resultados.append({
-            "leyenda": "LECTURAS",
-            "subgrupos": lecturas_subgrupos
-        })
-
-    resultados.extend(ordenes)
-
-    print(f"[LOG] Resultados finales: {resultados}")
-    return resultados
 
 
 @app.route("/buscar", methods=["POST"])
 def buscar():
     data = request.get_json()
     codigo = data.get("codigo", "").strip()
-
-    # completar con ceros a la izquierda hasta 11 dígitos
-    codigo = codigo.zfill(11)
 
     print(f"[LOG] Request recibido para buscar código: {codigo}")
 
@@ -4566,8 +4453,8 @@ def servir_imagen(subpath, archivo):
 
 
 ## CODIGO PARA VER IMAGENES EN MAPA
-@app.route("/buscar-multiples-coincidencias-v1", methods=["POST"])
-def buscar_multiples_coincidencias_v1():
+@app.route("/buscar-multiples-coincidencias", methods=["POST"])
+def buscar_multiples_coincidencias():
     import time
     inicio = time.time()
 
@@ -4648,111 +4535,6 @@ def buscar_multiples_coincidencias_v1():
 
     duracion = round(time.time() - inicio, 2)
     print(f"[LOG] Tiempo total de respuesta: {duracion}s")
-
-    return jsonify({"resultados": resultados})
-
-@app.route("/buscar-multiples-coincidencias", methods=["POST"])
-def buscar_multiples_coincidencias():
-    import time
-    import re
-    from sqlalchemy import and_, or_
-
-    inicio = time.time()
-
-    data = request.get_json()
-    pares = data.get("pares", [])
-
-    if not pares or not isinstance(pares, list):
-        return jsonify({"error": "Se requiere una lista de pares de códigos"}), 400
-
-    print(f"[LOG] Búsqueda múltiple BD para {len(pares)} pares")
-
-    # 🔄 combinaciones válidas
-    combinaciones = set()
-    for par in pares:
-        s = par.get("suministro", "").strip()
-        i = par.get("inspeccion", "").strip()
-        if not s or not i:
-            continue
-
-        combinaciones.add((s, i))
-        combinaciones.add((s.lstrip("0"), i))
-        combinaciones.add((s, i.lstrip("0")))
-        combinaciones.add((s.lstrip("0"), i.lstrip("0")))
-
-    if not combinaciones:
-        return jsonify({"resultados": []})
-
-    # 🔍 filtros SQL
-    filtros = [
-        and_(
-            Imagen.filename.ilike(f"%{suministro}%"),
-            Imagen.filename.ilike(f"%{inspeccion}%")
-        )
-        for suministro, inspeccion in combinaciones
-    ]
-
-    imagenes = (
-        db.session.query(Imagen)
-        .filter(or_(*filtros))
-        .all()
-    )
-
-    resultados_por_carpeta = {}
-
-    for img in imagenes:
-        filename = img.filename
-        carpeta = img.carpeta
-
-        # Lógica original intacta
-        if carpeta.isdigit() and len(carpeta) == 6:
-            match = re.search(r'_C(\d+)_', filename)
-            if match:
-                subcarpeta = match.group(1)
-                carpeta_completa = os.path.normpath(os.path.join(carpeta, subcarpeta))
-            else:
-                carpeta_completa = carpeta
-
-            leyenda = formato_fecha_lectura(carpeta)
-            clave_agrupacion = carpeta
-        else:
-            carpeta_completa = carpeta
-            leyenda = img.leyenda or LEYENDA.get(carpeta) or carpeta
-            clave_agrupacion = carpeta_completa
-
-        if clave_agrupacion not in resultados_por_carpeta:
-            resultados_por_carpeta[clave_agrupacion] = {
-                "carpeta": carpeta_completa,
-                "leyenda": leyenda,
-                "imagenes": []
-            }
-
-        resultados_por_carpeta[clave_agrupacion]["imagenes"].append(filename)
-
-    # 🔢 Ordenar resultados
-    ordenes = []
-    lecturas_subgrupos = []
-
-    for v in resultados_por_carpeta.values():
-        if " - " in v["leyenda"]:
-            lecturas_subgrupos.append(v)
-        else:
-            ordenes.append(v)
-
-    ordenes.sort(key=lambda x: x["leyenda"])
-    lecturas_subgrupos.sort(key=lambda x: x["leyenda"])
-
-    resultados = []
-    if lecturas_subgrupos:
-        resultados.append({
-            "leyenda": "LECTURAS",
-            "subgrupos": lecturas_subgrupos
-        })
-
-    resultados.extend(ordenes)
-
-    duracion = round(time.time() - inicio, 2)
-    print(f"[LOG] Tiempo total BD: {duracion}s")
 
     return jsonify({"resultados": resultados})
 
@@ -6122,15 +5904,7 @@ def guardar_trabajo_diario():
 
 
 
-# TEMPLATE_DBF_PATH = r'\templates_excel\PLANTILLA_VL229082023.dbf' 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-TEMPLATE_DBF_PATH = os.path.join(
-    BASE_DIR,
-    'app',
-    'templates_excel',
-    'PLANTILLA_VL229082023.dbf'
-)
+TEMPLATE_DBF_PATH = r'C:\RADIAN\ASISTENCIAS\app\templates_excel\PLANTILLA_VL229082023.dbf' 
 
 # 2. Carpeta temporal para guardar los DBF antes de zippear
 OUTPUT_DIR = 'temp_dbf_output'
@@ -6919,7 +6693,7 @@ def generar_cartas_pdf():
             
             pdf.set_y(y_firma + 2)
             pdf.set_font("Arial", 'B', size=8)
-            pdf.cell(0, 3, txt="VICTOR GAMBOA OTINIANO", ln=True, align='C')
+            pdf.cell(0, 3, txt="PALACIOS RISCO JOSÉ MIGUEL", ln=True, align='C')
             pdf.set_font("Arial", size=6)
             pdf.cell(0, 3, txt="SUPERVISOR DE IMPRESIÓN Y DISTRIBUCIÓN DE RECIBOS Y COMUNICACIONES", ln=True, align='C')
             pdf.cell(0, 3, txt="CONSORCIO ECMAN - RADIAN", ln=True, align='C')
@@ -6946,89 +6720,1082 @@ def generar_cartas_pdf():
 def procesar_asignacion():
     try:
         file = request.files['archivo']
-        
-        # 1. RECIBIR INPUTS
         f_cal_input = request.form.get('fecha_calendario', '')
         f_exe_input = request.form.get('fecha_ejecucion', '')
         mapping = json.loads(request.form['mapping']) 
 
-        # 2. FORMATEAR FECHAS (YYYY-MM-DD -> dd/mm/yyyy)
-        def formatear_fecha(fecha_str):
-            try:
-                # Si viene vacía o nula, retornamos vacío
-                if not fecha_str: return ""
-                return datetime.strptime(fecha_str, '%Y-%m-%d').strftime('%d/%m/%Y')
-            except:
-                return fecha_str 
-
-        fecha_cal_fmt = formatear_fecha(f_cal_input)
-        fecha_exe_fmt = formatear_fecha(f_exe_input)
-
-        # 3. LEER EXCEL (dtype=str vital para ceros a la izquierda)
-        try:
-            df = pd.read_excel(file, dtype=str)
-        except Exception as e:
-             return {"error": f"Error leyendo Excel: {str(e)}"}, 400
-
-        # 4. CONVERTIR CABECERAS ORIGINALES A MINÚSCULAS
-        # Esto cumple con tu requerimiento: "las cabeceras del excel deben ir en minusculas"
+        # 1. LEER EXCEL (dtype=str para no perder ceros en clicodfax o cargard)
+        df = pd.read_excel(file, dtype=str)
+        
+        # Normalizar cabeceras a minúsculas inmediatamente
         df.columns = df.columns.str.lower().str.strip()
 
-        # Validar existencia de columna clave
-        if 'cargard' not in df.columns:
-            return {"error": "Columna 'cargard' no encontrada"}, 400
-        
-        # 5. AGREGAR NUEVAS COLUMNAS (CON NOMBRES EXACTOS SOLICITADOS)
-        
-        # A) 'fecha_cal'
-        df['fecha_cal'] = fecha_cal_fmt
-        
-        # B) 'fecha_Ejecucion'
-        df['fecha_Ejecucion'] = fecha_exe_fmt
-        
-        # C) 'operario'
-        df['operario'] = df['cargard'].map(mapping)
+        # --- 2. LÓGICA DE RE-PARTICIÓN (528 REGISTROS) ---
+        if 'fciclo' in df.columns and 'cargard' in df.columns:
+            # Asegurar que cargard sea numérico para poder sumar
+            df['cargard'] = pd.to_numeric(df['cargard'], errors='coerce').fillna(0).astype(int)
+            
+            nuevo_limite = 528
+            df_reestructurado = pd.DataFrame()
+            ciclos = df['fciclo'].unique()
 
-        # 6. ORDENAR COLUMNAS AL FINAL
-        # Forzamos que estas 3 columnas queden al final en el orden específico
+            for ciclo in ciclos:
+                df_ciclo = df[df['fciclo'] == ciclo].copy().reset_index(drop=True)
+                
+                if not df_ciclo.empty:
+                    # Tomamos la carga inicial del ciclo para mantener la correlación
+                    carga_inicial = df_ciclo['cargard'].iloc[0]
+                    # Aplicamos la nueva distribución: cada 528 registros incrementa el ID de carga
+                    df_ciclo['cargard'] = df_ciclo.index.map(lambda x: carga_inicial + (x // nuevo_limite))
+                
+                df_reestructurado = pd.concat([df_reestructurado, df_ciclo], ignore_index=True)
+            
+            df = df_reestructurado
+
+        # --- 3. PROCESAR FECHAS Y ASIGNACIÓN ---
+        def formatear_fecha(fecha_str):
+            try:
+                if not fecha_str: return ""
+                return datetime.strptime(fecha_str, '%Y-%m-%d').strftime('%d/%m/%Y')
+            except: return fecha_str
+
+        df['fecha_cal'] = formatear_fecha(f_cal_input)
+        df['fecha_Ejecucion'] = formatear_fecha(f_exe_input)
+
+        # Convertir 'cargard' a string para que coincida con las llaves del JSON mapping
+        df['cargard'] = df['cargard'].astype(str)
+        df['operario'] = df['cargard'].map(mapping).fillna("")
+
+        # --- 4. ORDENAR COLUMNAS Y EXPORTAR ---
         nuevas_cols = ['fecha_cal', 'fecha_Ejecucion', 'operario']
-        
-        # Obtenemos las columnas base (excluyendo las nuevas por si acaso ya existían para no duplicar)
         cols_base = [c for c in df.columns if c not in nuevas_cols]
-        
-        # Concatenamos: Base + Nuevas
-        cols_finales = cols_base + nuevas_cols
-        
-        # Reaplicamos el orden al DataFrame
-        df = df[cols_finales]
+        df = df[cols_base + nuevas_cols]
 
-        # NOTA: Ya no hacemos df.columns.str.upper(), se quedan en minúsculas (salvo fecha_Ejecucion)
-
-        # 7. EXPORTAR Y ZIPPEAR
+        # Generar archivos en memoria
         output_excel = io.BytesIO()
         with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
-        output_excel.seek(0)
-
+        
         output_csv = io.BytesIO()
-        # CSV con separador punto y coma
-        df.to_csv(output_csv, index=False, sep=';') 
-        output_csv.seek(0)
+        # utf-8-sig ayuda a que Excel reconozca tildes en el CSV automáticamente
+        df.to_csv(output_csv, index=False, sep=';', encoding='utf-8-sig') 
 
+        # --- 5. ZIPPEAR ---
         mem_zip = io.BytesIO()
         with zipfile.ZipFile(mem_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("asignacion_procesada.xlsx", output_excel.getvalue())
             zf.writestr("asignacion_procesada.csv", output_csv.getvalue())
         
         mem_zip.seek(0)
-
-        return send_file(
-            mem_zip,
-            mimetype='application/zip',
-            as_attachment=True,
-            download_name='Asignacion_Cargas.zip'
-        )
+        return send_file(mem_zip, mimetype='application/zip', as_attachment=True, download_name='Asignacion_Cargas.zip')
 
     except Exception as e:
         return {"error": str(e)}, 500
+
+
+# ==========================================
+# FUNCIONES AUXILIARES PARA LIMPIAR DATOS
+# ==========================================
+def to_date(f): 
+    return datetime.strptime(f, '%Y-%m-%d').date() if f and str(f).strip() != "" else None
+
+def to_num(n): 
+    return float(n) if n and str(n).strip() != "" else 0.0
+
+def to_time(t): 
+    # Asegurarnos de que solo tome la parte de la hora (HH:MM) si viene con segundos o en otro formato
+    if t and str(t).strip() != "":
+        try:
+            return datetime.strptime(t[:5], '%H:%M').time()
+        except ValueError:
+            return None
+    return None
+
+###### GESTIÓN DE EMPLEADOS #####
+@app.route('/api/empleados/listar', methods=['GET'])
+def listar_empleados():
+    empleados = Empleado.query.order_by(Empleado.apellidos.asc()).all()
+    lista_datos = []
     
+    for emp in empleados:
+        # Función interna para manejar el formato de horas (TIME/timedelta)
+        def format_time(t):
+            if not t: return '-'
+            # Si es timedelta (común en MySQL), lo convertimos a string y tomamos HH:MM
+            if hasattr(t, 'seconds'): 
+                total_seconds = int(t.total_seconds())
+                horas = total_seconds // 3600
+                minutos = (total_seconds % 3600) // 60
+                return f"{horas:02d}:{minutos:02d}"
+            # Si ya es un objeto time de python
+            return t.strftime('%H:%M')
+
+        lista_datos.append({
+            'id': emp.id_empleado,
+            'dni': emp.dni,
+            'apellidos_nombres': emp.nombres,
+            'area': emp.area,
+            'cargo': emp.cargo,
+            'estado': emp.estado,
+            'fecha_ingreso': emp.fecha_ingreso.strftime('%d/%m/%Y') if emp.fecha_ingreso else '-',
+            'fecha_nacimiento': emp.fecha_nacimiento.strftime('%d/%m/%Y') if emp.fecha_nacimiento else '-',
+            # ✅ Usamos la función format_time para evitar el crash
+            'hora_ingreso': format_time(emp.hora_ingreso),
+            'hora_salida': format_time(emp.hora_salida),
+            'telefono': emp.telefono or '-',
+            'correo': emp.correo or '-'
+        })
+        
+    return jsonify(lista_datos)
+
+# Configuración de carpeta de subida (colócalo arriba en tu archivo)
+UPLOAD_FOLDER = 'uploads/documentos_empleados'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+@app.route('/api/empleados/registrar_todo', methods=['POST'])
+def registrar_empleado_completo():
+    try:
+        # --- CRUCIAL: Cambiamos get_json() por request.form ---
+        # request.form recibe los textos y request.files recibe los archivos
+        datos = request.form 
+
+        # --- 1. VALIDACIÓN DE OBLIGATORIOS ---
+        nombres_f = datos.get('nombres', '').strip()
+        apellidos_f = datos.get('apellidos', '').strip()
+        dni = datos.get('dni')
+        cargo = datos.get('cargo')
+        area = datos.get('area')
+        fecha_ingreso = datos.get('fecha_ingreso')
+
+        if not nombres_f or not dni or not cargo or not area or not fecha_ingreso:
+            return jsonify({'error': 'Faltan campos obligatorios (Nombres, DNI, Cargo, Área o Ingreso)'}), 400
+
+        # --- 2. FUNCIONES DE LIMPIEZA ---
+        def to_date(f): return datetime.strptime(f, '%Y-%m-%d').date() if f else None
+        def to_num(n): return float(n) if n and str(n).strip() != "" else 0.0
+        def to_time(t): return datetime.strptime(t, '%H:%M').time() if t and str(t).strip() != "" else None
+
+        # --- 3. CREAR INSTANCIA DE EMPLEADO ---
+        nombre_completo = f"{nombres_f} {apellidos_f}".strip()
+        
+        nuevo_empleado = Empleado(
+            nombres=nombre_completo,
+            apellidos=None, 
+            dni=dni,
+            cargo=cargo,
+            area=area,
+            fecha_ingreso=to_date(fecha_ingreso),
+            fecha_nacimiento=to_date(datos.get('fecha_nacimiento')),
+            sexo=datos.get('sexo'),
+            estado_civil=datos.get('estado_civil'),
+            direccion=datos.get('direccion'),
+            telefono=datos.get('telefono'),
+            correo=datos.get('correo'),
+            tipo_contrato=datos.get('tipo_contrato'),
+            jornada_laboral=datos.get('jornada_laboral'),
+            # Usando el formato TIME que definimos antes
+            hora_ingreso=to_time(datos.get('hora_ingreso')),
+            hora_salida=to_time(datos.get('hora_salida')),
+            refrigerio_inicio=to_time(datos.get('refrigerio_inicio')),
+            refrigerio_fin=to_time(datos.get('refrigerio_fin')),
+            regimen_laboral=datos.get('regimen_laboral'),
+            estado='ACTIVO'
+        )
+
+        db.session.add(nuevo_empleado)
+        db.session.flush() 
+
+        # ==========================================
+        # 📎 NUEVA SECCIÓN: GUARDADO DE DOCUMENTO
+        # ==========================================
+        archivo = request.files.get('archivo') # Viene del input type="file"
+        tipo_doc_id = datos.get('tipo_documento') # Viene del select
+
+        if archivo and archivo.filename != '' and tipo_doc_id:
+            nombre_original = secure_filename(archivo.filename)
+            # Creamos un nombre único: emp_ID_FECHA_NOMBRE.ext
+            nombre_final = f"emp_{nuevo_empleado.id_empleado}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{nombre_original}"
+            
+            ruta_relativa = os.path.join(UPLOAD_FOLDER, nombre_final)
+            archivo.save(ruta_relativa)
+            
+            # Guardamos en la tabla de documentos del empleado
+            nuevo_doc = DocumentoEmpleado(
+                empleado_id=nuevo_empleado.id_empleado,
+                tipo_documento_id=int(tipo_doc_id),
+                ruta_archivo=ruta_relativa
+            )
+            db.session.add(nuevo_doc)
+        # ==========================================
+
+        # --- 4. TABLA REMUNERACIONES ---
+        if datos.get('sueldo_basico'):
+            nueva_rem = Remuneracion(
+                empleado_id=nuevo_empleado.id_empleado,
+                sueldo_basico=to_num(datos.get('sueldo_basico')),
+                asignacion_familiar=to_num(datos.get('asignacion_familiar')),
+                bonificacion=to_num(datos.get('bonificacion')),
+                comisiones=to_num(datos.get('comisiones')),
+                horas_extras=to_num(datos.get('horas_extras')),
+                moneda=datos.get('moneda', 'PEN')
+            )
+            db.session.add(nueva_rem)
+
+        # --- 5. TABLA DATOS BANCARIOS ---
+        if datos.get('numero_cuenta') or datos.get('banco'):
+            nuevo_banco = DatosBancarios(
+                empleado_id=nuevo_empleado.id_empleado,
+                banco=datos.get('banco'),
+                tipo_cuenta=datos.get('tipo_cuenta'),
+                numero_cuenta=datos.get('numero_cuenta'),
+                cci=datos.get('cci')
+            )
+            db.session.add(nuevo_banco)
+
+        # --- 6. TABLA BENEFICIOS SOCIALES ---
+        if datos.get('cts') or datos.get('gratificacion'):
+            nuevo_ben = BeneficioSocial(
+                empleado_id=nuevo_empleado.id_empleado,
+                cts=to_num(datos.get('cts')),
+                gratificacion=to_num(datos.get('gratificacion')),
+                vacaciones_truncas=to_num(datos.get('vacaciones_truncas')),
+                liquidacion=to_num(datos.get('liquidacion'))
+            )
+            db.session.add(nuevo_ben)
+
+        # --- 7. FINALIZAR TRANSACCIÓN ---
+        db.session.commit()
+
+        return jsonify({
+            'mensaje': 'Registro integral con documento completado',
+            'id_empleado': nuevo_empleado.id_empleado
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"ERROR: {str(e)}")
+        return jsonify({'error': 'Error al procesar el registro', 'detalle': str(e)}), 500
+    
+
+# ==============================================================
+# 2. RUTA: OBTENER DATOS PARA EL MODAL (GET)
+# ==============================================================
+@app.route('/api/empleados/<int:id_empleado>', methods=['GET'])
+def obtener_empleado(id_empleado):
+    try:
+        empleado = Empleado.query.get_or_404(id_empleado)
+        rem = Remuneracion.query.filter_by(empleado_id=id_empleado).first()
+        
+        # 1. Traemos TODOS los documentos del empleado (No solo el primero)
+        documentos_db = DocumentoEmpleado.query.filter_by(empleado_id=id_empleado).order_by(DocumentoEmpleado.fecha_subida.desc()).all()
+        
+        # 2. Diccionario para mapear el ID del tipo con su nombre real
+        nombres_tipos = {1: 'DNI Escaneado', 2: 'Currículum Vitae (CV)', 3: 'Contrato Firmado', 4: 'Foto Carnet'}
+        
+        # 3. Armamos la lista de documentos para el JavaScript
+        lista_docs = []
+        for d in documentos_db:
+            lista_docs.append({
+                # OJO: Cambia 'd.id' por el nombre real de tu llave primaria en la tabla DocumentoEmpleado si es diferente (ej. d.id_documento)
+                'id_doc': d.id if hasattr(d, 'id') else getattr(d, 'id_documento', 0), 
+                'tipo': nombres_tipos.get(d.tipo_documento_id, 'Documento Adjunto'),
+                'ruta': f"/{d.ruta_archivo.replace('\\', '/')}",
+                'fecha': d.fecha_subida.strftime('%d/%m/%Y') if hasattr(d, 'fecha_subida') and d.fecha_subida else 'Reciente'
+            })
+        
+        datos = {
+            'id_empleado': empleado.id_empleado,
+            'nombres': empleado.nombres.split(' ')[0] if empleado.nombres else '', 
+            'apellidos': ' '.join(empleado.nombres.split(' ')[1:]) if empleado.nombres else '', 
+            'dni': empleado.dni,
+            'cargo': empleado.cargo,
+            'area': empleado.area,
+            'fecha_ingreso': empleado.fecha_ingreso.strftime('%Y-%m-%d') if empleado.fecha_ingreso else '',
+            'fecha_nacimiento': empleado.fecha_nacimiento.strftime('%Y-%m-%d') if empleado.fecha_nacimiento else '',
+            'sexo': empleado.sexo,
+            'estado_civil': empleado.estado_civil,
+            'direccion': empleado.direccion,
+            'telefono': empleado.telefono,
+            'correo': empleado.correo,
+            'tipo_contrato': empleado.tipo_contrato,
+            'jornada_laboral': empleado.jornada_laboral,
+            'hora_ingreso': empleado.hora_ingreso.strftime('%H:%M') if empleado.hora_ingreso else '',
+            'hora_salida': empleado.hora_salida.strftime('%H:%M') if empleado.hora_salida else '',
+            'refrigerio_inicio': empleado.refrigerio_inicio.strftime('%H:%M') if empleado.refrigerio_inicio else '',
+            'refrigerio_fin': empleado.refrigerio_fin.strftime('%H:%M') if empleado.refrigerio_fin else '',
+            'regimen_laboral': empleado.regimen_laboral,
+            'estado': empleado.estado,
+            
+            'sueldo_basico': rem.sueldo_basico if rem else '',
+            'moneda': rem.moneda if rem else 'PEN',
+            
+            # 4. Pasamos la lista completa al JSON en lugar de un solo objeto
+            'documentos': lista_docs
+        }
+        return jsonify(datos), 200
+    except Exception as e:
+        return jsonify({'error': 'Error al cargar empleado', 'detalle': str(e)}), 500
+
+
+# ==============================================================
+# 3. RUTA: ACTUALIZAR EMPLEADO EXISTENTE (PUT)
+# ==============================================================
+@app.route('/api/empleados/actualizar/<int:id_empleado>', methods=['PUT'])
+def actualizar_empleado_completo(id_empleado):
+    try:
+        empleado = Empleado.query.get_or_404(id_empleado)
+        datos = request.form
+
+        # Actualizamos datos básicos
+        nombres_f = datos.get('nombres', '').strip()
+        apellidos_f = datos.get('apellidos', '').strip()
+        empleado.nombres = f"{nombres_f} {apellidos_f}".strip()
+        
+        empleado.dni = datos.get('dni')
+        empleado.cargo = datos.get('cargo')
+        empleado.area = datos.get('area')
+        
+        # Guardamos directamente los datos sin conversiones extra
+        empleado.fecha_ingreso = datos.get('fecha_ingreso') if datos.get('fecha_ingreso') else None
+        empleado.fecha_nacimiento = datos.get('fecha_nacimiento') if datos.get('fecha_nacimiento') else None
+        empleado.sexo = datos.get('sexo')
+        empleado.estado_civil = datos.get('estado_civil')
+        empleado.direccion = datos.get('direccion')
+        empleado.telefono = datos.get('telefono')
+        empleado.correo = datos.get('correo')
+        empleado.tipo_contrato = datos.get('tipo_contrato')
+        empleado.jornada_laboral = datos.get('jornada_laboral')
+        
+        empleado.hora_ingreso = datos.get('hora_ingreso') if datos.get('hora_ingreso') else None
+        empleado.hora_salida = datos.get('hora_salida') if datos.get('hora_salida') else None
+        empleado.refrigerio_inicio = datos.get('refrigerio_inicio') if datos.get('refrigerio_inicio') else None
+        empleado.refrigerio_fin = datos.get('refrigerio_fin') if datos.get('refrigerio_fin') else None
+        
+        empleado.regimen_laboral = datos.get('regimen_laboral')
+        empleado.estado = datos.get('estado')
+
+        # --- ACTUALIZAR DOCUMENTO (Si sube uno nuevo) ---
+        archivo = request.files.get('archivo')
+        tipo_doc_id = datos.get('tipo_documento')
+
+        # Esto solo agregará un documento nuevo a la lista, no borrará los anteriores
+        if archivo and archivo.filename != '' and tipo_doc_id:
+            nombre_original = secure_filename(archivo.filename)
+            nombre_final = f"emp_{empleado.id_empleado}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{nombre_original}"
+            ruta_relativa = os.path.join(UPLOAD_FOLDER, nombre_final).replace('\\', '/')
+            archivo.save(ruta_relativa)
+            
+            nuevo_doc = DocumentoEmpleado(
+                empleado_id=empleado.id_empleado,
+                tipo_documento_id=int(tipo_doc_id),
+                ruta_archivo=ruta_relativa
+            )
+            db.session.add(nuevo_doc) 
+
+        # --- ACTUALIZAR REMUNERACIÓN ---
+        if datos.get('sueldo_basico'):
+            rem = Remuneracion.query.filter_by(empleado_id=empleado.id_empleado).first()
+            if rem:
+                rem.sueldo_basico = datos.get('sueldo_basico')
+                rem.moneda = datos.get('moneda', 'PEN')
+            else:
+                nueva_rem = Remuneracion(empleado_id=empleado.id_empleado, sueldo_basico=datos.get('sueldo_basico'), moneda=datos.get('moneda', 'PEN'))
+                db.session.add(nueva_rem)
+
+        db.session.commit()
+        return jsonify({'mensaje': 'Empleado actualizado correctamente'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Error al actualizar', 'detalle': str(e)}), 500
+
+
+@app.route('/api/documentos/<int:id_doc>', methods=['DELETE'])
+def eliminar_documento(id_doc):
+    try:
+        # 1. Buscar el registro en la base de datos (usando DocumentoEmpleado)
+        documento = DocumentoEmpleado.query.get(id_doc)
+
+        if not documento:
+            return jsonify({'success': False, 'message': 'No se encontró el documento'}), 404
+
+        # ¡NOMBRES CORREGIDOS SEGÚN TU MODELO!
+        ruta_archivo_fisico = documento.ruta_archivo
+        id_empleado = documento.empleado_id 
+        tipo_doc_id = documento.tipo_documento_id # Guarda el ID del tipo de documento
+
+        # Obtener nombre del empleado para la auditoría
+        empleado = Empleado.query.get(id_empleado)
+        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
+
+        # 2. Eliminar el registro de la base de datos
+        db.session.delete(documento)
+        db.session.commit()
+
+        # 3. Eliminar el archivo físico del servidor
+        if ruta_archivo_fisico:
+            ruta_fisica = os.path.join(current_app.root_path, ruta_archivo_fisico.lstrip('/'))
+            if os.path.exists(ruta_fisica):
+                os.remove(ruta_fisica)
+                print(f"Archivo físico eliminado: {ruta_fisica}")
+
+        # 4. ✅ Registrar en la auditoría
+        if 'user_id' in session:
+            registrar_evento(
+                user_id=session['user_id'],
+                usuario=session['user_name'],
+                evento='eliminar_documento',
+                modulo=f"Documentos | Tipo ID: {tipo_doc_id} | Empleado: {nombre_empleado}"
+            )
+
+        return jsonify({
+            'success': True, 
+            'message': 'Documento eliminado correctamente'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False, 
+            'message': f'Error al eliminar: {str(e)}'
+        }), 500
+
+@app.route('/empleado/cesar/<int:id>', methods=['POST'])
+def cesar_empleado(id):
+    try:
+        empleado = Empleado.query.get_or_404(id)
+        empleado.estado = 'CESADO'
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)})
+    
+    
+@app.route('/api/reportes/asistencia', methods=['GET'])
+def api_reporte_asistencia():
+    inicio = request.args.get('inicio')
+    fin = request.args.get('fin')
+    empleado_id = request.args.get('empleado')
+
+    if not inicio or not fin:
+        return jsonify({'error': 'Faltan parámetros de fecha'}), 400
+
+    tablas_asistencia = [
+        EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
+        EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores,
+        EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
+    ]
+
+    # Diccionario con TODAS tus claves inicializadas en 0
+    conteo = {
+        'A': 0, 'DT': 0, 'FT': 0, 'LG': 0, 'DM': 0, 'V': 0, 'LSG': 0,
+        'F': 0, 'R': 0, 'SU': 0, 'CE': 0, 'FG': 0, 'LD': 0, 'DC': 0,
+        'AP': 0, 'LP': 0, 'TC': 0
+    }
+
+    for modelo in tablas_asistencia:
+        query = db.session.query(modelo.estado, func.count(modelo.estado)) \
+            .filter(modelo.fec_asist >= inicio, modelo.fec_asist <= fin)
+
+        if empleado_id:
+            try:
+                empleado_id = int(empleado_id)
+                query = query.filter(modelo.id_empleado == empleado_id)
+            except ValueError:
+                pass
+
+        resultados = query.group_by(modelo.estado).all()
+
+        for estado_db, cantidad in resultados:
+            estado = (estado_db or '').strip().upper()
+            # Si el estado de la BD existe en nuestro diccionario, le sumamos la cantidad
+            if estado in conteo:
+                conteo[estado] += cantidad
+
+    # Enviamos el JSON con los 17 datos
+    return jsonify(conteo)
+
+
+
+@app.route('/api/reportes/gastos_incidencias', methods=['GET'])
+def api_gastos_incidencias():
+    inicio = request.args.get('inicio')
+    fin = request.args.get('fin')
+    empleado_id = request.args.get('empleado')
+
+    if not inicio or not fin:
+        return jsonify({'error': 'Faltan fechas'}), 400
+
+    tablas = [
+        ('Lectura', EmpleadoLectura), ('Distribucion', EmpleadoDistribucion),
+        ('Inspecciones', EmpleadoInspecciones), ('Catastro', EmpleadoCatastro),
+        ('Persuasivas', EmpleadoPersuasivas), ('Medidores', EmpleadoMedidores),
+        ('Norte', EmpleadoNorte), ('Recaudacion', EmpleadoRecaudacion),
+        ('Administrativo', EmpleadoAdministrativo)
+    ]
+
+    gastos_data = {'areas': [], 'viaticos': [], 'pasajes': []}
+    incidencias_dia = {'Lunes': 0, 'Martes': 0, 'Miércoles': 0, 'Jueves': 0, 'Viernes': 0, 'Sábado': 0, 'Domingo': 0}
+    dias_semana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
+    # --- NUEVOS DICCIONARIOS PARA RANKING ---
+    ranking_inc_map = {} # {id: {'nombre': '', 'faltas': 0, 'dm': 0}}
+    ranking_gastos_map = {} # {id: {'nombre': '', 'pasajes': 0, 'viaticos': 0}}
+
+    for nombre_area, modelo in tablas:
+        # Hacemos un JOIN con la tabla Empleado para traer el nombre
+        query = db.session.query(
+            modelo.id_empleado,
+            Empleado.nombres.label('nombre_empleado'),
+            Empleado.area.label('area_real'), 
+            modelo.fec_asist,
+            modelo.estado,
+            modelo.viaticos,
+            modelo.pasajes
+        ).join(Empleado, Empleado.id_empleado == modelo.id_empleado).filter( # <--- AQUÍ EL CAMBIO
+            modelo.fec_asist >= inicio, 
+            modelo.fec_asist <= fin
+        )
+
+        if empleado_id:
+            try:
+                emp_id_int = int(empleado_id)
+                query = query.filter(modelo.id_empleado == emp_id_int)
+            except ValueError: pass
+
+        registros = query.all()
+        suma_viaticos_area = 0
+        suma_pasajes_area = 0
+
+        for reg in registros:
+            e_id = reg.id_empleado
+            nombre = reg.nombre_empleado or f"Emp. {e_id}"
+            area_empleado = reg.area_real
+            
+            # --- 1. PROCESAMIENTO DE GASTOS ---
+            v_val = 0
+            p_val = 0
+            try: v_val = float(reg.viaticos or 0)
+            except: pass
+            try: p_val = float(reg.pasajes or 0)
+            except: pass
+
+            suma_viaticos_area += v_val
+            suma_pasajes_area += p_val
+
+            # Acumular para el ranking global de gastos
+            if e_id not in ranking_gastos_map:
+                # Agregamos 'area': nombre_area aquí
+                ranking_gastos_map[e_id] = {'nombre': nombre, 'area': area_empleado, 'pasajes': 0, 'viaticos': 0}
+            
+            ranking_gastos_map[e_id]['pasajes'] += p_val
+            ranking_gastos_map[e_id]['viaticos'] += v_val
+
+            # --- 2. PROCESAMIENTO DE INCIDENCIAS ---
+            estado = (reg.estado or '').strip().upper()
+            
+            if estado in ['F', 'DM']:
+                if e_id not in ranking_inc_map:
+                    # Agregamos 'area': nombre_area aquí
+                    ranking_inc_map[e_id] = {'nombre': nombre, 'area': area_empleado, 'faltas': 0, 'dm': 0}
+                
+                if estado == 'F': ranking_inc_map[e_id]['faltas'] += 1
+                if estado == 'DM': ranking_inc_map[e_id]['dm'] += 1
+
+                # Gráfico por día
+                if reg.fec_asist:
+                    try:
+                        dia_idx = reg.fec_asist.weekday()
+                        incidencias_dia[dias_semana[dia_idx]] += 1
+                    except: pass
+
+        gastos_data['areas'].append(nombre_area)
+        gastos_data['viaticos'].append(suma_viaticos_area)
+        gastos_data['pasajes'].append(suma_pasajes_area)
+    
+    incidencias_final = {dia: incidencias_dia[dia] for dia in dias_semana}
+
+    # --- 3. ORDENAR Y OBTENER TOP 10 ---
+    # Ordenar incidencias por la suma de (faltas + dm)
+    lista_incidencias = sorted(
+        ranking_inc_map.values(), 
+        key=lambda x: (x['faltas'] + x['dm']), 
+        reverse=True
+    )[:10]
+
+    # Ordenar gastos por la suma de (pasajes + viaticos)
+    lista_gastos = sorted(
+        ranking_gastos_map.values(), 
+        key=lambda x: (x['pasajes'] + x['viaticos']), 
+        reverse=True
+    )[:10]
+
+    return jsonify({
+        'gastos': gastos_data,
+        'incidencias': incidencias_final,
+        'ranking_incidencias': lista_incidencias,
+        'ranking_gastos': lista_gastos
+    })
+
+
+
+
+
+# =====================================================================
+# 1. EXCEL ULTRA PROFESIONAL (Con Membrete, Filtros y Tablas Nativas)
+# =====================================================================
+@app.route('/api/exportar/excel', methods=['GET'])
+def exportar_excel():
+    inicio = request.args.get('inicio')
+    fin = request.args.get('fin')
+    tipo = request.args.get('tipo', 'todos')
+    empleado_id = request.args.get('empleado')
+
+    if not inicio or not fin:
+        return "Faltan fechas", 400
+
+    if tipo in ['asistencias', 'todos']:
+        return generar_excel_record_asistencias(inicio, fin, empleado_id)
+    
+    return "Exportación para este tipo en desarrollo", 200
+
+
+def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Récord de Asistencias"
+
+    DNI_DEBUG = "AQUI_PON_EL_DNI_CON_ERROR" 
+
+    print(f"\n{'='*50}\n[DEBUG INICIADO] Rastreando al DNI: {DNI_DEBUG}\n{'='*50}")
+
+    # ==========================================
+    # 1. DISEÑO Y ESTILOS PROFESIONALES
+    # ==========================================
+    # Ajustamos el merge del título para que llegue hasta la columna W (23)
+    ws.merge_cells('A1:W1') 
+    ws['A1'] = f"RÉCORD GENERAL DE ASISTENCIAS ({inicio} al {fin})"
+    ws['A1'].font = Font(name='Arial', size=16, bold=True, color="FFFFFF")
+    ws['A1'].fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
+    ws['A1'].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 30
+
+    borde_fino = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    fill_grupo = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+    fill_sub = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
+    font_blanca = Font(bold=True, color="FFFFFF", size=10)
+    font_negra = Font(bold=True, color="000000", size=9)
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    # ==========================================
+    # 2. ESTRUCTURA DE CABECERAS (Con columna N°)
+    # ==========================================
+    # Desplazamos las columnas informativas para insertar N° en la A
+    cabeceras_info = ['N°', 'DNI', 'NOMBRES Y APELLIDOS', 'CARGO', 'ÁREA', 'FECHA INGRESO', 'FECHA CESE']
+    for i, titulo in enumerate(cabeceras_info, start=1):
+        col = ws.cell(row=3, column=i)
+        ws.merge_cells(start_row=3, start_column=i, end_row=4, end_column=i)
+        col.value = titulo
+        col.fill = fill_grupo
+        col.font = font_blanca
+        col.alignment = align_center
+        col.border = borde_fino
+
+    # Grupos superiores desplazados (+1 columna por el N°)
+    grupos = [
+        ('H3:J3', 'TAREO'),
+        ('K3:N3', 'DESCANSOS'),
+        ('O3:O3', 'FALTAS'),
+        ('P3:Q3', 'TRABAJOS EXTRAS'),
+        ('R3:V3', 'OTROS MOTIVOS'),
+        ('W3:W4', 'TOTAL DÍAS')
+    ]
+    for rango, titulo in grupos:
+        ws.merge_cells(rango)
+        celda = ws[rango.split(':')[0]]
+        celda.value = titulo
+        celda.fill = PatternFill(start_color="244062", end_color="244062", fill_type="solid")
+        celda.font = font_blanca
+        celda.alignment = align_center
+        celda.border = borde_fino
+
+    # Sub-cabeceras desplazadas (+1 columna)
+    sub_cabeceras = [
+        ('H4', 'Días Laborados', 'A'), ('I4', 'Lic. Sin Goce', 'LSG'), ('J4', 'Suspensión', 'SU'),
+        ('K4', 'Médicos', 'DM'), ('L4', 'Días Subsidiados', 'DS'), ('M4', 'Lic. Paternidad', 'LP'), ('N4', 'Fallecimiento', 'LD'),
+        ('O4', 'Faltas', 'F'),
+        ('P4', 'Feriados', 'FT'), ('Q4', 'Domingos', 'DT'),
+        ('R4', 'Lic. Con Goce', 'LG'), ('S4', 'Vacaciones', 'V'), ('T4', 'Feriado Ganado', 'FG'), ('U4', 'Día Compensado', 'DC'),
+        ('V4', 'Domingo Ganado', 'DG')
+    ]
+    
+    mapa_columnas = {clave: ws[celda].column for celda, nombre, clave in sub_cabeceras}
+
+    for celda, nombre, clave in sub_cabeceras:
+        c = ws[celda]
+        c.value = nombre
+        c.fill = fill_sub
+        c.font = font_negra
+        c.alignment = align_center
+        c.border = borde_fino
+
+    # ==========================================
+    # 3. PROCESAMIENTO DE DATOS (Con Logs)
+    # ==========================================
+    query_empleados = Empleado.query
+    if empleado_id and empleado_id != "":
+        query_empleados = query_empleados.filter(Empleado.id_empleado == empleado_id)
+    empleados = query_empleados.all()
+    
+    datos_asistencia = {
+        emp.dni: {k: 0 for k in mapa_columnas.keys()} for emp in empleados if emp.dni
+    }
+
+    tablas_asistencia = [
+        EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
+        EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores,
+        EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
+    ]
+
+    registros_diarios = defaultdict(dict)
+
+    for modelo in tablas_asistencia:
+        query = db.session.query(
+            modelo.dni, 
+            modelo.fec_asist, 
+            modelo.estado
+        ).filter(
+            modelo.fec_asist >= inicio,
+            modelo.fec_asist <= fin
+        )
+
+        if empleado_id and empleado_id != "":
+            query = query.filter(modelo.id_empleado == empleado_id)
+
+        resultados = query.all()
+
+        for row in resultados:
+            if not row.dni or not row.fec_asist:
+                continue
+            
+            # Normalizar fecha a objeto date
+            fecha_dt = row.fec_asist.date() if isinstance(row.fec_asist, datetime) else row.fec_asist
+            
+            # Limpiar estado (maneja NULL de BD, vacíos y espacios)
+            estado_raw = row.estado if row.estado is not None else ""
+            estado_limpio = estado_raw.strip().upper()
+            
+            # ALMACENAMIENTO ÚNICO: Si un empleado trabajó en 2 áreas el mismo día,
+            # aquí se sobrescribe y solo queda 1 registro por día. Adiós a los > 31 días.
+            registros_diarios[row.dni][fecha_dt] = estado_limpio
+
+    # ==========================================
+    # 3.1 CONTEO DE COLUMNAS (A, F, V, etc.)
+    # ==========================================
+    for dni, fechas in registros_diarios.items():
+        if dni in datos_asistencia:
+            for fecha, estado in fechas.items():
+                # NO contamos estados vacíos o guiones como días de columna
+                if estado not in ['', '-', 'NULL'] and estado in datos_asistencia[dni]:
+                    datos_asistencia[dni][estado] += 1
+
+    # ==========================================
+    # 3.2 CALCULAR DOMINGOS GANADOS (POR CALENDARIO)
+    # ==========================================
+    inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+    fin_dt = datetime.strptime(fin, "%Y-%m-%d").date()
+
+    for emp in empleados:
+        if not emp.dni: continue
+
+        # Ajustar rango según contrato del empleado
+        emp_inicio = max(inicio_dt, emp.fecha_ingreso) if emp.fecha_ingreso else inicio_dt
+        emp_fin = min(fin_dt, emp.fecha_cese) if emp.fecha_cese else fin_dt
+
+        domingos_ganados = 0
+        actual = emp_inicio
+
+        while actual <= emp_fin:
+            if actual.weekday() == 6:  # Es Domingo
+                # Buscamos si existe algo en el diccionario para ese día
+                estado_en_dict = registros_diarios.get(emp.dni, {}).get(actual)
+                
+                # REGLA FINAL: Es Domingo Ganado si:
+                # - No hay registro en ninguna tabla (estado_en_dict es None)
+                # - Hay registro pero es NULL, vacío o un guion
+                if estado_en_dict is None or estado_en_dict in ['', '-', 'NULL']:
+                    domingos_ganados += 1
+                    if emp.dni == DNI_DEBUG:
+                        print(f"  [+] Domingo Ganado: {actual} (Razón: {'Sin registro' if estado_en_dict is None else 'Registro vacío'})")
+            
+            actual += timedelta(days=1)
+
+        datos_asistencia[emp.dni]['DG'] = domingos_ganados
+
+    # ==========================================
+    # NUEVO: CALCULAR DOMINGOS GANADOS (En memoria)
+    # ==========================================
+    inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+    fin_dt = datetime.strptime(fin, "%Y-%m-%d").date()
+
+    print(f"\n[DEBUG] Analizando Domingos Ganados para {DNI_DEBUG}...")
+
+    for emp in empleados:
+        if not emp.dni:
+            continue
+
+        emp_inicio = max(inicio_dt, emp.fecha_ingreso) if emp.fecha_ingreso else inicio_dt
+        emp_fin = min(fin_dt, emp.fecha_cese) if emp.fecha_cese else fin_dt
+
+        domingos_ganados = 0
+        actual = emp_inicio
+
+        while actual <= emp_fin:
+            if actual.weekday() == 6:  # Es domingo
+                # Obtenemos el estado registrado ese domingo (si existe)
+                registro_domingo = registros_diarios.get(emp.dni, {}).get(actual)
+                
+                # REGLA: Es domingo ganado si:
+                # 1. No hay registro (None)
+                # 2. El registro es un guion '-'
+                # 3. El registro está vacío o solo tiene espacios
+                es_vacio = registro_domingo is None or registro_domingo.strip() in ['', '-']
+
+                if es_vacio:
+                    domingos_ganados += 1
+                    if emp.dni == DNI_DEBUG:
+                        print(f"  [+] DG Identificado en {actual}: (Estado en BD: '{registro_domingo}')")
+                
+                # IMPORTANTE: Si el domingo tenía un '-', lo quitamos del conteo de estados
+                # para que no sume en 'Días Laborados' ni otras columnas, solo en DG.
+                if registro_domingo and registro_domingo.strip() == '-' and emp.dni in datos_asistencia:
+                    # Esto evita que el '-' ensucie otras métricas
+                    pass 
+
+            actual += timedelta(days=1)
+
+        datos_asistencia[emp.dni]['DG'] = domingos_ganados
+
+    if DNI_DEBUG in datos_asistencia:
+        total_verificacion = sum(datos_asistencia[DNI_DEBUG].values())
+        print(f"\n[DEBUG] Conteo FINAL para {DNI_DEBUG}: {datos_asistencia[DNI_DEBUG]}")
+        print(f"[DEBUG] SUMA TOTAL de columnas: {total_verificacion}")
+        print(f"{'='*50}\n")
+
+    # ==========================================
+    # 4. LLENADO DE FILAS
+    # ==========================================
+    fila_actual = 5
+    for idx, emp in enumerate(empleados, start=1):
+        if not emp.dni:
+            continue
+            
+        nombres_completos = f"{emp.nombres or ''} {emp.apellidos or ''}".strip()
+        asist = datos_asistencia.get(emp.dni, {k: 0 for k in mapa_columnas.keys()})
+        
+        ws.cell(row=fila_actual, column=1, value=idx) # Columna N°
+        ws.cell(row=fila_actual, column=2, value=emp.dni)
+        ws.cell(row=fila_actual, column=3, value=nombres_completos.upper())
+        ws.cell(row=fila_actual, column=4, value=emp.cargo or '')
+        ws.cell(row=fila_actual, column=5, value=emp.area or '')
+        ws.cell(row=fila_actual, column=6, value=emp.fecha_ingreso.strftime("%d/%m/%Y") if emp.fecha_ingreso else "")
+        ws.cell(row=fila_actual, column=7, value=emp.fecha_cese.strftime("%d/%m/%Y") if emp.fecha_cese else "")
+
+        total_dias = 0
+        for clave, col_idx in mapa_columnas.items():
+            valor = asist.get(clave, 0)
+            celda = ws.cell(row=fila_actual, column=col_idx, value=valor)
+            celda.alignment = Alignment(horizontal="center")
+            total_dias += valor
+
+        celda_total = ws.cell(row=fila_actual, column=23, value=total_dias) # Columna W
+        celda_total.font = Font(bold=True)
+        celda_total.alignment = Alignment(horizontal="center")
+
+        for col in range(1, 24):
+            ws.cell(row=fila_actual, column=col).border = borde_fino
+
+        fila_actual += 1
+
+    # ==========================================
+    # 5. AJUSTES VISUALES (Corrección MergedCells)
+    # ==========================================
+    for i, col in enumerate(ws.columns, start=1):
+        max_length = 0
+        # Usamos el helper para obtener la letra según el índice (1, 2, 3...)
+        column_letter = get_column_letter(i) 
+        
+        # Saltamos las filas de cabecera (1 a 4) para medir solo el contenido
+        for cell in col[4:]: 
+            try:
+                if cell.value:
+                    length = len(str(cell.value))
+                    if length > max_length:
+                        max_length = length
+            except:
+                pass
+        
+        # Ajuste de ancho: mínimo 10, máximo 50
+        adjusted_width = max(max_length + 3, 10)
+        ws.column_dimensions[column_letter].width = min(adjusted_width, 50)
+
+    # Congelamos paneles y aplicamos filtro hasta la columna W
+    ws.freeze_panes = 'D5'
+    ws.auto_filter.ref = f"A4:W{fila_actual-1}"
+
+    # ==========================================
+    # 6. DESCARGA
+    # ==========================================
+    excel_buffer = io.BytesIO()
+    wb.save(excel_buffer)
+    excel_buffer.seek(0)
+
+    return send_file(
+        excel_buffer,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'Record_Asistencias_{inicio}_al_{fin}.xlsx'
+    )
+
+
+# =====================================================================
+# 2. GENERACIÓN DE PDF EJECUTIVO (Diseño Profesional)
+# =====================================================================
+@app.route('/api/exportar/pdf', methods=['GET'])
+def exportar_pdf():
+    inicio = request.args.get('inicio', 'N/A')
+    fin = request.args.get('fin', 'N/A')
+    tipo = request.args.get('tipo', 'todos')
+    empleado_id = request.args.get('empleado')
+
+    # Consultas a la base de datos
+    total_activos = db.session.query(Empleado).filter(Empleado.estado == 'ACTIVO').count()
+    total_cesados = db.session.query(Empleado).filter(Empleado.estado == 'CESADO').count()
+    fecha_generacion = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    # 1. HTML con diseño Corporativo (Optimizado para xhtml2pdf)
+    html_texto = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            /* Configuración de la página y pie de página */
+            @page {{
+                size: A4;
+                margin: 2cm;
+                @frame footer {{
+                    -pdf-frame-content: footerContent;
+                    bottom: 1cm;
+                    margin-left: 2cm;
+                    margin-right: 2cm;
+                    height: 1cm;
+                }}
+            }}
+            
+            /* Estilos generales */
+            body {{ font-family: Helvetica, sans-serif; color: #333333; font-size: 12px; }}
+            h1 {{ color: #1a5276; font-size: 20px; text-align: center; margin-bottom: 5px; }}
+            hr {{ border: 0; border-top: 2px solid #1a5276; margin-bottom: 25px; }}
+            
+            .section-title {{ font-size: 14px; color: #1a5276; margin-top: 30px; margin-bottom: 10px; font-weight: bold; border-bottom: 1px solid #dddddd; padding-bottom: 5px; }}
+            
+            /* Tabla de Información General */
+            .info-table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
+            .info-table td {{ padding: 6px 0; vertical-align: top; }}
+            .info-label {{ font-weight: bold; color: #555555; width: 150px; }}
+            
+            /* Tabla de Resumen (Métricas) */
+            .stats-table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+            .stats-table th {{ background-color: #1a5276; color: #ffffff; padding: 10px; text-align: left; font-weight: bold; font-size: 13px; }}
+            .stats-table td {{ background-color: #f8f9fa; padding: 12px 10px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }}
+            .stats-number {{ font-weight: bold; font-size: 15px; text-align: right; }}
+            
+            /* Pie de página */
+            #footerContent {{ text-align: right; font-size: 10px; color: #777777; border-top: 1px solid #dddddd; padding-top: 5px; }}
+        </style>
+    </head>
+    <body>
+        <h1>REPORTE EJECUTIVO DE ASISTENCIAS</h1>
+        <hr>
+
+        <table class="info-table">
+            <tr>
+                <td class="info-label">Fecha de Generación:</td>
+                <td>{fecha_generacion}</td>
+            </tr>
+            <tr>
+                <td class="info-label">Período Analizado:</td>
+                <td>{inicio} al {fin}</td>
+            </tr>
+            <tr>
+                <td class="info-label">Tipo de Filtro:</td>
+                <td>{tipo.capitalize()}</td>
+            </tr>
+        </table>
+
+        <div class="section-title">Resumen de Personal</div>
+
+        <table class="stats-table">
+            <tr>
+                <th>Estado del Empleado</th>
+                <th style="text-align: right;">Cantidad Total</th>
+            </tr>
+            <tr>
+                <td>Total Empleados Activos</td>
+                <td class="stats-number" style="color: #27ae60;">{total_activos}</td>
+            </tr>
+            <tr>
+                <td>Total Empleados Cesados</td>
+                <td class="stats-number" style="color: #c0392b;">{total_cesados}</td>
+            </tr>
+        </table>
+
+        <div id="footerContent">
+            Sistema de Gestión Interno | Página <pdf:pagenumber> de <pdf:pagecount>
+        </div>
+    </body>
+    </html>
+    """
+
+    pdf_buffer = io.BytesIO()
+
+    pisa_status = pisa.CreatePDF(
+        html_texto, 
+        dest=pdf_buffer,
+        encoding='utf-8'
+    )
+
+    if pisa_status.err:
+        return "Hubo un error al generar el PDF internamente", 500
+
+    response = make_response(pdf_buffer.getvalue())
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename=Informe_Ejecutivo_{inicio}.pdf'
+    
+    return response
+
+
+
+@app.route('/api/empleados/select', methods=['GET'])
+def listar_empleados_select():
+    empleados = db.session.query(
+        Empleado.id_empleado,
+        Empleado.nombres,
+        Empleado.apellidos,
+        Empleado.dni
+    ).order_by(Empleado.apellidos.asc()).all()
+
+    data = []
+    for emp in empleados:
+        nombre_completo = f"{emp.apellidos or ''} {emp.nombres or ''}".strip()
+        data.append({
+            'id': emp.id_empleado,
+            'nombre': nombre_completo,
+            'dni': emp.dni or ''
+        })
+
+    return jsonify(data)
+
