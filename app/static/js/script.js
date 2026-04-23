@@ -1,76 +1,96 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const form = document.querySelector('form');
-    form.addEventListener('submit', (event) => {
-        const user = document.getElementById('user').value.trim();
-        const password = document.getElementById('password').value.trim();
-
-        if (!user || !password) {
-            event.preventDefault();
-            alert('Por favor, complete todos los campos.');
-        }
-    });
-});
-
-// Menú lateral
+// --- VARIABLES GLOBALES ---
 const menuToggle = document.getElementById('menu-toggle');
 const sidebar = document.getElementById('sidebar');
 const content = document.querySelector('.content');
-const welcomeMessage = document.getElementById('welcome-message'); // Mensaje de bienvenida
+const welcomeMessage = document.getElementById('welcome-message');
 
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Validación de Login (Si existe el form)
+    const form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', (event) => {
+            const user = document.getElementById('user').value.trim();
+            const password = document.getElementById('password').value.trim();
+            if (!user || !password) {
+                event.preventDefault();
+                alert('Por favor, complete todos los campos.');
+            }
+        });
+    }
+
+    // 2. Inicialización de navegación
+    adjustContentWidth();
+});
+
+// --- MENÚ LATERAL ---
 menuToggle.addEventListener('click', () => {
     sidebar.classList.toggle('active');
     adjustContentWidth();
 });
 
 function adjustContentWidth() {
+    // Ajuste dinámico de ancho para evitar que el contenido se corte
     if (sidebar.classList.contains('active')) {
         content.style.width = '100%';
+        content.style.marginLeft = '0';
     } else {
-        content.style.width = `calc(100% - 250px)`;
+        // Solo aplicar margen si no estamos en móvil
+        if (window.innerWidth > 768) {
+            content.style.width = `calc(100% - 260px)`;
+        } else {
+            content.style.width = '100%';
+        }
     }
 }
 
-adjustContentWidth();
-
+// --- LÓGICA DE SECCIONES (CORE) ---
 function showSection(sectionId) {
     const sections = document.querySelectorAll('.section');
 
+    // 🔁 Ocultar TODO primero
     sections.forEach(section => {
         section.classList.remove('active');
+        section.style.display = 'none'; 
     });
 
-    // Mostrar la sección principal seleccionada
+    // Mostrar la sección seleccionada
     const target = document.getElementById(sectionId);
     if (target) {
         target.classList.add('active');
+        target.style.display = 'block';
     }
 
-    // 🔁 Ocultar todas las sub-secciones internas del módulo Asistencias
+    // 🔁 Manejo específico de Asistencias y sus submódulos
     const subAsistencias = [
         'recaudacion', 'lecturas', 'distribucion', 'catastro',
         'inspecciones', 'medidores', 'persuasivas', 'norte', 'administrativo_1'
     ];
 
-    subAsistencias.forEach(id => {
-        const div = document.getElementById(id);
-        if (div) div.style.display = 'none';
-    });
-
-    // 🔁 También oculta por completo la sección principal Asistencias si no se seleccionó
-    const asistencias = document.getElementById('asistencias');
-    if (sectionId !== 'asistencias' && asistencias) {
-        asistencias.style.display = 'none';
-    } else if (sectionId === 'asistencias' && asistencias) {
-        asistencias.style.display = 'block';
+    // Si entramos a CUALQUIER sección que no sea asistencias, limpiamos los submódulos
+    if (sectionId !== 'asistencias') {
+        subAsistencias.forEach(id => {
+            const div = document.getElementById(id);
+            if (div) div.style.display = 'none';
+        });
+        const asistenciasDiv = document.getElementById('asistencias');
+        if (asistenciasDiv) asistenciasDiv.style.display = 'none';
+    } else {
+        const asistenciasDiv = document.getElementById('asistencias');
+        if (asistenciasDiv) asistenciasDiv.style.display = 'block';
     }
 
     // Ocultar mensaje de bienvenida
     if (welcomeMessage) {
         welcomeMessage.style.display = 'none';
     }
+
+    // Cerrar sidebar en móvil automáticamente al elegir sección
+    if (window.innerWidth <= 768) {
+        sidebar.classList.remove('active');
+    }
 }
 
-// Asegurarte de que los enlaces del sidebar actualicen el contenido dinámicamente
+// --- EVENTOS DE ENLACES SIDEBAR ---
 const sidebarLinks = document.querySelectorAll('.sidebar ul li a');
 sidebarLinks.forEach(link => {
     link.addEventListener('click', (e) => {
@@ -78,138 +98,151 @@ sidebarLinks.forEach(link => {
 
         if (sectionId) {
             e.preventDefault();
+            
+            // Estética: Marcar link activo
+            sidebarLinks.forEach(l => l.classList.remove('active-link'));
+            link.classList.add('active-link');
+
             showSection(sectionId);
 
-            // ✅ Registrar acceso al módulo desde JS si es asistencias
+            // Registro de módulo asistencias
             if (sectionId === 'asistencias') {
-                fetch('/registrar-modulo', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ modulo: 'asistencias' })
-                }).then(res => {
-                    if (!res.ok) {
-                        console.warn('No se pudo registrar acceso al módulo asistencias.');
-                    }
-                }).catch(err => {
-                    console.error('Error al registrar acceso:', err);
-                });
+                registrarAcceso('asistencias');
             }
         }
     });
 });
 
+// --- SELECT DE ASISTENCIAS ---
+const asistenciaSelect = document.getElementById('tipo-asistencia-select');
+if (asistenciaSelect) {
+    asistenciaSelect.addEventListener('change', (e) => {
+        const secciones = ['recaudacion', 'lecturas', 'distribucion', 'catastro', 'inspecciones', 'medidores', 'persuasivas', 'norte', 'administrativo_1'];
 
-document.getElementById('tipo-asistencia-select').addEventListener('change', (e) => {
-    const secciones = [
-        'recaudacion', 'lecturas', 'distribucion', 'catastro',
-        'inspecciones', 'medidores', 'persuasivas', 'norte', 'administrativo_1'
-    ];
+        secciones.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
 
-    // Oculta todas las sub-secciones
-    secciones.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
+        const seleccion = e.target.value;
+        const titulo = document.querySelector('#asistencias h2');
+        
+        if (titulo) {
+            const texto = e.target.options[e.target.selectedIndex].text;
+            titulo.textContent = seleccion ? `ASISTENCIA DE PERSONAL: ${texto.toUpperCase()}` : 'ASISTENCIA DE PERSONAL';
+        }
 
-    const seleccion = e.target.value;
-
-    // Cambia el título dinámicamente
-    const titulo = document.querySelector('#asistencias h2');
-    if (titulo) {
-        const texto = e.target.options[e.target.selectedIndex].text;
         if (seleccion) {
-            titulo.textContent = `ASISTENCIA DE PERSONAL: ${texto.toUpperCase()}`;
+            const mostrar = document.getElementById(seleccion);
+            if (mostrar) mostrar.style.display = 'block';
+            registrarAcceso(`asistencias_${seleccion}`);
+        }
+    });
+}
+
+// --- FUNCIÓN REGISTRO FETCH ---
+function registrarAcceso(nombreModulo) {
+    fetch('/registrar-modulo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modulo: nombreModulo })
+    }).catch(err => console.error('Error al registrar acceso:', err));
+}
+
+// --- LOGO / HOME ---
+const logoLink = document.getElementById('logo-link');
+if (logoLink) {
+    logoLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const sections = document.querySelectorAll('.section');
+        sections.forEach(section => {
+            section.classList.remove('active');
+            section.style.display = 'none';
+        });
+
+        if (welcomeMessage) welcomeMessage.style.display = 'flex';
+        
+        const asistencias = document.getElementById('asistencias');
+        if (asistencias) asistencias.style.display = 'none';
+    });
+}
+
+// --- PASSWORD TOGGLE ---
+function togglePassword() {
+        const passwordInput = document.getElementById('password');
+        const eyeIcon = document.getElementById('eye-icon');
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            eyeIcon.classList.replace('fa-eye', 'fa-eye-slash');
         } else {
-            titulo.textContent = 'ASISTENCIA DE PERSONAL';
+            passwordInput.type = 'password';
+            eyeIcon.classList.replace('fa-eye-slash', 'fa-eye');
         }
     }
 
-    // Muestra la sección seleccionada
-    if (seleccion) {
-        const mostrar = document.getElementById(seleccion);
-        if (mostrar) mostrar.style.display = 'block';
-
-        // ✅ Registrar acceso al submódulo asistencias (recaudacion, lecturas, etc.)
-        fetch('/registrar-modulo', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ modulo: `asistencias_${seleccion}` })
-        }).catch(err => console.error('Error al registrar acceso a submódulo:', err));
-    }
-});
-
-
-document.getElementById('logo-link').addEventListener('click', (e) => {
-    e.preventDefault();
-
-    // Oculta todas las secciones activas
-    const sections = document.querySelectorAll('.section');
-    sections.forEach(section => section.classList.remove('active'));
-
-    // Muestra mensaje de bienvenida
-    const welcome = document.getElementById('welcome-message');
-    if (welcome) welcome.style.display = 'flex'; // en lugar de block, para mantener centrado
-
-    // Asegura que el contenedor de asistencias se oculte si estaba visible
-    const asistencias = document.getElementById('asistencias');
-    if (asistencias) asistencias.style.display = 'none';
-});
-
-function togglePassword() {
-    const input = document.getElementById('password');
-    const iconSpan = document.getElementById('toggleIcon');
-
-    // Limpiar el ícono actual
-    iconSpan.innerHTML = '';
-
-    if (input.type === 'password') {
-        input.type = 'text';
-
-        // Ojito cerrado
-        iconSpan.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#555" viewBox="0 0 24 24">
-                <path d="M12 5c-4.6 0-8.4 2.9-10 7 1.6 4.1 5.4 7 10 7 4.6 0 8.4-2.9 10-7-1.6-4.1-5.4-7-10-7zm0 12c-2.8 0-5-2.2-5-5 0-.8.2-1.5.6-2.1l6.5 6.5c-.6.4-1.3.6-2.1.6zm4.4-2.9-6.5-6.5c.6-.4 1.3-.6 2.1-.6 2.8 0 5 2.2 5 5 0 .8-.2 1.5-.6 2.1z"/>
-                <line x1="3" y1="3" x2="21" y2="21" stroke="#555" stroke-width="2"/>
-            </svg>`;
-    } else {
-        input.type = 'password';
-
-        // Ojito abierto
-        iconSpan.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#555" viewBox="0 0 24 24">
-                <path d="M12 4.5C7.5 4.5 3.7 7.6 2 12c1.7 4.4 5.5 7.5 10 7.5s8.3-3.1 10-7.5c-1.7-4.4-5.5-7.5-10-7.5zm0 13a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11zm0-9a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/>
-            </svg>`;
-    }
-}
-
+// --- CONTROL DE INACTIVIDAD ---
 let inactivityTime = function () {
     let time;
-    const maxIdleTime = 30 * 60 * 1000; // 30 minutos en ms
+    const maxIdleTime = 30 * 60 * 1000; 
 
-    function logout() {
-        // Forzar refresh para que el servidor detecte sesión expirada
-        window.location.href = '/logout';
-    }
+    function logout() { window.location.href = '/logout'; }
 
     function resetTimer() {
         clearTimeout(time);
         time = setTimeout(logout, maxIdleTime);
     }
 
-    // Eventos que reinician el contador
     window.onload = resetTimer;
     document.onmousemove = resetTimer;
     document.onkeypress = resetTimer;
     document.onclick = resetTimer;
     document.onscroll = resetTimer;
 };
-
 inactivityTime();
 
+
+document.querySelector('form').addEventListener('submit', function(e) {
+        const container = document.querySelector('.login-container');
+
+        container.classList.add('animate-out');
+
+        const form = this;
+        e.preventDefault(); 
+        setTimeout(() => {
+            form.submit(); 
+        }, 300); 
+    });
+
+document.addEventListener('DOMContentLoaded', function() {
+    const menuToggle = document.getElementById('menu-toggle');
+    const closeSidebar = document.getElementById('close-sidebar');
+    const sidebar = document.getElementById('sidebar');
+
+    // 1. Al cargar: Si es móvil, colapsar. Si es PC, asegurar que NO esté colapsado.
+    if (window.innerWidth <= 768) {
+        sidebar.classList.add('collapsed');
+    } else {
+        sidebar.classList.remove('collapsed');
+    }
+
+    // 2. Función para alternar (Funciona para ambos botones)
+    function toggleMenu() {
+        sidebar.classList.toggle('collapsed');
+    }
+
+    if (menuToggle) menuToggle.addEventListener('click', toggleMenu);
+    if (closeSidebar) closeSidebar.addEventListener('click', toggleMenu);
+
+    // 3. Ajuste opcional: Si el usuario cambia el tamaño de la ventana (Resizing)
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 768) {
+            sidebar.classList.remove('collapsed');
+        } else {
+            sidebar.classList.add('collapsed');
+        }
+    });
+});
+    
 // RECAUDACION
 document.addEventListener('DOMContentLoaded', function () {
     });
@@ -5410,7 +5443,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         //if (fecha < inicioRango || fecha > finRango) {
             //alert(`La fecha seleccionada está fuera del rango permitido.\nSolo se puede registrar asistencia desde el ${inicioRango.toISOString().split('T')[0]} hasta el ${finRango.toISOString().split('T')[0]}.`);
             //return;
-       //}
+        //}
 
         // Recoger los datos de los empleados y sus estados
         const empleadosParaGuardarPersuasivas = [];
@@ -6184,33 +6217,33 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         // Convertir la fecha seleccionada a un objeto Date
-        const fecha = new Date(fechaSeleccionada);
+        //const fecha = new Date(fechaSeleccionada);
 
         // Obtener la fecha actual y construir los límites del rango
-        const hoy = new Date();
-        const mesActual = hoy.getMonth() + 1;
-        const añoActual = hoy.getFullYear();
+        //const hoy = new Date();
+        //const mesActual = hoy.getMonth() + 1;
+        //const añoActual = hoy.getFullYear();
 
         // Definir el rango permitido
-        let inicioRango, finRango;
-        if (hoy.getDate() >= 26) {
+        //let inicioRango, finRango;
+        //if (hoy.getDate() >= 26) {
             // Estamos entre el 26 y el final del mes actual
-            inicioRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-26`);
-            finRango = new Date(`${añoActual}-${(mesActual + 1).toString().padStart(2, '0')}-25`);
-        } else {
+            //inicioRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-26`);
+            //finRango = new Date(`${añoActual}-${(mesActual + 1).toString().padStart(2, '0')}-25`);
+        //} else {
             // Estamos antes del 26, entonces el rango es del mes anterior al actual
-            const mesAnterior = mesActual - 1 || 12;
-            const añoAnterior = mesAnterior === 12 ? añoActual - 1 : añoActual;
+            //const mesAnterior = mesActual - 1 || 12;
+            //const añoAnterior = mesAnterior === 12 ? añoActual - 1 : añoActual;
 
-            inicioRango = new Date(`${añoAnterior}-${mesAnterior.toString().padStart(2, '0')}-26`);
-            finRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-25`);
-        }
+            //inicioRango = new Date(`${añoAnterior}-${mesAnterior.toString().padStart(2, '0')}-26`);
+            //finRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-25`);
+        //}
 
         // Validar si la fecha seleccionada está dentro del rango permitido
-        if (fecha < inicioRango || fecha > finRango) {
-            alert(`La fecha seleccionada está fuera del rango permitido.\nSolo se puede registrar asistencia desde el ${inicioRango.toISOString().split('T')[0]} hasta el ${finRango.toISOString().split('T')[0]}.`);
-            return;
-        }
+        //if (fecha < inicioRango || fecha > finRango) {
+           // alert(`La fecha seleccionada está fuera del rango permitido.\nSolo se puede registrar asistencia desde el ${inicioRango.toISOString().split('T')[0]} hasta el ${finRango.toISOString().split('T')[0]}.`);
+            //return;
+        //}
     
         // Recoger los datos de los empleados y sus estados
         const empleadosParaGuardarNorte = [];
@@ -7524,7 +7557,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     crearOpcionImagen(opcionesDiv, imgNombre, index, carpetaData.carpeta, carpetaData);
                 });
 
-                imagenesActuales = carpetaData.imagenes.map(nombre => ({ nombre, carpeta: carpetaData.carpeta, categoria: "ordenes" }));
+                imagenesActuales = carpetaData.imagenes.map(nombre => ({ nombre, carpeta: carpetaData.carpeta, categoria: carpetaData.categoria }));
                 indiceImagenActual = 0;
                 rotacionActual = 0;
                 mostrarImagen();
@@ -7566,11 +7599,10 @@ document.addEventListener("DOMContentLoaded", () => {
                             opcionImg.textContent = imgNombre;
 
                             opcionImg.addEventListener("click", () => {
-                                imagenesActuales = subgrupo.imagenes.map(nombre => ({ nombre, carpeta: subgrupo.carpeta, categoria: "lecturas" }));
+                                imagenesActuales = subgrupo.imagenes.map(nombre => ({ nombre, carpeta: subgrupo.carpeta, categoria: subgrupo.categoria }));
                                 indiceImagenActual = index;
                                 rotacionActual = 0;
                                 mostrarImagen();
-
                             });
 
                             opcionesDiv.appendChild(opcionImg);
@@ -7602,7 +7634,7 @@ document.addEventListener("DOMContentLoaded", () => {
         opcionImg.style.marginBottom = "8px";
 
         const miniatura = document.createElement("img");
-        miniatura.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${carpetaUrl}/${imgNombre}`;
+        miniatura.src = `/imagen/${carpetaUrl}/${imgNombre}`;
         miniatura.style.width = "60px";
         miniatura.style.height = "60px";
         miniatura.style.objectFit = "cover";
@@ -7650,27 +7682,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
 let zoomActual = 1;
 
-function mostrarImagen(leyendaAux) {
+function mostrarImagen() {
   if (imagenesActuales.length === 0) {
     seccionDerecha.innerHTML = "<p>No hay imágenes para mostrar.</p>";
     return;
   }
 
-  let { nombre, carpeta, categoria } = imagenesActuales[indiceImagenActual];
-
-  if (categoria == undefined){
-    categoria = "ordenes"
-  }
-
-
+  const { nombre, carpeta } = imagenesActuales[indiceImagenActual];
   const carpetaUrl = carpeta.replace(/\\/g, "/");
 
     // Codificar cada segmento para URL segura
   const segmentos = carpetaUrl.split("/").map(encodeURIComponent);
   const nombreUrl = encodeURIComponent(nombre);
-
-  console.log()
-  const urlImagen = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${categoria}/${segmentos.join("/")}/${nombreUrl}`;
+  const urlImagen = `/imagen/${segmentos.join("/")}/${nombreUrl}`;
   
   console.log("URL imagen formada:", urlImagen);
 
@@ -7701,7 +7725,7 @@ function mostrarImagen(leyendaAux) {
   console.log("carpeta URL limpia:", carpetaUrl);
   console.log("Imagen:", nombre);
   console.log("Ruta completa para la imagen:", `/imagen/${carpetaUrl}/${nombre}`);
-  img.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${categoria}/${carpetaUrl}/${nombre}`; // ✅ Ruta correcta
+  img.src = `/imagen/${carpetaUrl}/${nombre}`; // ✅ Ruta correcta
   img.style.maxWidth = "100%";
   img.style.maxHeight = "100%";
   img.style.transform = `rotate(${rotacionActual}deg) scale(${zoomActual})`;  // agrego zoom aquí
@@ -8602,10 +8626,21 @@ document.getElementById("boton-subir-reporte-2").addEventListener("click", funct
 
 
                 // Detectar columnas para estilos especiales
+                // 🔹 CORRECCIÓN: Detectar el mes actual real
+                const fechaHoy = new Date();
+                const mesesNombres = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+                const nombreMesActual = mesesNombres[fechaHoy.getMonth()]; // Ej: "ENERO"
+
+                // Detectar columnas para estilos especiales
                 const columnasLectura = columnas.filter(c => c.toUpperCase().includes("LECTURA") && !c.toUpperCase().includes("TIPOLECTURA"));
-                const columnaUltimaLectura = columnasLectura[columnasLectura.length - 1];
+                
+                // Buscamos la columna que contenga el NOMBRE DEL MES ACTUAL. Si no la encuentra, usa la última por defecto.
+                const columnaUltimaLectura = columnasLectura.find(c => c.toUpperCase().includes(nombreMesActual)) || columnasLectura[columnasLectura.length - 1];
+
                 const columnasObs1 = columnas.filter(c => c.toUpperCase().includes("OBS1"));
-                const columnaUltimaObs1 = columnasObs1[columnasObs1.length - 1];
+                
+                // Lo mismo para OBS1
+                const columnaUltimaObs1 = columnasObs1.find(c => c.toUpperCase().includes(nombreMesActual)) || columnasObs1[columnasObs1.length - 1];
 
                 // Celdas normales
                 columnas.forEach(col => {
@@ -8874,12 +8909,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
     function renderizarResultados(grupos, codigo) {
-        if (grupos[0].leyenda !== "LECTURAS"){
-            categoria = "ordenes"
-        }else {
-            categoria = "lecturas"
-        }
-        
         const derecha = document.getElementById("fc-seccion-derecha-2");
         derecha.innerHTML = "";
 
@@ -8904,40 +8933,75 @@ document.addEventListener("DOMContentLoaded", () => {
         const filaSeleccionada = jsonDataOriginal.find(f => f["CLICODFAC"]?.toString().trim() === codigo);
         const medcodygo = filaSeleccionada?.MEDCODYGO?.toString().trim() ?? "No disponible";
 
-        // Objeto para ordenar los meses
-        const ordenMeses = {
-            "ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6,
-            "JULIO": 7, "AGOSTO": 8, "SETIEMBRE": 9, "SEPTIEMBRE": 9,
-            "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12
-        };
+        // --- INICIO CORRECCIÓN ---
 
-        // Buscar la última LECTURA
+        // 1. Definimos la lista maestra de meses y obtenemos la fecha real de hoy
+        const listaMeses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+        // Alias extra por si en el Excel dice "SETIEMBRE" en vez de "SEPTIEMBRE"
+        const aliasMeses = { "SETIEMBRE": "SEPTIEMBRE", "SEPTEMBER": "SEPTIEMBRE" };
+        
+        const fechaHoy = new Date();
+        const mesActualIdx = fechaHoy.getMonth(); // 0 = Enero, 1 = Febrero...
+
+        // Variables para guardar el resultado
         let ultimaLectura = "No disponible";
-        if (filaSeleccionada) {
-            const columnasLectura = Object.keys(filaSeleccionada).filter(k =>
-                k.toUpperCase().includes("LECTURA") && !k.toUpperCase().includes("TIPOLECTURA")
-            );
-            columnasLectura.sort((a, b) => {
-                const getMes = (col) => Object.entries(ordenMeses).find(([mes]) => col.toUpperCase().includes(mes))?.[1] || 0;
-                return getMes(a) - getMes(b);
-            });
-            const ultimaCol = columnasLectura[columnasLectura.length - 1];
-            ultimaLectura = filaSeleccionada[ultimaCol] ?? "Sin valor";
-        }
-
-        // Buscar la última OBS1
         let ultimaObs1 = "No disponible";
+
         if (filaSeleccionada) {
-            const columnasObs1 = Object.keys(filaSeleccionada).filter(k =>
-                k.toUpperCase().includes("OBS1")
-            );
-            columnasObs1.sort((a, b) => {
-                const getMes = (col) => Object.entries(ordenMeses).find(([mes]) => col.toUpperCase().includes(mes))?.[1] || 0;
-                return getMes(a) - getMes(b);
-            });
-            const ultimaColObs1 = columnasObs1[columnasObs1.length - 1];
-            ultimaObs1 = filaSeleccionada[ultimaColObs1] ?? "Sin valor";
+            // Obtenemos todas las claves (columnas) de la fila
+            const llavesFila = Object.keys(filaSeleccionada);
+
+            // --- BUSCAR LECTURA ---
+            // Recorremos desde el mes actual hacia atrás (hasta 12 meses)
+            for (let i = 0; i < 12; i++) {
+                // Fórmula circular: Hoy es 0 (Enero). i=0 -> Enero. i=1 -> Diciembre.
+                const indiceBusqueda = (mesActualIdx - i + 12) % 12;
+                const nombreMesBusqueda = listaMeses[indiceBusqueda];
+
+                // Buscamos si existe una columna que sea LECTURA + EL MES CALCULADO
+                const columnaEncontrada = llavesFila.find(k => {
+                    const upper = k.toUpperCase();
+                    // Normalizamos SETIEMBRE a SEPTIEMBRE si fuera necesario
+                    let upperNormalizado = upper;
+                    for (const [alias, original] of Object.entries(aliasMeses)) {
+                        upperNormalizado = upperNormalizado.replace(alias, original);
+                    }
+
+                    return upperNormalizado.includes("LECTURA") && 
+                           upperNormalizado.includes(nombreMesBusqueda) && 
+                           !upperNormalizado.includes("TIPOLECTURA");
+                });
+
+                // Si encontramos la columna y tiene valor, guardamos y ROMPEMOS el ciclo
+                if (columnaEncontrada && filaSeleccionada[columnaEncontrada] != null) {
+                    ultimaLectura = filaSeleccionada[columnaEncontrada];
+                    break; // ¡Ya encontramos la más reciente! Dejamos de buscar.
+                }
+            }
+
+            // --- BUSCAR OBS1 (Misma lógica) ---
+            for (let i = 0; i < 12; i++) {
+                const indiceBusqueda = (mesActualIdx - i + 12) % 12;
+                const nombreMesBusqueda = listaMeses[indiceBusqueda];
+
+                const columnaEncontrada = llavesFila.find(k => {
+                    const upper = k.toUpperCase();
+                    let upperNormalizado = upper;
+                    for (const [alias, original] of Object.entries(aliasMeses)) {
+                        upperNormalizado = upperNormalizado.replace(alias, original);
+                    }
+
+                    return upperNormalizado.includes("OBS1") && 
+                           upperNormalizado.includes(nombreMesBusqueda);
+                });
+
+                if (columnaEncontrada && filaSeleccionada[columnaEncontrada] != null) {
+                    ultimaObs1 = filaSeleccionada[columnaEncontrada];
+                    break; 
+                }
+            }
         }
+        // --- FIN CORRECCIÓN ---
 
         const textoCodigo = document.createElement("div");
         textoCodigo.innerHTML = `
@@ -9154,7 +9218,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
             mostrar = () => {
-                const ruta = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${categoria}/${grupo.carpeta}/${imagenesActuales[indiceImagenActual]}`;
+                const ruta = `/imagen/${grupo.carpeta}/${imagenesActuales[indiceImagenActual]}`;
                 img.src = ruta;
                 offsetX = 0;
                 offsetY = 0;
@@ -9258,16 +9322,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 indiceImagenActual = 0;
                 rotacionActual = 0;
                 zoomActual = 1;
-                categoria = "lecturas"
-
                 mostrarImagen(grupoActual);
             }
         };
 
         btnOrdenes.onclick = () => {
             if (grupoOrdenes.length) {
-                categoria = "ordenes"
-
                 mostrarOpciones(grupoOrdenes);
             }
         };
@@ -9870,7 +9930,7 @@ function iniciarMonitoreoOperario() {
 
                                 // Imagen con tamaño fijo
                                 const img = document.createElement("img");
-                                img.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${coincidentes[0].carpeta}/${coincidentes[0].archivo}`;
+                                img.src = `/imagen/${coincidentes[0].carpeta}/${coincidentes[0].archivo}`;
                                 img.style.width = "1000px";      // Tamaño fijo
                                 img.style.height = "850px";     // Tamaño fijo
                                 img.style.objectFit = "contain";
@@ -9898,7 +9958,7 @@ function iniciarMonitoreoOperario() {
 
                                 btnIzq.onclick = () => {
                                     index = (index - 1 + coincidentes.length) % coincidentes.length;
-                                    img.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${coincidentes[index].carpeta}/${coincidentes[index].archivo}`;
+                                    img.src = `/imagen/${coincidentes[index].carpeta}/${coincidentes[index].archivo}`;
                                 };
 
                                 const btnDer = document.createElement("button");
@@ -9921,7 +9981,7 @@ function iniciarMonitoreoOperario() {
 
                                 btnDer.onclick = () => {
                                     index = (index + 1) % coincidentes.length;
-                                    img.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${coincidentes[index].carpeta}/${coincidentes[index].archivo}`;
+                                    img.src = `/imagen/${coincidentes[index].carpeta}/${coincidentes[index].archivo}`;
                                 };
 
                                 // Ensamblar carrusel
@@ -11548,7 +11608,7 @@ const EMPLEADOS_DB = [
     "163 TISNADO JAIME ROSAS VICO", "106 TUCTO JULCA JORGE ROLANDO", "25 TUFINIO LOPEZ WILDER ELI",
     "26 VASQUEZ FERNANDEZ JUAN CARLOS", "82 VASQUEZ SALAS ANA CECILIA", "27 VEGA QUISPE EDWARD WILLIAM",
     "83 VILLACORTA ROBLES KEVIN ALONSO", "29 VILLACORTA RODRIGUEZ WALDIR", "107 YBAÑEZ ROJAS LUIS ALEXANDER",
-    "48 ZUMAETA BORDOY JUDY DEL CARMEN"
+    "48 ZUMAETA BORDOY JUDY DEL CARMEN", "506 CONTRERAS SANTA CRUZ MARCO NOE", "488 MONTES VALLES NAZIA", "487 ORTIZA BAZAN ANDERSON", "486 TERRONES BARRIOS TATIANA JUDITH", "426 AGUILAR MENDOZA JEYSON ABIMAEL"
 ];
 
 // 1. FUNCIÓN PARA CREAR EL DATALIST (Solo una vez)
@@ -11571,7 +11631,7 @@ function setupDatalist() {
 
 // 2. FUNCIÓN ANALIZAR (ACTUALIZADA CON INPUT BUSCABLE)
 function analizarCargas() {
-    setupDatalist(); // Aseguramos que exista la lista de opciones
+    setupDatalist();
 
     const fileInput = document.getElementById('archivoCarga');
     const fCalendario = document.getElementById('fechaCalendario');
@@ -11586,69 +11646,76 @@ function analizarCargas() {
 
     const file = fileInput.files[0];
     const reader = new FileReader();
-
     reader.readAsArrayBuffer(file);
 
     reader.onload = function(e) {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, {type: 'array'});
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         
-        // Leer datos brutos
+        // Leer como matriz para procesar fila por fila
         const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
         if (rawData.length === 0) return;
 
-        // --- BÚSQUEDA INTELIGENTE DE COLUMNA (Igual que antes) ---
-        let targetColIndex = -1;
-        let headerRowIndex = -1;
-        const limitSearch = Math.min(rawData.length, 10);
+        // --- BUSCAR COLUMNAS CLAVE ---
+        let colCargard = -1;
+        let colFciclo = -1;
+        let headerRow = -1;
 
-        for (let r = 0; r < limitSearch; r++) {
+        // Buscamos en las primeras 10 filas
+        for (let r = 0; r < Math.min(rawData.length, 10); r++) {
             const row = rawData[r];
             for (let c = 0; c < row.length; c++) {
-                if (String(row[c]).toLowerCase().trim() === 'cargard') {
-                    targetColIndex = c;
-                    headerRowIndex = r;
-                    break;
-                }
+                const valor = String(row[c]).toLowerCase().trim();
+                if (valor === 'cargard') colCargard = c;
+                if (valor === 'fciclo') colFciclo = c;
             }
-            if (targetColIndex !== -1) break;
+            if (colCargard !== -1) { headerRow = r; break; }
         }
 
-        if (targetColIndex === -1) {
+        if (colCargard === -1) {
             alert("No se encontró la columna 'cargard'.");
             return;
         }
 
-        // Extraer datos únicos
-        const uniqueCargas = new Set();
-        for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+        // --- LÓGICA DE RE-CÁLCULO (SIMULANDO AL BACKEND) ---
+        const limite = 528;
+        const cargasSimuladas = new Set();
+        
+        // Agrupar filas por ciclo (fciclo) para calcular los nuevos IDs de carga
+        const filasPorCiclo = {};
+        for (let i = headerRow + 1; i < rawData.length; i++) {
             const row = rawData[i];
-            if (row[targetColIndex] !== undefined && row[targetColIndex] !== null && row[targetColIndex] !== "") {
-                uniqueCargas.add(row[targetColIndex].toString().trim());
-            }
+            const ciclo = colFciclo !== -1 ? String(row[colFciclo]).trim() : "unico";
+            if (!filasPorCiclo[ciclo]) filasPorCiclo[ciclo] = [];
+            filasPorCiclo[ciclo].push(row[colCargard]);
         }
 
-        // --- GENERAR UI CON INPUT SEARCH ---
-        grid.innerHTML = ''; 
-        
-        const sortedCargas = Array.from(uniqueCargas).sort((a, b) => {
-            return a.localeCompare(b, undefined, { numeric: true });
+        // Calcular qué números de carga resultarán después de la partición
+        Object.keys(filasPorCiclo).forEach(ciclo => {
+            const filas = filasPorCiclo[ciclo];
+            if (filas.length === 0) return;
+
+            // Tomamos el primer ID de carga del ciclo como base
+            const cargaBase = parseInt(filas[0]) || 0;
+
+            filas.forEach((_, index) => {
+                const nuevaCarga = cargaBase + Math.floor(index / limite);
+                cargasSimuladas.add(nuevaCarga.toString());
+            });
         });
+
+        // --- GENERAR UI ---
+        grid.innerHTML = ''; 
+        const sortedCargas = Array.from(cargasSimuladas).sort((a, b) => a - b);
 
         sortedCargas.forEach(carga => {
             const card = document.createElement('div');
             card.className = 'load-card';
-            // CAMBIO AQUÍ: Input list en lugar de select
             card.innerHTML = `
                 <span class="load-title">Carga n° ${carga}</span>
-                <input type="text" 
-                       class="operario-input" 
-                       name="carga_${carga}" 
-                       list="listaEmpleados" 
-                       placeholder="Escribe o selecciona..." 
-                       autocomplete="off">
+                <input type="text" class="operario-input" name="carga_${carga}" 
+                       list="listaEmpleados" placeholder="Asignar operario..." autocomplete="off">
             `;
             grid.appendChild(card);
         });
@@ -11727,3 +11794,1219 @@ async function generarAsignacionFinal() {
         btn.innerText = "📥 GENERAR ASIGNACIÓN";
     }
 }
+
+
+/////// GESTIÓN DE EMPLEADOS ///////
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // Variables globales para la paginación
+    let empleadosData = []; // Guardará todos los datos originales
+    let empleadosFiltrados = []; // Guardará los datos después de buscar
+    let paginaActual = 1;
+    const registrosPorPagina = 10; // <--- Cambia esto si quieres más registros por página
+
+    const tbody = document.getElementById('tbody-empleados');
+    const infoPaginacion = document.getElementById('info-paginacion');
+    const controlesPaginacion = document.getElementById('controles-paginacion');
+
+    // 1. FUNCIÓN PARA CARGAR LOS EMPLEADOS DESDE LA API
+    function cargarListaEmpleados() {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 20px;">Cargando empleados...</td></tr>';
+
+        fetch('/api/empleados/listar')
+            .then(response => response.json())
+            .then(data => {
+                empleadosData = data;
+                empleadosFiltrados = data; // Al inicio, los filtrados son todos
+                renderizarTabla();
+            })
+            .catch(error => {
+                console.error("Error al cargar:", error);
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:red; padding: 20px;">Error al cargar los datos.</td></tr>';
+            });
+    }
+
+    // 2. FUNCIÓN PARA DIBUJAR LA TABLA SEGÚN LA PÁGINA
+    function renderizarTabla() {
+        tbody.innerHTML = '';
+
+        // Calcular índices para cortar el arreglo
+        const inicio = (paginaActual - 1) * registrosPorPagina;
+        const fin = inicio + registrosPorPagina;
+        const datosPagina = empleadosFiltrados.slice(inicio, fin);
+
+        if (datosPagina.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 20px;">No se encontraron registros.</td></tr>';
+        } else {
+            // Iteramos solo los datos de la página actual
+            datosPagina.forEach(emp => {
+                const rowClass = emp.estado !== 'ACTIVO' ? 'row-inactive' : '';
+                const badgeClass = emp.estado === 'ACTIVO' ? 'badge-success' : 'badge-danger';
+                
+                const tr = document.createElement('tr');
+                if(rowClass) tr.className = rowClass;
+                
+                tr.innerHTML = `
+                    <td class="col-checkbox"><input type="checkbox" class="check-item" value="${emp.id}"></td>
+                    <td class="fw-bold">${emp.dni || '-'}</td>
+                    <td><div class="user-name">${emp.apellidos_nombres || '-'}</div></td>
+                    <td>${emp.area || '-'}</td>
+                    <td class="text-muted">${emp.cargo || '-'}</td>
+                    <td><span class="badge ${badgeClass}">${emp.estado || 'DESCONOCIDO'}</span></td>
+                    <td class="col-actions">
+                        <button class="action-btn view-btn" data-id="${emp.id}" title="Ver Detalles">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+
+                        <button class="action-btn edit-btn" data-id="${emp.id}" title="Editar">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="action-btn delete-btn" data-id="${emp.id}" title="Eliminar">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        actualizarPaginacion();
+    }
+
+    // 3. FUNCIÓN PARA DIBUJAR LOS BOTONES DE PAGINACIÓN (Estilo: Anterior | pag. X de Y | Siguiente)
+    function actualizarPaginacion() {
+        const totalRegistros = empleadosFiltrados.length;
+        // Si no hay registros, asumimos al menos 1 página vacía para que no diga "pag. 1 de 0"
+        const totalPaginas = Math.max(1, Math.ceil(totalRegistros / registrosPorPagina)); 
+        
+        // Texto informativo de la izquierda (Opcional, lo mantenemos por si te gusta)
+        const inicioInfo = totalRegistros === 0 ? 0 : ((paginaActual - 1) * registrosPorPagina) + 1;
+        const finInfo = Math.min(paginaActual * registrosPorPagina, totalRegistros);
+        infoPaginacion.textContent = `Mostrando ${inicioInfo} a ${finInfo} de ${totalRegistros} registros`;
+
+        // Limpiar controles de la derecha
+        controlesPaginacion.innerHTML = '';
+
+        // Botón "Anterior"
+        const btnPrev = document.createElement('button');
+        btnPrev.className = 'page-btn';
+        btnPrev.textContent = 'Anterior';
+        btnPrev.disabled = paginaActual === 1 || totalRegistros === 0;
+        btnPrev.onclick = () => { 
+            if (paginaActual > 1) {
+                paginaActual--; 
+                renderizarTabla(); 
+            }
+        };
+        controlesPaginacion.appendChild(btnPrev);
+
+        // Texto "pag. X de Y"
+        const textPage = document.createElement('span');
+        textPage.style.padding = '6px 12px';
+        textPage.style.fontSize = '13px';
+        textPage.style.color = '#475569';
+        textPage.style.fontWeight = '500';
+        textPage.textContent = `pag. ${paginaActual} de ${totalPaginas}`;
+        controlesPaginacion.appendChild(textPage);
+
+        // Botón "Siguiente"
+        const btnNext = document.createElement('button');
+        btnNext.className = 'page-btn';
+        btnNext.textContent = 'Siguiente';
+        btnNext.disabled = paginaActual >= totalPaginas || totalRegistros === 0;
+        btnNext.onclick = () => { 
+            if (paginaActual < totalPaginas) {
+                paginaActual++; 
+                renderizarTabla(); 
+            }
+        };
+        controlesPaginacion.appendChild(btnNext);
+    }
+
+    // 4. BÚSQUEDA EN TIEMPO REAL RE-ADAPTADA
+    const searchInput = document.getElementById('buscar-empleado');
+    if (searchInput) {
+        searchInput.addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase().trim();
+            
+            // Filtramos el arreglo original directamente
+            empleadosFiltrados = empleadosData.filter(emp => {
+                const filaTexto = `${emp.dni} ${emp.apellidos_nombres} ${emp.area} ${emp.cargo} ${emp.estado}`.toLowerCase();
+                return filaTexto.includes(searchTerm);
+            });
+            
+            // Regresamos a la página 1 cuando se busca algo nuevo
+            paginaActual = 1;
+            renderizarTabla();
+        });
+    }
+
+    // 5. ESCUCHA DE ACCIONES EN LA TABLA (Ver, Editar, Eliminar)
+    tbody.addEventListener('click', function(e) {
+        // 5a. Lógica para VER PERFIL
+        const btnVer = e.target.closest('.view-btn');
+        if (btnVer) {
+            const idEmpleado = btnVer.getAttribute('data-id');
+            abrirPerfil(idEmpleado);
+        }
+
+        // 5b. Lógica para ELIMINAR (CESAR) <--- INSERTA ESTO AQUÍ
+        const btnEliminar = e.target.closest('.delete-btn');
+        if (btnEliminar) {
+            const idEmpleado = btnEliminar.getAttribute('data-id');
+            
+            // Usamos una confirmación simple del navegador
+            if (confirm('¿Estás seguro de que deseas cambiar el estado de este empleado a CESADO?')) {
+                
+                fetch(`/empleado/cesar/${idEmpleado}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Empleado cesado correctamente.');
+                        cargarListaEmpleados(); // Recarga los datos de la API para actualizar la tabla
+                    } else {
+                        alert('Error al procesar: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error:", error);
+                    alert('Ocurrió un error en la comunicación con el servidor.');
+                });
+            }
+        }
+    });
+
+    // Función que divide la pantalla y llena los datos
+    function abrirPerfil(id_empleado) {
+        const tabla = document.getElementById('columna-tabla');
+        const perfil = document.getElementById('columna-perfil');
+        
+        // Animamos la vista (encogemos tabla y mostramos perfil)
+        tabla.classList.add('comprimida');
+        perfil.classList.add('abierto');
+        
+        // Buscamos al empleado en tu arreglo de datos que ya está cargado en memoria
+        const emp = empleadosFiltrados.find(e => e.id == id_empleado);
+        
+        if(emp) {
+            // Llenamos los datos en el HTML
+            document.getElementById('perfil-nombre').textContent = emp.apellidos_nombres || 'Sin Nombre';
+            document.getElementById('perfil-cargo').textContent = emp.cargo || 'Sin Cargo asignado';
+            document.getElementById('perfil-dni').textContent = emp.dni || '-';
+            document.getElementById('perfil-area').textContent = emp.area || '-';
+            
+            document.getElementById('perfil-ingreso').textContent = emp.fecha_ingreso || '-';
+            document.getElementById('perfil-fecha-nac').textContent = emp.fecha_nacimiento || '-';
+            document.getElementById('perfil-sueldo').textContent = emp.sueldo_basico || '0.00';
+            document.getElementById('perfil-banco').textContent = emp.banco || '-';
+            document.getElementById('perfil-cuenta').textContent = emp.numero_cuenta || '-';
+            document.getElementById('perfil-cci').textContent = emp.cci || '-';
+            
+            // Horarios
+            document.getElementById('perfil-hora-ingreso').textContent = emp.hora_ingreso || '-';
+            document.getElementById('perfil-hora-salida').textContent = emp.hora_salida || '-';
+            
+            // Actualizar el estado y sus colores
+            const badgeEstado = document.getElementById('perfil-estado');
+            badgeEstado.textContent = emp.estado || 'DESCONOCIDO';
+            badgeEstado.className = 'badge ' + (emp.estado === 'ACTIVO' ? 'badge-success' : 'badge-danger');
+            
+            // Actualizar la foto
+            const imgFoto = document.getElementById('perfil-foto');
+            imgFoto.src = emp.foto_url ? emp.foto_url : 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
+        }
+    }
+
+    // Exponemos la función cerrarPerfil a "window" para que el botón HTML la pueda ejecutar
+    window.cerrarPerfil = function() {
+        const tabla = document.getElementById('columna-tabla');
+        const perfil = document.getElementById('columna-perfil');
+        
+        tabla.classList.remove('comprimida');
+        perfil.classList.remove('abierto');
+    };
+
+    // 6. LÓGICA PARA EL MODAL DE REPORTES (ACTUALIZADO CON FECHAS)
+    const modal = document.getElementById('modal-reportes');
+    const btnReporte = document.getElementById('btn-generar-reporte');
+
+    if (btnReporte) {
+        btnReporte.onclick = function() {
+            modal.style.display = "flex";
+            cargarEmpleadosSelect();
+
+            document.getElementById('tipo-dashboard').value = 'todos';
+            document.getElementById('tipo-dashboard').dispatchEvent(new Event('change'));
+            
+            // AUTOCOMPLETAR FECHAS: 1er y último día del mes actual
+            const inputInicio = document.getElementById('fecha-inicio');
+            const inputFin = document.getElementById('fecha-fin');
+            
+            if (!inputInicio.value || !inputFin.value) {
+                const hoy = new Date();
+                // Formato YYYY-MM-DD
+                const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+                const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];
+                
+                inputInicio.value = primerDia;
+                inputFin.value = ultimoDia;
+            }
+
+            // Dibuja Áreas y Estados
+            inicializarGraficos();
+            
+            // Dibuja Asistencias automáticamente con las fechas por defecto
+            if(window.actualizarReportesPorFecha) {
+                window.actualizarReportesPorFecha();
+            }
+        }
+    }
+
+    // Función global para cerrar el modal
+    window.cerrarModalReportes = function() {
+        modal.style.display = "none";
+    };
+
+    // Cerrar si hacen clic fuera del fondo oscuro
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    };
+
+    // 7. FUNCIÓN PARA PROCESAR DATOS Y CREAR GRÁFICOS (Áreas y Estados)
+    function inicializarGraficos() {
+        if (empleadosData.length === 0) return;
+
+        const conteoAreas = {};
+        const conteoEstados = { 'ACTIVO': 0, 'CESADO': 0 };
+
+        empleadosData.forEach(emp => {
+            const area = emp.area || 'Sin Área';
+            conteoAreas[area] = (conteoAreas[area] || 0) + 1;
+            
+            const estado = emp.estado || 'DESCONOCIDO';
+            if (conteoEstados.hasOwnProperty(estado)) {
+                conteoEstados[estado]++;
+            }
+        });
+
+        const ctxAreas = document.getElementById('chartAreas').getContext('2d');
+        if (window.myChart1) window.myChart1.destroy();
+        window.myChart1 = new Chart(ctxAreas, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(conteoAreas),
+                datasets: [{
+                    data: Object.values(conteoAreas),
+                    backgroundColor: ['#0f172a', '#1e3a8a', '#3b82f6', '#94a3b8', '#cbd5e1']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+
+        const ctxEstados = document.getElementById('chartEstados').getContext('2d');
+        if (window.myChart2) window.myChart2.destroy();
+        window.myChart2 = new Chart(ctxEstados, {
+            type: 'bar',
+            data: {
+                labels: ['Activos', 'Cesados'],
+                datasets: [{
+                    label: 'Personal',
+                    data: [conteoEstados['ACTIVO'], conteoEstados['CESADO']],
+                    backgroundColor: ['#10b981', '#ef4444']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+    }
+
+    // 8. LÓGICA PARA EL GRÁFICO DE ASISTENCIAS Y GERENCIALES CON FILTRO DE FECHAS
+    window.actualizarReportesPorFecha = function() {
+        const fInicio = document.getElementById('fecha-inicio').value;
+        const fFin = document.getElementById('fecha-fin').value;
+        const tipo = document.getElementById('tipo-dashboard').value; // Leemos el tipo seleccionado
+        const empleado = document.getElementById('select-empleado').value;
+
+        if (!fInicio || !fFin) {
+            alert("Por favor selecciona ambos rangos de fecha.");
+            return;
+        }
+
+        // =========================================================
+        // A. LÓGICA DE VISIBILIDAD (Solo ocurre al hacer clic)
+        // =========================================================
+        const contAreas = document.getElementById('container-areas');
+        const contEstados = document.getElementById('container-estados');
+        const contAsistencias = document.getElementById('container-asistencias');
+        const contIncidencias = document.getElementById('container-incidencias');
+        const contGastos = document.getElementById('container-gastos');
+
+        // Ocultamos todos por defecto
+        contAreas.style.display = 'none';
+        contEstados.style.display = 'none';
+        contAsistencias.style.display = 'none';
+        contIncidencias.style.display = 'none';
+        contGastos.style.display = 'none';
+
+        // Mostramos según selección
+        if (tipo === 'todos') {
+            contAreas.style.display = 'block';
+            contEstados.style.display = 'block';
+            contAsistencias.style.display = 'block';
+            contIncidencias.style.display = 'block';
+            contGastos.style.display = 'block';
+        } else if (tipo === 'operativo') {
+            contAreas.style.display = 'block';
+            contEstados.style.display = 'block';
+        } else if (tipo === 'asistencias') {
+            contAsistencias.style.display = 'block';
+        } else if (tipo === 'gerencial') {
+            contIncidencias.style.display = 'block';
+            contGastos.style.display = 'block';
+        }
+
+        // =========================================================
+        // B. ACTUALIZACIÓN DE DATOS (Las gráficas ocultas igual se actualizan en memoria)
+        // =========================================================
+        
+        // 1. Llamamos a la API para el Gráfico de Asistencias
+        fetch(`/api/reportes/asistencia?inicio=${fInicio}&fin=${fFin}&empleado=${empleado}`)
+            .then(res => res.json())
+            .then(data => {
+                renderizarGraficoAsistencia(data);
+            })
+            .catch(err => {
+                console.error("Error obteniendo asistencias:", err);
+                renderizarGraficoAsistencia({ A: 180, F: 12, DM: 4, LSG: 2 }); 
+            });
+
+        // 2. Llamamos a las gráficas gerenciales
+        cargarGraficasGerenciales(fInicio, fFin, empleado);
+    };
+
+    function renderizarGraficoAsistencia(data) {
+        const ctx = document.getElementById('chartAsistencias').getContext('2d');
+        
+        if (window.myChartAsistencia) window.myChartAsistencia.destroy();
+
+        window.myChartAsistencia = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                // Ponemos todas las descripciones de tu tabla como etiquetas
+                labels: [
+                    'Día Asistido (A)', 'Dom. Trabajado (DT)', 'Fer. Trabajado (FT)', 
+                    'Lic. con Goce (LG)', 'Descanso Médico (DM)', 'Vacaciones (V)', 
+                    'Lic. sin Goce (LSG)', 'Falta (F)', 'Renunció (R)', 
+                    'Susp. Perfecta (SU)', 'Cese (CE)', 'Feriado Ganado (FG)', 
+                    'Lic. Defunción (LD)', 'Día Compensado (DC)', 'Asist. Proyectada (AP)', 
+                    'Lic. Paternidad (LP)', 'Térm. Contrato (TC)'
+                ],
+                datasets: [{
+                    label: 'Total de Registros',
+                    // Mapeamos exactamente las 17 claves que envía Python
+                    data: [
+                        data.A || 0, data.DT || 0, data.FT || 0, data.LG || 0, 
+                        data.DM || 0, data.V || 0, data.LSG || 0, data.F || 0, 
+                        data.R || 0, data.SU || 0, data.CE || 0, data.FG || 0, 
+                        data.LD || 0, data.DC || 0, data.AP || 0, data.LP || 0, 
+                        data.TC || 0
+                    ],
+                    // Añadimos una paleta de 17 colores para diferenciar las barras
+                    backgroundColor: [
+                        '#10b981', '#059669', '#047857', '#3b82f6', 
+                        '#f59e0b', '#8b5cf6', '#6366f1', '#ef4444', 
+                        '#b91c1c', '#7f1d1d', '#111827', '#14b8a6', 
+                        '#6b7280', '#0ea5e9', '#84cc16', '#d946ef', 
+                        '#4b5563'
+                    ],
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: { display: true, text: 'Récord General de Eventos (Periodo Seleccionado)' },
+                    legend: { display: false } // Ocultamos la leyenda para no saturar la vista con 17 items
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            font: { size: 10 },
+                            maxRotation: 45, // Inclinamos el texto para que quepan las 17 etiquetas
+                            minRotation: 45
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    async function cargarGraficasGerenciales(inicio, fin, empleado) {
+    try {
+        const response = await fetch(`/api/reportes/gastos_incidencias?inicio=${inicio}&fin=${fin}&empleado=${empleado}`);
+        const data = await response.json();
+    
+            // ----------------------------------------------------
+            // A. LLENAR TABLAS DE RANKING (NUEVO)
+            // ----------------------------------------------------
+            const tbodyGastos = document.getElementById('listado-gastos');
+            if (tbodyGastos && data.ranking_gastos) {
+                tbodyGastos.innerHTML = '';
+                data.ranking_gastos.slice(0, 10).forEach(emp => {
+                    tbodyGastos.innerHTML += `
+                        <tr>
+                            <td style="text-align: left; font-weight: 500;">${emp.nombre}</td>
+                            <td style="text-align: left;">${emp.area}</td> <td style="text-align: right;">S/ ${parseFloat(emp.pasajes).toFixed(2)}</td>
+                            <td style="text-align: right; font-weight: bold;">S/ ${parseFloat(emp.viaticos).toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+            }
+
+            const tbodyIncidencias = document.getElementById('listado-incidencias');
+            if (tbodyIncidencias && data.ranking_incidencias) {
+                tbodyIncidencias.innerHTML = '';
+                data.ranking_incidencias.slice(0, 10).forEach(emp => {
+                    tbodyIncidencias.innerHTML += `
+                        <tr>
+                            <td style="text-align: left;">${emp.nombre}</td>
+                            <td style="text-align: left;">${emp.area}</td> <td style="text-align: center;"><span class="ranking-badge" style="background: #ffebee; color: #c62828;">${emp.faltas}</span></td>
+                            <td style="text-align: center;"><span class="ranking-badge" style="background: #fff3e0; color: #ef6c00;">${emp.dm}</span></td>
+                        </tr>
+                    `;
+                });
+            }
+
+            
+
+        // ----------------------------------------------------
+        // B. GRÁFICA DE INCIDENCIAS POR DÍA (Faltas y DM)
+        // ----------------------------------------------------
+        const ctxIncidencias = document.getElementById('chartIncidencias').getContext('2d');
+        if (window.myChartIncidencias) window.myChartIncidencias.destroy();
+
+        window.myChartIncidencias = new Chart(ctxIncidencias, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(data.incidencias), // ['Lunes', 'Martes'...]
+                datasets: [{
+                    label: 'Cantidad de Inasistencias (Faltas/DM)',
+                    data: Object.values(data.incidencias),
+                    // Usamos colores cálidos (rojo/naranja) para simular el "calor" de la incidencia
+                    backgroundColor: 'rgba(239, 68, 68, 0.8)', 
+                    borderColor: 'rgba(220, 38, 38, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: { display: true, text: 'Frecuencia de Incidencias por Día (Mapa de Faltas)' }
+                }
+            }
+        });
+
+        // ----------------------------------------------------
+        // C. PROYECCIÓN DE GASTOS (Viáticos y Pasajes)
+        // ----------------------------------------------------
+        const ctxGastos = document.getElementById('chartGastos').getContext('2d');
+        if (window.myChartGastos) window.myChartGastos.destroy();
+
+        window.myChartGastos = new Chart(ctxGastos, {
+            type: 'bar',
+            data: {
+                labels: data.gastos.areas,
+                datasets: [
+                    {
+                        label: 'Viáticos (S/)',
+                        data: data.gastos.viaticos,
+                        backgroundColor: '#3b82f6', // Azul
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Pasajes (S/)',
+                        data: data.gastos.pasajes,
+                        backgroundColor: '#10b981', // Verde esmeralda
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: { display: true, text: 'Proyección de Gastos Operativos por Área' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': S/ ' + context.parsed.y.toFixed(2);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { stacked: true }, // Apila los pasajes encima de los viáticos
+                    y: { stacked: true }
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Error cargando gráficas gerenciales:', error);
+    }
+}
+
+// =================================================================
+    // NUEVO: LÓGICA PARA OCULTAR/MOSTRAR GRÁFICAS SEGÚN EL SELECTOR
+    // =================================================================
+    const selectorDashboard = document.getElementById('tipo-dashboard');
+    
+    if (selectorDashboard) {
+        selectorDashboard.addEventListener('change', function() {
+            const tipo = this.value; // 'todos', 'asistencias', 'operativo', 'gerencial'
+            
+            // Referencias a los contenedores
+            const contAreas = document.getElementById('container-areas');
+            const contEstados = document.getElementById('container-estados');
+            const contAsistencias = document.getElementById('container-asistencias');
+            const contIncidencias = document.getElementById('container-incidencias');
+            const contGastos = document.getElementById('container-gastos');
+            const contRankingIncidencias = document.getElementById('container-ranking-incidencias');
+            const contRankingGastos = document.getElementById('container-ranking-gastos');
+
+            // 1. Ocultamos todos por defecto
+            contAreas.style.display = 'none';
+            contEstados.style.display = 'none';
+            contAsistencias.style.display = 'none';
+            contIncidencias.style.display = 'none';
+            contGastos.style.display = 'none';
+            if(contRankingIncidencias) contRankingIncidencias.style.display = 'none';
+            if(contRankingGastos) contRankingGastos.style.display = 'none';
+
+            // 2. Mostramos los correspondientes según el tipo seleccionado
+            if (tipo === 'todos') {
+                contAreas.style.display = 'block';
+                contEstados.style.display = 'block';
+                contAsistencias.style.display = 'block';
+                contIncidencias.style.display = 'block';
+                contGastos.style.display = 'block';
+                if(contRankingIncidencias) contRankingIncidencias.style.display = 'block';
+                if(contRankingGastos) contRankingGastos.style.display = 'block';
+            } 
+            else if (tipo === 'operativo') {
+                contAreas.style.display = 'block';
+                contEstados.style.display = 'block';
+            } 
+            else if (tipo === 'asistencias') {
+                contAsistencias.style.display = 'block';
+            } 
+            else if (tipo === 'gerencial') {
+                contIncidencias.style.display = 'block';
+                contGastos.style.display = 'block';
+                if(contRankingIncidencias) contRankingIncidencias.style.display = 'block';
+                if(contRankingGastos) contRankingGastos.style.display = 'block'
+            }
+        });
+    }
+
+    let selectEmpleadoInstance = null;
+
+    // ===============================
+    // CARGAR EMPLEADOS AL SELECT
+    // ===============================
+    function cargarEmpleadosSelect() {
+
+        fetch('/api/empleados/select')
+            .then(response => {
+                if (!response.ok) throw new Error('Error al obtener empleados');
+                return response.json();
+            })
+            .then(data => {
+
+                const select = document.getElementById('select-empleado');
+
+                // Limpiar por si se vuelve a abrir el modal
+                select.innerHTML = '<option value="">Todos</option>';
+
+                data.forEach(emp => {
+                    const option = document.createElement('option');
+                    option.value = emp.id;
+                    option.textContent = `${emp.nombre} (${emp.dni})`;
+                    select.appendChild(option);
+                });
+
+                // Destruir si ya existe (evita duplicados)
+                if (selectEmpleadoInstance) {
+                    selectEmpleadoInstance.destroy();
+                }
+
+                // Inicializar TomSelect
+                selectEmpleadoInstance = new TomSelect('#select-empleado', {
+                    create: false,
+                    sortField: {
+                        field: "text",
+                        direction: "asc"
+                    },
+                    placeholder: "Buscar empleado..."
+                });
+
+            })
+            .catch(error => {
+                console.error('Error cargando empleados:', error);
+            });
+    }
+
+    // INICIAR
+    cargarListaEmpleados();
+});
+
+// Función para Exportar a EXCEL Profesional
+function exportarExcel() {
+    const inicio = document.getElementById('fecha-inicio').value;
+    const fin = document.getElementById('fecha-fin').value;
+    const tipo = document.getElementById('tipo-dashboard').value;
+    const empleado = document.getElementById('select-empleado').value;
+
+    if (!inicio || !fin) return alert("Seleccione fechas");
+
+    window.location.href = `/api/exportar/excel?inicio=${inicio}&fin=${fin}&tipo=${tipo}&empleado=${empleado}`;
+}
+
+// Función para Exportar a PDF tipo Informe
+function exportarPDF() {
+    const inicio = document.getElementById('fecha-inicio').value;
+    const fin = document.getElementById('fecha-fin').value;
+    const tipo = document.getElementById('tipo-dashboard').value;
+
+    if (!inicio || !fin) return alert("Seleccione fechas");
+
+    window.location.href = `/api/exportar/pdf?inicio=${inicio}&fin=${fin}&tipo=${tipo}`;
+}
+
+// ==========================================
+// LÓGICA DE LA VISTA DIVIDIDA (PERFIL)
+// ==========================================
+function abrirPerfil(id_empleado) {
+        const tabla = document.getElementById('columna-tabla');
+        const perfil = document.getElementById('columna-perfil');
+        
+        tabla.classList.add('comprimida');
+        perfil.classList.add('abierto');
+        
+        const emp = empleadosFiltrados.find(e => e.id == id_empleado);
+        
+        if(emp) {
+            // -- Cabecera --
+            document.getElementById('perfil-nombre').textContent = emp.apellidos_nombres || 'Sin Nombre';
+            document.getElementById('perfil-cargo').textContent = emp.cargo || 'Sin Cargo';
+            
+            const badgeEstado = document.getElementById('perfil-estado');
+            badgeEstado.textContent = emp.estado || 'DESCONOCIDO';
+            badgeEstado.className = 'badge ' + (emp.estado === 'ACTIVO' ? 'badge-success' : 'badge-danger');
+            
+            document.getElementById('perfil-foto').src = emp.foto_url ? emp.foto_url : 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
+
+            // -- Datos Personales --
+            document.getElementById('p-dni').textContent = emp.dni || '-';
+            document.getElementById('p-fnac').textContent = emp.fecha_nac || '-';
+            document.getElementById('p-sexo').textContent = emp.sexo || '-';
+            document.getElementById('p-ecivil').textContent = emp.estado_civil || '-';
+            document.getElementById('p-tel').textContent = emp.telefono || '-';
+            document.getElementById('p-correo').textContent = emp.correo || '-';
+            document.getElementById('p-dir').textContent = emp.direccion || '-';
+
+            // -- Datos Laborales --
+            document.getElementById('p-area').textContent = emp.area || '-';
+            document.getElementById('p-contrato').textContent = emp.tipo_contrato || '-';
+            document.getElementById('p-regimen').textContent = emp.regimen || '-';
+            document.getElementById('p-jornada').textContent = emp.jornada || '-';
+            document.getElementById('p-fingreso').textContent = emp.fecha_ingreso || '-';
+            document.getElementById('p-fcese').textContent = emp.fecha_cese || '-';
+            
+            document.getElementById('p-hingreso').textContent = emp.hora_ingreso || '-';
+            document.getElementById('p-hsalida').textContent = emp.hora_salida || '-';
+            document.getElementById('p-href-ini').textContent = emp.ref_inicio || '-';
+            document.getElementById('p-href-fin').textContent = emp.ref_fin || '-';
+
+            // -- Remuneración --
+            document.getElementById('p-sueldo').textContent = emp.sueldo ? `${emp.moneda === 'USD' ? '$' : 'S/'} ${emp.sueldo}` : '-';
+            document.getElementById('p-moneda').textContent = emp.moneda || '-';
+            document.getElementById('p-asigfam').textContent = emp.asig_fam || '0.00';
+            document.getElementById('p-bono').textContent = emp.bono || '0.00';
+
+            // -- Datos Bancarios --
+            document.getElementById('p-banco').textContent = emp.banco || '-';
+            document.getElementById('p-tipocta').textContent = emp.tipo_cuenta || '-';
+            document.getElementById('p-cuenta').textContent = emp.numero_cuenta || '-';
+            document.getElementById('p-cci').textContent = emp.cci || '-';
+        }
+    }
+
+// Función para cerrar el panel
+function cerrarPerfil() {
+    const tabla = document.getElementById('columna-tabla');
+    const perfil = document.getElementById('columna-perfil');
+    
+    tabla.classList.remove('comprimida');
+    perfil.classList.remove('abierto');
+}
+
+// Escuchar los clics de la tabla de forma inteligente (Delegación de eventos)
+// Asumiendo que tu <tbody> tiene un ID, si no, usa document.querySelector('tbody')
+document.querySelector('tbody').addEventListener('click', function(e) {
+    // Si se hace clic en el botón del ojito o su ícono SVG
+    const btnVer = e.target.closest('.view-btn');
+    
+    if (btnVer) {
+        const idEmpleado = btnVer.getAttribute('data-id');
+        abrirPerfil(idEmpleado);
+    }
+});
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // VARIABLE GLOBAL: Nos dice si estamos creando o editando
+    let empleadoIdEnEdicion = null;
+
+    let visorDocumentosArray = []; // Guardará los documentos actuales
+    let visorIndexActual = 0;      // Saber qué documento estamos viendo
+
+    // --- LÓGICA DEL MODAL Y PESTAÑAS ---
+    const modalEmpleado = document.getElementById('modal-nuevo-empleado');
+    const btnAbrirModal = document.getElementById('btn-nuevo-empleado');
+    const btnCerrarModalX = document.getElementById('btn-close-modal');
+    const btnCerrarModalFoot = document.getElementById('btn-cancelar-modal');
+    const btnGuardarFinal = document.getElementById('btn-guardar-final');
+
+    // Función para abrir (Creación Nueva)
+    if (btnAbrirModal) {
+        btnAbrirModal.addEventListener('click', () => {
+            empleadoIdEnEdicion = null; // Modo Creación
+            document.querySelector('#modal-nuevo-empleado h2').innerText = "Nuevo Empleado";
+            btnGuardarFinal.innerText = "Guardar Empleado";
+            
+            // Ocultar y limpiar la zona de documentos al crear nuevo
+            const seccionDocs = document.getElementById('seccion-documentos-actuales');
+            const listaDocs = document.getElementById('lista-documentos');
+            if(seccionDocs) seccionDocs.style.display = 'none';
+            if(listaDocs) listaDocs.innerHTML = '';
+            
+            modalEmpleado.classList.add('mostrar-modal');
+        });
+    }
+
+    // Funciones para cerrar
+    const cerrarModal = () => {
+        modalEmpleado.classList.remove('mostrar-modal');
+        document.getElementById('form-empleado').reset(); 
+        empleadoIdEnEdicion = null; // Reiniciamos la variable
+        
+        // Limpiamos la lista visual de documentos
+        const seccionDocs = document.getElementById('seccion-documentos-actuales');
+        const listaDocs = document.getElementById('lista-documentos');
+        if(seccionDocs) seccionDocs.style.display = 'none';
+        if(listaDocs) listaDocs.innerHTML = '';
+    };
+    
+    if (btnCerrarModalX) btnCerrarModalX.addEventListener('click', cerrarModal);
+    if (btnCerrarModalFoot) btnCerrarModalFoot.addEventListener('click', cerrarModal);
+
+    // Navegación por pestañas
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            tabBtns.forEach(b => b.classList.remove('active'));
+            tabPanes.forEach(p => p.classList.remove('active'));
+            
+            const targetId = btn.getAttribute('data-target');
+            btn.classList.add('active');
+            document.getElementById(targetId).classList.add('active');
+        });
+    });
+
+    // --- MODO EDICIÓN: CAPTURAR CLIC EN LA TABLA ---
+    const tablaEmpleados = document.getElementById('tabla-empleados') || document.querySelector('table');
+    if (tablaEmpleados) {
+        tablaEmpleados.addEventListener('click', async (e) => {
+            const btnEditar = e.target.closest('.edit-btn');
+            
+            if (btnEditar) {
+                e.preventDefault();
+                empleadoIdEnEdicion = btnEditar.getAttribute('data-id');
+                
+                document.querySelector('#modal-nuevo-empleado h2').innerText = "Editar Empleado";
+                btnGuardarFinal.innerText = "Actualizar Cambios";
+                
+                try {
+                    const respuesta = await fetch(`/api/empleados/${empleadoIdEnEdicion}`);
+                    const datos = await respuesta.json();
+                    
+                    if (respuesta.ok) {
+                        // Llenar campos
+                        document.getElementById('emp_nombres').value = datos.nombres || "";
+                        document.getElementById('emp_apellidos').value = datos.apellidos || "";
+                        document.getElementById('emp_dni').value = datos.dni || "";
+                        document.getElementById('emp_fecha_nac').value = datos.fecha_nacimiento || "";
+                        document.getElementById('emp_sexo').value = datos.sexo || "";
+                        document.getElementById('emp_estado_civil').value = datos.estado_civil || "";
+                        document.getElementById('emp_direccion').value = datos.direccion || "";
+                        document.getElementById('emp_telefono').value = datos.telefono || "";
+                        document.getElementById('emp_correo').value = datos.correo || "";
+                        
+                        document.getElementById('emp_area').value = datos.area || "";
+                        document.getElementById('emp_cargo').value = datos.cargo || "";
+                        document.getElementById('emp_tipo_contrato').value = datos.tipo_contrato || "";
+                        document.getElementById('emp_jornada').value = datos.jornada_laboral || "";
+                        document.getElementById('emp_hora_ingreso').value = datos.hora_ingreso || "";
+                        document.getElementById('emp_hora_salida').value = datos.hora_salida || "";
+                        document.getElementById('emp_ref_inicio').value = datos.refrigerio_inicio || "";
+                        document.getElementById('emp_ref_fin').value = datos.refrigerio_fin || "";
+                        document.getElementById('emp_regimen').value = datos.regimen_laboral || "";
+                        document.getElementById('emp_estado').value = datos.estado || "ACTIVO";
+                        document.getElementById('emp_fecha_ingreso').value = datos.fecha_ingreso || "";
+                        
+                        if(document.getElementById('rem_sueldo')) document.getElementById('rem_sueldo').value = datos.sueldo_basico || "";
+                        if(document.getElementById('rem_moneda')) document.getElementById('rem_moneda').value = datos.moneda || "PEN";
+
+                        // --- NUEVA LÓGICA DE DOCUMENTOS (LISTA MULTIPLE) ---
+                        const seccionDocs = document.getElementById('seccion-documentos-actuales');
+                        const listaDocs = document.getElementById('lista-documentos');
+
+                        if (seccionDocs && listaDocs) {
+                            listaDocs.innerHTML = '';
+                            
+                            if (datos.documentos && datos.documentos.length > 0) {
+                                seccionDocs.style.display = 'block';
+                                
+                                // ¡IMPORTANTE! Guardamos el array para usarlo en el visor
+                                visorDocumentosArray = datos.documentos; 
+                                
+                                // Agregamos el parámetro 'index' al forEach
+                                datos.documentos.forEach((doc, index) => {
+                                    const itemDoc = document.createElement('div');
+                                    itemDoc.className = 'emp-doc-row';
+                                    
+                                    let iconoDoc = "📄"; 
+                                    if (doc.tipo.toLowerCase().includes("foto")) iconoDoc = "🖼️";
+                                    if (doc.tipo.toLowerCase().includes("dni")) iconoDoc = "🪪";
+
+                                    // CAMBIO: La etiqueta <a> de Ver ahora es un <button> con data-index
+                                    itemDoc.innerHTML = `
+                                        <div class="emp-doc-left">
+                                            <span class="emp-doc-icon">${iconoDoc}</span>
+                                            <div class="emp-doc-texts">
+                                                <span class="emp-doc-title">${doc.tipo}</span>
+                                                <span class="emp-doc-date">Subido: ${doc.fecha}</span>
+                                            </div>
+                                        </div>
+                                        <div class="emp-doc-actions">
+                                            <button type="button" class="emp-doc-btn emp-btn-view btn-ver-doc" data-index="${index}" title="Ver archivo">
+                                                <i class="fas fa-eye"></i> 
+                                            </button>
+                                            
+                                            <button type="button" class="emp-doc-btn emp-btn-delete btn-borrar-doc" data-id="${doc.id_doc}" title="Eliminar">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        </div>
+                                    `;
+                                    listaDocs.appendChild(itemDoc);
+                                });
+                            } else {
+                                seccionDocs.style.display = 'none';
+                                visorDocumentosArray = []; // Vaciamos si no hay
+                            }
+                        }
+                        
+                        // Reiniciamos el select de "Nuevo Documento" para que esté en "Seleccione..."
+                        if (document.getElementById('doc_tipo')) {
+                            document.getElementById('doc_tipo').value = "";
+                        }
+                        
+                        modalEmpleado.classList.add('mostrar-modal');
+                    } else {
+                        alert("Error al obtener datos: " + datos.error);
+                    }
+                } catch (error) {
+                    console.error("Error:", error);
+                    alert("Error de conexión al cargar datos.");
+                }
+            }
+        });
+    }
+
+    // --- LÓGICA DEL VISOR Y BORRADO DE DOCUMENTOS ---
+    const seccionDocsActuales = document.getElementById('seccion-documentos-actuales');
+    
+    // Elementos del visor en el DOM
+    const visorOverlay = document.getElementById('visor-documentos-overlay');
+    const visorContentArea = document.getElementById('visor-content-area');
+    const visorTitulo = document.getElementById('visor-titulo');
+    const visorFecha = document.getElementById('visor-fecha');
+    const visorContador = document.getElementById('visor-contador');
+    const btnVisorPrev = document.getElementById('visor-btn-prev');
+    const btnVisorNext = document.getElementById('visor-btn-next');
+    const btnVisorCerrar = document.getElementById('visor-btn-cerrar');
+    const btnVisorBorrar = document.getElementById('visor-btn-borrar');
+
+    // Función para renderizar el documento actual en el visor
+    const renderizarVisor = () => {
+        if (visorDocumentosArray.length === 0) return;
+        
+        const docActual = visorDocumentosArray[visorIndexActual];
+        visorTitulo.innerText = docActual.tipo;
+        visorFecha.innerText = "Subido el: " + docActual.fecha;
+        visorContador.innerText = `${visorIndexActual + 1} / ${visorDocumentosArray.length}`;
+
+        // Limpiamos el area
+        visorContentArea.innerHTML = '';
+
+        // Detectar si es imagen o PDF basándonos en la ruta (URL)
+        const rutaLower = docActual.ruta.toLowerCase();
+        if (rutaLower.endsWith('.jpg') || rutaLower.endsWith('.jpeg') || rutaLower.endsWith('.png') || rutaLower.endsWith('.gif') || rutaLower.endsWith('.webp')) {
+            visorContentArea.innerHTML = `<img src="${docActual.ruta}" alt="${docActual.tipo}">`;
+        } else {
+            // Si es PDF u otro, usamos iframe
+            visorContentArea.innerHTML = `<iframe src="${docActual.ruta}#toolbar=0" title="${docActual.tipo}"></iframe>`;
+        }
+
+        // Controlar estado de flechas
+        btnVisorPrev.disabled = visorIndexActual === 0;
+        btnVisorNext.disabled = visorIndexActual === visorDocumentosArray.length - 1;
+        
+        // Asignar ID al botón de borrar del visor
+        btnVisorBorrar.setAttribute('data-id', docActual.id_doc);
+    };
+
+    // Navegación
+    if(btnVisorPrev) btnVisorPrev.addEventListener('click', () => { if (visorIndexActual > 0) { visorIndexActual--; renderizarVisor(); } });
+    if(btnVisorNext) btnVisorNext.addEventListener('click', () => { if (visorIndexActual < visorDocumentosArray.length - 1) { visorIndexActual++; renderizarVisor(); } });
+    
+    // Cerrar visor
+    const cerrarVisor = () => { visorOverlay.classList.remove('activo'); visorContentArea.innerHTML = ''; };
+    if(btnVisorCerrar) btnVisorCerrar.addEventListener('click', cerrarVisor);
+
+    // FUNCIÓN CENTRAL PARA BORRAR API (Reutilizable)
+    const eliminarDocumentoAPI = async (idDoc, botonReferencia) => {
+        if (!confirm("¿Estás seguro de que quieres eliminar este documento permanentemente?")) return false;
+        
+        botonReferencia.disabled = true;
+        try {
+            const respuesta = await fetch(`/api/documentos/${idDoc}`, { method: 'DELETE' });
+            const data = await respuesta.json();
+
+            if (respuesta.ok) {
+                alert("¡" + data.mensaje + "!");
+                return true; // Borrado exitoso
+            } else {
+                alert("Error: " + data.error);
+                botonReferencia.disabled = false;
+                return false;
+            }
+        } catch (error) {
+            console.error("Error al borrar documento:", error);
+            alert("Error de conexión al intentar eliminar.");
+            botonReferencia.disabled = false;
+            return false;
+        }
+    };
+
+    // Delegación de eventos en la lista de documentos (Ver y Borrar)
+    if (seccionDocsActuales) {
+        seccionDocsActuales.addEventListener('click', async (e) => {
+            // Acción: VER DOCUMENTO (Ojito)
+            const btnVer = e.target.closest('.btn-ver-doc');
+            if (btnVer) {
+                e.preventDefault();
+                visorIndexActual = parseInt(btnVer.getAttribute('data-index'));
+                renderizarVisor();
+                visorOverlay.classList.add('activo');
+            }
+
+            // Acción: BORRAR DESDE LA LISTA
+            const btnBorrarFila = e.target.closest('.btn-borrar-doc');
+            if (btnBorrarFila) {
+                e.preventDefault();
+                const idDoc = btnBorrarFila.getAttribute('data-id');
+                const exito = await eliminarDocumentoAPI(idDoc, btnBorrarFila);
+                
+                if (exito) {
+                    const filaDoc = btnBorrarFila.closest('.emp-doc-row');
+                    filaDoc.style.transition = 'all 0.3s ease';
+                    filaDoc.style.opacity = '0';
+                    filaDoc.style.transform = 'scale(0.8)';
+                    setTimeout(() => filaDoc.remove(), 300);
+                    
+                    // Actualizamos nuestro array interno sacando el borrado
+                    visorDocumentosArray = visorDocumentosArray.filter(d => d.id_doc != idDoc);
+                    if(visorDocumentosArray.length === 0) seccionDocsActuales.style.display = 'none';
+                }
+            }
+        });
+    }
+
+    // Acción: BORRAR DESDE ADENTRO DEL VISOR
+    if (btnVisorBorrar) {
+        btnVisorBorrar.addEventListener('click', async (e) => {
+            const idDoc = btnVisorBorrar.getAttribute('data-id');
+            const exito = await eliminarDocumentoAPI(idDoc, btnVisorBorrar);
+            
+            if (exito) {
+                // Sacar del array
+                visorDocumentosArray = visorDocumentosArray.filter(d => d.id_doc != idDoc);
+                
+                // Remover la fila visual del fondo
+                const botonEnLista = document.querySelector(`.btn-borrar-doc[data-id="${idDoc}"]`);
+                if(botonEnLista) botonEnLista.closest('.emp-doc-row').remove();
+
+                if (visorDocumentosArray.length === 0) {
+                    // Ya no quedan documentos, cerramos visor y ocultamos sección
+                    cerrarVisor();
+                    seccionDocsActuales.style.display = 'none';
+                } else {
+                    // Quedan documentos, ajustamos el índice si borramos el último
+                    if (visorIndexActual >= visorDocumentosArray.length) {
+                        visorIndexActual = visorDocumentosArray.length - 1;
+                    }
+                    renderizarVisor();
+                    btnVisorBorrar.disabled = false; // Reactivar el botón para el siguiente doc
+                }
+            }
+        });
+    }
+    
+
+    // --- LÓGICA DE GUARDADO (CREAR O ACTUALIZAR) ---
+    if (btnGuardarFinal) {
+        btnGuardarFinal.addEventListener('click', async (e) => {
+            e.preventDefault(); 
+
+            // 1. Recolectamos obligatorios
+            const inputNombres = document.getElementById('emp_nombres').value.trim();
+            const inputDni = document.getElementById('emp_dni').value.trim();
+            const inputCargo = document.getElementById('emp_cargo').value.trim();
+            const inputArea = document.getElementById('emp_area').value.trim();
+            const inputFechaIngreso = document.getElementById('emp_fecha_ingreso').value;
+
+            if (!inputNombres || !inputDni || !inputCargo || !inputArea || !inputFechaIngreso) {
+                alert("Por favor, completa los campos obligatorios.");
+                return;
+            }
+
+            // 2. Armamos el FormData
+            const formData = new FormData();
+            formData.append('nombres', inputNombres);
+            formData.append('apellidos', document.getElementById('emp_apellidos').value.trim());
+            formData.append('dni', inputDni);
+            formData.append('fecha_nacimiento', document.getElementById('emp_fecha_nac').value);
+            formData.append('sexo', document.getElementById('emp_sexo').value);
+            formData.append('estado_civil', document.getElementById('emp_estado_civil').value);
+            formData.append('direccion', document.getElementById('emp_direccion').value);
+            formData.append('telefono', document.getElementById('emp_telefono').value);
+            formData.append('correo', document.getElementById('emp_correo').value);
+            
+            formData.append('area', inputArea);
+            formData.append('cargo', inputCargo);
+            formData.append('tipo_contrato', document.getElementById('emp_tipo_contrato').value);
+            formData.append('jornada_laboral', document.getElementById('emp_jornada').value);
+            formData.append('hora_ingreso', document.getElementById('emp_hora_ingreso').value);
+            formData.append('hora_salida', document.getElementById('emp_hora_salida').value);
+            formData.append('refrigerio_inicio', document.getElementById('emp_ref_inicio').value);
+            formData.append('refrigerio_fin', document.getElementById('emp_ref_fin').value);
+            formData.append('regimen_laboral', document.getElementById('emp_regimen').value);
+            formData.append('estado', document.getElementById('emp_estado').value);
+            formData.append('fecha_ingreso', inputFechaIngreso);
+            
+            const remSueldo = document.getElementById('rem_sueldo');
+            const remMoneda = document.getElementById('rem_moneda');
+            formData.append('sueldo_basico', remSueldo ? remSueldo.value : "");
+            formData.append('moneda', remMoneda ? remMoneda.value : "PEN");
+
+            const docArchivo = document.getElementById('doc_archivo');
+            const docTipo = document.getElementById('doc_tipo');
+            if (docArchivo && docArchivo.files.length > 0) {
+                formData.append('archivo', docArchivo.files[0]);
+                formData.append('tipo_documento', docTipo ? docTipo.value : "");
+            }
+
+            // 3. Decidimos qué ruta usar
+            const urlFetch = empleadoIdEnEdicion ? `/api/empleados/actualizar/${empleadoIdEnEdicion}` : '/api/empleados/registrar_todo';
+            const metodoFetch = empleadoIdEnEdicion ? 'PUT' : 'POST';
+
+            try {
+                btnGuardarFinal.disabled = true;
+                btnGuardarFinal.innerText = "Guardando...";
+
+                const respuesta = await fetch(urlFetch, {
+                    method: metodoFetch,
+                    body: formData 
+                });
+
+                const data = await respuesta.json();
+
+                if (respuesta.ok) {
+                    alert("¡" + data.mensaje + "!");
+                    cerrarModal();
+                    // window.location.reload(); // Descomenta si quieres que recargue la página para ver los cambios
+                } else {
+                    alert("Error: " + data.error);
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                alert("Error de conexión con el servidor.");
+            } finally {
+                btnGuardarFinal.disabled = false;
+                btnGuardarFinal.innerText = empleadoIdEnEdicion ? "Actualizar Cambios" : "Guardar Empleado";
+            }
+        });
+    }
+
+    // --- RESTRICCIÓN: SOLO NÚMEROS EN DNI Y TELÉFONO ---
+    const inputDni = document.getElementById('emp_dni');
+    const inputTelefono = document.getElementById('emp_telefono');
+
+    // Función que reemplaza cualquier carácter que no sea dígito (0-9) por nada ('')
+    const forzarSoloNumeros = function(e) {
+        this.value = this.value.replace(/[^0-9]/g, '');
+    };
+
+    if (inputDni) {
+        inputDni.addEventListener('input', forzarSoloNumeros);
+    }
+    
+    if (inputTelefono) {
+        inputTelefono.addEventListener('input', forzarSoloNumeros);
+    }
+
+    // --- CONVERTIR TODO A MAYÚSCULAS MIENTRAS SE ESCRIBE ---
+    // Seleccionamos todos los inputs y textareas de tu formulario
+    const inputsFormulario = document.querySelectorAll('#form-empleado input, #form-empleado textarea');
+    
+    inputsFormulario.forEach(input => {
+        // Filtramos para aplicar esto solo a los campos de texto
+        // (no queremos estropear campos de tipo fecha, números o contraseñas)
+        if (input.type === 'text' || input.tagName.toLowerCase() === 'textarea') {
+            input.addEventListener('input', function() {
+                // Posición del cursor para que no salte al final al editar texto en el medio
+                const start = this.selectionStart;
+                const end = this.selectionEnd;
+                
+                // Convertimos el valor a mayúsculas
+                this.value = this.value.toUpperCase();
+                
+                // Restauramos la posición del cursor
+                this.setSelectionRange(start, end);
+            });
+        }
+    });
+});
