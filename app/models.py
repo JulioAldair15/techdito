@@ -11,6 +11,26 @@ class Empleado(db.Model):
     area = db.Column(db.String(250), nullable=True)
     cod_ope = db.Column(db.String(250), nullable=True)
 
+    fecha_nacimiento = db.Column(db.Date)
+    sexo = db.Column(db.String(50))
+    estado_civil = db.Column(db.String(20))
+    direccion = db.Column(db.String(255))
+    telefono = db.Column(db.String(20))
+    correo = db.Column(db.String(100))
+
+    tipo_contrato = db.Column(db.String(50))
+    jornada_laboral = db.Column(db.String(50))
+    regimen_laboral = db.Column(db.String(50))
+    estado = db.Column(db.String(20), default='ACTIVO')
+
+    fecha_ingreso = db.Column(db.Date)
+    fecha_cese = db.Column(db.Date)
+
+    hora_ingreso = db.Column(db.String(10), nullable=True)
+    hora_salida = db.Column(db.String(10), nullable=True)
+    refrigerio_inicio = db.Column(db.String(10), nullable=True)
+    refrigerio_fin = db.Column(db.String(10), nullable=True)
+
     usuarios = db.relationship('Usuario', backref='empleado', lazy=True)
     lecturas = db.relationship('EmpleadoLectura', backref='empleado', lazy=True)
     distribuciones = db.relationship('EmpleadoDistribucion', backref='empleado', lazy=True)
@@ -20,6 +40,13 @@ class Empleado(db.Model):
     medidores = db.relationship('EmpleadoMedidores', backref='empleado', lazy=True)
     recaudaciones = db.relationship('EmpleadoRecaudacion', backref='empleado', lazy=True)
     administrativos = db.relationship('EmpleadoAdministrativo', backref='empleado', lazy=True)
+
+    remuneraciones = db.relationship('Remuneracion', backref='empleado', lazy=True)
+    descuentos = db.relationship('Descuento', backref='empleado', lazy=True)
+    cuentas_bancarias = db.relationship('DatosBancarios', backref='empleado', lazy=True)
+    beneficios = db.relationship('BeneficioSocial', backref='empleado', lazy=True)
+    documentos = db.relationship('DocumentoEmpleado', backref='empleado', lazy=True)
+    cargas = db.relationship('CargaFamiliar', backref='empleado', lazy=True)
 
 class Usuario(db.Model):
     __tablename__ = 'usuario'
@@ -314,17 +341,145 @@ class RegistroTrabajo(db.Model):
     actividad = db.Column(db.String(100), nullable=True)
 
 
-class Imagen(db.Model):
-    __tablename__ = 'imagenes'
+# =========================
+# 💰 REMUNERACIONES
+# =========================
+class Remuneracion(db.Model):
+    __tablename__ = 'remuneraciones'
 
-    id = db.Column(db.BigInteger, primary_key=True)
-    carpeta = db.Column(db.String(255), nullable=False)
-    filename = db.Column(db.String(255), nullable=False)
-    path = db.Column(db.Text)
-    leyenda = db.Column(db.String(100))
-    origen = db.Column(db.String(50), nullable=False)
-    suministro = db.Column(db.String(15))
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
 
-    created_at = db.Column(db.TIMESTAMP, server_default=db.func.current_timestamp())
-    updated_at = db.Column(db.TIMESTAMP, server_default=db.func.current_timestamp(),
-                        onupdate=db.func.current_timestamp())
+    sueldo_basico = db.Column(db.Numeric(10, 2), nullable=False)
+    asignacion_familiar = db.Column(db.Numeric(10, 2), default=0)
+    bonificacion = db.Column(db.Numeric(10, 2), default=0)
+    comisiones = db.Column(db.Numeric(10, 2), default=0)
+    horas_extras = db.Column(db.Numeric(10, 2), default=0)
+
+    moneda = db.Column(db.String(10), default='PEN')
+    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# =========================
+# 🧮 DESCUENTOS
+# =========================
+class Descuento(db.Model):
+    __tablename__ = 'descuentos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+
+    tipo_descuento = db.Column(db.String(50))
+    monto = db.Column(db.Numeric(10, 2))
+    descripcion = db.Column(db.String(255))
+    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# =========================
+# 🏦 DATOS BANCARIOS
+# =========================
+class DatosBancarios(db.Model):
+    __tablename__ = 'datos_bancarios'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+
+    banco = db.Column(db.String(100))
+    tipo_cuenta = db.Column(db.String(50))
+    numero_cuenta = db.Column(db.String(50))
+    cci = db.Column(db.String(50))
+
+
+# =========================
+# 📅 BENEFICIOS SOCIALES
+# =========================
+class BeneficioSocial(db.Model):
+    __tablename__ = 'beneficios_sociales'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+
+    cts = db.Column(db.Numeric(10, 2), default=0)
+    gratificacion = db.Column(db.Numeric(10, 2), default=0)
+    vacaciones_truncas = db.Column(db.Numeric(10, 2), default=0)
+    liquidacion = db.Column(db.Numeric(10, 2), default=0)
+
+    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# =========================
+# 📂 TIPOS DE DOCUMENTO
+# =========================
+class TipoDocumento(db.Model):
+    __tablename__ = 'tipos_documento'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), nullable=False)
+
+
+# =========================
+# 📂 DOCUMENTOS EMPLEADO
+# =========================
+class DocumentoEmpleado(db.Model):
+    __tablename__ = 'documentos_empleado'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+    tipo_documento_id = db.Column(db.Integer, db.ForeignKey('tipos_documento.id'), nullable=False)
+
+    nombre_archivo = db.Column(db.String(255))
+    ruta_archivo = db.Column(db.String(255))
+    fecha_emision = db.Column(db.Date)
+    fecha_vencimiento = db.Column(db.Date)
+    observaciones = db.Column(db.Text)
+
+    fecha_subida = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# =========================
+# 👨‍👩‍👧‍👦 CARGAS FAMILIARES
+# =========================
+class CargaFamiliar(db.Model):
+    __tablename__ = 'cargas_familiares'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+
+    nombres = db.Column(db.String(150), nullable=False)
+    parentesco = db.Column(db.String(50))
+    fecha_nacimiento = db.Column(db.Date)
+    dni = db.Column(db.String(20))
+
+    es_dependiente = db.Column(db.Boolean, default=True)
+    aplica_asignacion = db.Column(db.Boolean, default=True)
+
+    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
+
+    documentos = db.relationship('DocumentoCarga', backref='carga', lazy=True)
+
+
+# =========================
+# 📎 DOCUMENTOS CARGAS
+# =========================
+class DocumentoCarga(db.Model):
+    __tablename__ = 'documentos_cargas'
+
+    id = db.Column(db.Integer, primary_key=True)
+    carga_id = db.Column(db.Integer, db.ForeignKey('cargas_familiares.id'), nullable=False)
+    tipo_documento_id = db.Column(db.Integer, db.ForeignKey('tipos_documento.id'), nullable=False)
+
+    ruta_archivo = db.Column(db.String(255))
+    fecha_subida = db.Column(db.DateTime, default=datetime.utcnow)
+
+# =========================
+# 📎 DOCUMENTOS EMPLEADO
+# =========================
+class DocumentoEmpleado(db.Model):
+    __tablename__ = 'documentos_empleados'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+    tipo_documento_id = db.Column(db.Integer, db.ForeignKey('tipos_documento.id'), nullable=False)
+
+    ruta_archivo = db.Column(db.String(255))
+    fecha_subida = db.Column(db.DateTime, default=datetime.utcnow)
