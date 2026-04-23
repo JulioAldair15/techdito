@@ -242,7 +242,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
-    
+
+
 // RECAUDACION
 document.addEventListener('DOMContentLoaded', function () {
     });
@@ -5443,7 +5444,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         //if (fecha < inicioRango || fecha > finRango) {
             //alert(`La fecha seleccionada está fuera del rango permitido.\nSolo se puede registrar asistencia desde el ${inicioRango.toISOString().split('T')[0]} hasta el ${finRango.toISOString().split('T')[0]}.`);
             //return;
-        //}
+       //}
 
         // Recoger los datos de los empleados y sus estados
         const empleadosParaGuardarPersuasivas = [];
@@ -6217,33 +6218,33 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         // Convertir la fecha seleccionada a un objeto Date
-        //const fecha = new Date(fechaSeleccionada);
+        const fecha = new Date(fechaSeleccionada);
 
         // Obtener la fecha actual y construir los límites del rango
-        //const hoy = new Date();
-        //const mesActual = hoy.getMonth() + 1;
-        //const añoActual = hoy.getFullYear();
+        const hoy = new Date();
+        const mesActual = hoy.getMonth() + 1;
+        const añoActual = hoy.getFullYear();
 
         // Definir el rango permitido
-        //let inicioRango, finRango;
-        //if (hoy.getDate() >= 26) {
+        let inicioRango, finRango;
+        if (hoy.getDate() >= 26) {
             // Estamos entre el 26 y el final del mes actual
-            //inicioRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-26`);
-            //finRango = new Date(`${añoActual}-${(mesActual + 1).toString().padStart(2, '0')}-25`);
-        //} else {
+            inicioRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-26`);
+            finRango = new Date(`${añoActual}-${(mesActual + 1).toString().padStart(2, '0')}-25`);
+        } else {
             // Estamos antes del 26, entonces el rango es del mes anterior al actual
-            //const mesAnterior = mesActual - 1 || 12;
-            //const añoAnterior = mesAnterior === 12 ? añoActual - 1 : añoActual;
+            const mesAnterior = mesActual - 1 || 12;
+            const añoAnterior = mesAnterior === 12 ? añoActual - 1 : añoActual;
 
-            //inicioRango = new Date(`${añoAnterior}-${mesAnterior.toString().padStart(2, '0')}-26`);
-            //finRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-25`);
-        //}
+            inicioRango = new Date(`${añoAnterior}-${mesAnterior.toString().padStart(2, '0')}-26`);
+            finRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-25`);
+        }
 
         // Validar si la fecha seleccionada está dentro del rango permitido
-        //if (fecha < inicioRango || fecha > finRango) {
-           // alert(`La fecha seleccionada está fuera del rango permitido.\nSolo se puede registrar asistencia desde el ${inicioRango.toISOString().split('T')[0]} hasta el ${finRango.toISOString().split('T')[0]}.`);
-            //return;
-        //}
+        if (fecha < inicioRango || fecha > finRango) {
+            alert(`La fecha seleccionada está fuera del rango permitido.\nSolo se puede registrar asistencia desde el ${inicioRango.toISOString().split('T')[0]} hasta el ${finRango.toISOString().split('T')[0]}.`);
+            return;
+        }
     
         // Recoger los datos de los empleados y sus estados
         const empleadosParaGuardarNorte = [];
@@ -7557,7 +7558,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     crearOpcionImagen(opcionesDiv, imgNombre, index, carpetaData.carpeta, carpetaData);
                 });
 
-                imagenesActuales = carpetaData.imagenes.map(nombre => ({ nombre, carpeta: carpetaData.carpeta, categoria: carpetaData.categoria }));
+                imagenesActuales = carpetaData.imagenes.map(nombre => ({ nombre, carpeta: carpetaData.carpeta, categoria: "ordenes" }));
                 indiceImagenActual = 0;
                 rotacionActual = 0;
                 mostrarImagen();
@@ -7599,10 +7600,11 @@ document.addEventListener("DOMContentLoaded", () => {
                             opcionImg.textContent = imgNombre;
 
                             opcionImg.addEventListener("click", () => {
-                                imagenesActuales = subgrupo.imagenes.map(nombre => ({ nombre, carpeta: subgrupo.carpeta, categoria: subgrupo.categoria }));
+                                imagenesActuales = subgrupo.imagenes.map(nombre => ({ nombre, carpeta: subgrupo.carpeta, categoria: "lecturas" }));
                                 indiceImagenActual = index;
                                 rotacionActual = 0;
                                 mostrarImagen();
+
                             });
 
                             opcionesDiv.appendChild(opcionImg);
@@ -7634,7 +7636,7 @@ document.addEventListener("DOMContentLoaded", () => {
         opcionImg.style.marginBottom = "8px";
 
         const miniatura = document.createElement("img");
-        miniatura.src = `/imagen/${carpetaUrl}/${imgNombre}`;
+        miniatura.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${carpetaUrl}/${imgNombre}`;
         miniatura.style.width = "60px";
         miniatura.style.height = "60px";
         miniatura.style.objectFit = "cover";
@@ -7682,19 +7684,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
 let zoomActual = 1;
 
-function mostrarImagen() {
+function mostrarImagen(leyendaAux) {
   if (imagenesActuales.length === 0) {
     seccionDerecha.innerHTML = "<p>No hay imágenes para mostrar.</p>";
     return;
   }
 
-  const { nombre, carpeta } = imagenesActuales[indiceImagenActual];
+  let { nombre, carpeta, categoria } = imagenesActuales[indiceImagenActual];
+
+  if (categoria == undefined){
+    categoria = "ordenes"
+  }
+
+
   const carpetaUrl = carpeta.replace(/\\/g, "/");
 
     // Codificar cada segmento para URL segura
   const segmentos = carpetaUrl.split("/").map(encodeURIComponent);
   const nombreUrl = encodeURIComponent(nombre);
-  const urlImagen = `/imagen/${segmentos.join("/")}/${nombreUrl}`;
+
+  console.log()
+  const urlImagen = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${categoria}/${segmentos.join("/")}/${nombreUrl}`;
   
   console.log("URL imagen formada:", urlImagen);
 
@@ -7725,7 +7735,7 @@ function mostrarImagen() {
   console.log("carpeta URL limpia:", carpetaUrl);
   console.log("Imagen:", nombre);
   console.log("Ruta completa para la imagen:", `/imagen/${carpetaUrl}/${nombre}`);
-  img.src = `/imagen/${carpetaUrl}/${nombre}`; // ✅ Ruta correcta
+  img.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${categoria}/${carpetaUrl}/${nombre}`; // ✅ Ruta correcta
   img.style.maxWidth = "100%";
   img.style.maxHeight = "100%";
   img.style.transform = `rotate(${rotacionActual}deg) scale(${zoomActual})`;  // agrego zoom aquí
@@ -9001,7 +9011,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
         }
-        // --- FIN CORRECCIÓN ---
 
         const textoCodigo = document.createElement("div");
         textoCodigo.innerHTML = `
@@ -9218,7 +9227,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
             mostrar = () => {
-                const ruta = `/imagen/${grupo.carpeta}/${imagenesActuales[indiceImagenActual]}`;
+                const ruta = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${categoria}/${grupo.carpeta}/${imagenesActuales[indiceImagenActual]}`;
                 img.src = ruta;
                 offsetX = 0;
                 offsetY = 0;
@@ -9322,12 +9331,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 indiceImagenActual = 0;
                 rotacionActual = 0;
                 zoomActual = 1;
+                categoria = "lecturas"
+
                 mostrarImagen(grupoActual);
             }
         };
 
         btnOrdenes.onclick = () => {
             if (grupoOrdenes.length) {
+                categoria = "ordenes"
+
                 mostrarOpciones(grupoOrdenes);
             }
         };
@@ -9930,7 +9943,7 @@ function iniciarMonitoreoOperario() {
 
                                 // Imagen con tamaño fijo
                                 const img = document.createElement("img");
-                                img.src = `/imagen/${coincidentes[0].carpeta}/${coincidentes[0].archivo}`;
+                                img.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${coincidentes[0].carpeta}/${coincidentes[0].archivo}`;
                                 img.style.width = "1000px";      // Tamaño fijo
                                 img.style.height = "850px";     // Tamaño fijo
                                 img.style.objectFit = "contain";
@@ -9958,7 +9971,7 @@ function iniciarMonitoreoOperario() {
 
                                 btnIzq.onclick = () => {
                                     index = (index - 1 + coincidentes.length) % coincidentes.length;
-                                    img.src = `/imagen/${coincidentes[index].carpeta}/${coincidentes[index].archivo}`;
+                                    img.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${coincidentes[index].carpeta}/${coincidentes[index].archivo}`;
                                 };
 
                                 const btnDer = document.createElement("button");
@@ -9981,7 +9994,7 @@ function iniciarMonitoreoOperario() {
 
                                 btnDer.onclick = () => {
                                     index = (index + 1) % coincidentes.length;
-                                    img.src = `/imagen/${coincidentes[index].carpeta}/${coincidentes[index].archivo}`;
+                                    img.src = `http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${coincidentes[index].carpeta}/${coincidentes[index].archivo}`;
                                 };
 
                                 // Ensamblar carrusel
