@@ -1,125 +1,217 @@
-body {
-    font-family: 'Poppins', Arial, sans-serif;
-    background-color: #f4f4f4;
+* {
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
+    font-family: 'Poppins', sans-serif;
+}
+
+body {
+    /* Fondo de puntos (Dot Pattern) */
+    background-color: #f1f5f9;
+    background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+    background-size: 20px 20px;
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100vh;
 }
 
-.login-container, .inicio-container {
-    background: #fff;
-    padding: 20px;
-    border-radius: 14px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    width: 300px;
+/* --- ANIMACIÓN DE ENTRADA --- */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95); /* Empieza un poco más abajo para notar el recorrido */
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.animate-in {
+    /* Duración aumentada a 1.2s y curva de salida más suave */
+    animation: fadeInUp 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+
+.login-container {
+    background: #ffffff;
+    width: 90%; /* Cambio para responsive: usa el 90% en pantallas chicas */
+    max-width: 400px; /* Pero nunca más de 400px */
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    border-top: 4px solid #3b82f6;
     text-align: center;
 }
 
-h1 {
-    font-size: 24px;
-    margin-bottom: 20px;
-}
-
-.form-group {
-    margin-bottom: 15px;
-    text-align: left;
-}
-
-label {
-    display: block;
-    font-weight: bold;
-    margin-bottom: 5px;
-}
-
-input {
-    width: 95%;
-    padding: 8px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column; 
-    align-items: flex-start; 
-    margin-bottom: 5px; 
-}
-
-button {
-    background: #184875;
-    color: #fff;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 8px;
-    cursor: pointer;
-    width: 100%;
-}
-
-button:hover {
-    background: #81beff;
-}
-
-.flash {
-    margin-bottom: 15px;
-    padding: 10px;
-    border-radius: 4px;
-}
-
-.flash.error {
-    background: #f8d7da;
-    color: #721c24;
-}
-
-/* Animación de entrada suave */
-@keyframes fadeInScale {
-    0% {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    100% {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-.login-container {
-    animation: fadeInScale 0.6s ease-out;
-}
-
-.form-group {
-    margin-bottom: 15px;
-}
-
-.password-wrapper {
-    position: relative;
-    width: 100%;
-    max-width: 300px;
-}
-
-.password-wrapper input {
-    width: 100%;
-    padding: 8px 40px 8px 8px; /* padding-right aumentado para dejar espacio al ojito */
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    font-size: 14px;
-    box-sizing: border-box;
-}
-
-.password-wrapper .toggle-password {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
+/* Icono azul suave arriba del texto */
+.brand-icon-wrapper {
+    background: #eff6ff;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
-    cursor: pointer;
-    user-select: none;
+    margin: 0 auto 20px;
 }
 
-.password-wrapper .toggle-password svg {
-    height: 20px;
-    width: 20px;
-    pointer-events: none; /* evita problemas al hacer clic */
+.brand-icon-wrapper i {
+    color: #3b82f6;
+    font-size: 1.5rem;
+}
+
+.login-logo {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -1px;
+}
+
+.logo-accent {
+    color: #3b82f6;
+}
+
+.login-subtitle {
+    color: #94a3b8;
+    font-size: 0.85rem;
+    margin-bottom: 30px;
+}
+
+.input-group {
+    text-align: left;
+    margin-bottom: 20px;
+}
+
+.input-group label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 8px;
+}
+
+.input-with-icon {
+    position: relative;
+}
+
+.input-with-icon i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+}
+
+input {
+    width: 100%;
+    padding: 13px 45px 13px 45px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    font-size: 0.9rem;
+    transition: all 0.3s;
+}
+
+input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* --- ESTILO DEL OJITO --- */
+/* Ajuste del ojito para que no se encime con el borde */
+.toggle-password {
+    position: absolute;
+    right: 35px; /* Cambiado de 35px a 15px */
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #94a3b8;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.3s;
+    z-index: 10;
+}
+
+/* --- AÑADE ESTO AL FINAL PARA RESPONSIVE --- */
+@media (max-width: 480px) {
+    .login-container {
+        padding: 30px 20px;
+    }
+    .login-logo {
+        font-size: 1.5rem;
+    }
+}
+
+.toggle-password:hover {
+    color: #3b82f6;
+}
+
+.btn-login {
+    width: 100%;
+    background: #0f172a; /* Azul muy oscuro casi negro */
+    color: white;
+    border: none;
+    padding: 14px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    transition: background 0.3s;
+}
+
+.btn-login:hover {
+    background: #1e293b;
+}
+
+.forgot-link {
+    display: block;
+    margin-top: 25px;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    text-decoration: none;
+}
+
+.forgot-link:hover {
+    color: #3b82f6;
+}
+.version {
+    margin-top: 1rem;
+    font-size: 0.75rem;
+    color: #cbd5e1;
+}
+
+/* --- ESTILO DE ALERTAS --- */
+.alert {
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: fadeIn 0.4s ease;
+}
+
+/* Color para error (danger) */
+.alert-danger, .alert-error {
+    background-color: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fee2e2;
+}
+
+/* Animación rápida para que el mensaje aparezca suavemente */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
