@@ -29,58 +29,111 @@
 </head>
 
 <style>
-    #welcome-message.fullscreen-bienvenida {
-        position: relative;
-        background-image: url('{{ url_for("static", filename="agua.jpg") }}');
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-        margin: -20px;
-        height: calc(100% + 40px);
-        width: calc(100% + 40px);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden;
+/* --- CONTENEDOR DE BIENVENIDA --- */
+.welcome-container {
+    text-align: center;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.welcome-text h1 {
+    font-size: 2rem;
+    color: var(--text-main);
+    margin-bottom: 10px;
+}
+
+.welcome-text p {
+    color: var(--text-muted);
+    font-size: 1rem;
+}
+
+/* --- GRID DE TARJETAS RÁPIDAS --- */
+.quick-cards {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap; /* CLAVE: permite que las tarjetas bajen si no hay espacio */
+    margin-top: 30px;
+}
+
+.card {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 30px;
+    width: 200px; /* Ancho fijo en PC */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    border-color: var(--accent);
+    box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.2);
+}
+
+.card i {
+    font-size: 2.5rem;
+    color: var(--accent);
+}
+
+.card span {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-main);
+}
+
+/* --- AJUSTES RESPONSIVE (MÓVILES) --- */
+@media (max-width: 768px) {
+    .welcome-text h1 {
+        font-size: 1.5rem; /* Título más pequeño en móvil */
     }
 
-    /* Blur solo al fondo */
-    #welcome-message::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        backdrop-filter: blur(6px);
-        background-color: rgba(0, 0, 0, 0.15); /* si quieres, baja opacidad aún más */
-        z-index: 0;
+    .welcome-text p {
+        font-size: 0.9rem;
     }
 
-    /* ✅ Texto limpio, sin fondo adicional */
-    .mensaje-contenido {
-        position: relative;
-        z-index: 1;
-        text-align: center;
+    .quick-cards {
+        gap: 15px; /* Menos espacio entre tarjetas */
     }
 
-    .mensaje-contenido h1 {
-        font-size: 3rem;
-        color: #ffffff;
-        text-shadow: 2px 2px 5px rgba(0,0,0,0.8);
-        margin-bottom: 15px;
+    .card {
+        width: 100%; /* Las tarjetas ocupan todo el ancho en móviles */
+        max-width: 300px; /* Pero no crecen infinitamente */
+        padding: 20px;
+        flex-direction: row; /* En móvil se ven mejor de forma horizontal */
+        justify-content: flex-start;
     }
 
-    .mensaje-contenido p {
-        font-size: 1.2rem;
-        color: #ffffff;
-        text-shadow: 1px 1px 3px rgba(0,0,0,0.6);
+    .card i {
+        font-size: 1.8rem; /* Icono más pequeño */
     }
+}
 </style>
 
 <body>
     <!-- Encabezado -->
     <header>
-        <div class="navbar">
-            <i class="fas fa-bars" id="menu-toggle"></i>
-            <a href="#" class="logo" id="logo-link">TECHDITO</a>
+        <div class="navbar-left">
+            <i class="fas fa-bars-staggered" id="menu-toggle"></i>
+            <a href="#" class="logo" id="logo-link">
+                TECH<span class="logo-accent">DITO</span>
+            </a>
+        </div>
+        
+        <div class="user-profile-header">
+            <div class="user-details">
+                <span class="header-user-name">{{ nombre_completo }}</span>
+                <span class="user-role">Panel Operativo</span>
+            </div>
+            <div class="user-avatar">
+                <i class="fas fa-user-shield"></i>
+            </div>
         </div>
     </header>
 
@@ -88,67 +141,85 @@
     <div class="main-container">
         <!-- Barra lateral (Menú) -->
         
-        <aside class="sidebar" id="sidebar">
+        <aside class="sidebar collapsed" id="sidebar">
             <ul>
-                <!--<li><a href="#" onclick="showSection('search')">Búsqueda</a></li>-->
-                <!--<li><a href="#" onclick="showSection('boletas')">Boletas</a></li>-->
-                {% if user_name not in ['digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan'] %}
-                <li><a href="#" data-section="asistencias">Asistencias</a></li>
+                {% if user_name not in ['digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'sup_medicion'] %}
+                <li><a href="#" data-section="asistencias"><i class="fas fa-calendar-check"></i> <span>Asistencias</span></a></li>
                 {% endif %}
 
                 {% if user_name not in ['administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan'] %}
-                <li><a href="#" data-section="administrativo">Reportes</a></li>
+                <li><a href="#" data-section="administrativo"><i class="fas fa-file-invoice-dollar"></i> <span>Reportes</span></a></li>
                 {% endif %}
+
+                <li><a href="#" data-section="empleados"><i class="fas fa-users-cog"></i> <span>Gestión de Empleados</span></a></li>
                 
                 {% if user_name not in ['digitacion_catastro'] %}
-                <li><a href="#" data-section="mapa">Mapa</a></li>
+                <li><a href="#" data-section="mapa"><i class="fas fa-map-location-dot"></i> <span>Mapa</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_susan', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'administrativo_yta', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana'] %}
-                <li><a href="#" data-section="reportes">Validación Lecturas</a></li>
+                {% if user_name not in ['sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'administrativo_yta', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana'] %}
+                <li><a href="#" data-section="reportes"><i class="fas fa-tasks"></i> <span>Validación Lecturas</span></a></li>
                 {% endif %}
 
-                <li><a href="#" data-section="fotos">Fotoconsulta</a></li>
+                <li><a href="#" data-section="fotos"><i class="fas fa-images"></i> <span>Fotoconsulta</span></a></li>
 
                 {% if user_name not in ['sup_inspecciones', 'sup_recaudacion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'digitacion_catastro'] %}
-                <li><a href="#" data-section="fichas">Documentos</a></li>
+                <li><a href="#" data-section="fichas"><i class="fas fa-folder-open"></i> <span>Documentos</span></a></li>
                 {% endif %}
                 
                 {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro'] %}
-                <li><a href="#" data-section="renombrado">Renombrado</a></li>
+                <li><a href="#" data-section="renombrado"><i class="fas fa-pen-nib"></i> <span>Renombrado</span></a></li>
                 {% endif %}
 
                 {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana'] %}
-                <li><a href="#" data-section="materiales">Control de Materiales</a></li>
+                <li><a href="#" data-section="materiales"><i class="fas fa-boxes-stacked"></i> <span>Control de Materiales</span></a></li>
                 {% endif %}
 
                 {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana'] %}
-                <li><a href="#" data-section="dbf">Convertir DBF</a></li>
+                <li><a href="#" data-section="dbf"><i class="fas fa-file-code"></i> <span>Convertir DBF</span></a></li>
                 {% endif %}
 
                 {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana'] %}
-                <li><a href="#" data-section="generar-carga">Generar Carga</a></li>
+                <li><a href="#" data-section="generar-carga"><i class="fas fa-upload"></i> <span>Generar Carga</span></a></li>
                 {% endif %}
 
                 {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana'] %}
-                <li><a href="#" data-section="dashboard">Dashboard</a></li>
+                <li><a href="#" data-section="dashboard"><i class="fas fa-chart-pie"></i> <span>Dashboard</span></a></li>
                 {% endif %}
 
                 {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana'] %}
-                <li><a href="#" data-section="cartas">Recibos</a></li>
+                <li><a href="#" data-section="cartas"><i class="fas fa-envelope-open-text"></i> <span>Recibos</span></a></li>
                 {% endif %}
 
-                <li class="logout-item"><a href="{{ url_for('logout') }}" class="logout-link">Cerrar Sesión</a></li>
+                <li class="logout-item">
+                    <a href="{{ url_for('logout') }}" class="logout-link">
+                        <i class="fas fa-sign-out-alt"></i> <span>Cerrar Sesión</span>
+                    </a>
+                </li>
             </ul>
         </aside>
 
         <!-- Contenido dinámico -->
         <section class="content" id="content">
             <!--<div id="search" class="section active">Bienvenido a la sección de Búsqueda.</div>-->
-            <div id="welcome-message" class="fullscreen-bienvenida">
-                <div class="mensaje-contenido">
-                    <h1>Bienvenido, {{ nombre_completo }}</h1>
-                    <p>Seleccione una opción del menú para continuar.</p>
+            <div id="welcome-message" class="welcome-container">
+                <div class="welcome-text">
+                    <h1>¡Hola de nuevo, {{ nombre_completo }}!</h1>
+                    <p>¿Qué vamos a gestionar hoy? Aquí tienes tus accesos rápidos:</p>
+                </div>
+                <div class="quick-cards">
+                    <div class="card" onclick="showSection('asistencias')">
+                        <i class="fas fa-calendar-check"></i>
+                        <span>Asistencias</span>
+                    </div>
+                    <div class="card" onclick="showSection('administrativo')">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        <span>Ver Reportes</span>
+                    </div>
+                    <div class="card" onclick="showSection('empleados')">
+                        <i class="fas fa-users-cog"></i>
+                        <span>Gestión Personal</span>
+                    </div>
                 </div>
             </div>
 
@@ -1275,40 +1346,30 @@
 
                 <!-- ADMINISTRATIVO -->
                 <div id="administrativo" class="section">
-                    <h2>ASISTENCIA DE PERSONAL: DESCARGA DE REPORTES</h2>
-                    <div class="input-container-administrativo">
-                        <div class="input-container-administrativo-1">
-                            <!-- Primera fila -->
-                               <!--<div class="input-group">
-                                    <label for="mes-administrativo">Seleccionar mes:</label>
-                                    <select name="mes" id="mes-administrativo">
-                                        <option value="Enero">Enero</option>
-                                        <option value="Febrero">Febrero</option>
-                                        <option value="Marzo">Marzo</option>
-                                        <option value="Abril">Abril</option>
-                                        <option value="Mayo">Mayo</option>
-                                        <option value="Junio">Junio</option>
-                                        <option value="Julio">Julio</option>
-                                        <option value="Agosto">Agosto</option>
-                                        <option value="Septiembre">Septiembre</option>
-                                        <option value="Octubre">Octubre</option>
-                                        <option value="Noviembre">Noviembre</option>
-                                        <option value="Diciembre">Diciembre</option>
-                                    </select>
-                                </div>--> 
-                        
-                                <div class="input-group">
-                                    <label for="fechainicio">Fecha de Inicio:</label>
+    
+                    <div class="module-header">
+                        <h2 class="module-title">ASISTENCIA DE PERSONAL: DESCARGA DE REPORTES</h2>
+                    </div>
+
+                    <div class="toolbar-card">
+                        <div class="toolbar-grid">
+                            <div class="filter-group date-group">
+                                <div class="input-modern">
+                                    <label for="fechainicio">Fecha de Inicio</label>
                                     <input type="date" id="fechainicio" name="fecha" required>
                                 </div>
-                        
-                                <div class="input-group">
-                                    <label for="fechafin">Fecha de Fin:</label>
+                                <div class="date-separator">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                                </div>
+                                <div class="input-modern">
+                                    <label for="fechafin">Fecha de Fin</label>
                                     <input type="date" id="fechafin" name="fecha" required>
                                 </div>
-                        
-                                <div class="input-group">
-                                    <label for="areas">Seleccionar área:</label>
+                            </div>
+
+                            <div class="filter-group select-group">
+                                <div class="input-modern">
+                                    <label for="areas-administrativo">Seleccionar área</label>
                                     <select name="areas" id="areas-administrativo">    
                                         <option value="TOMA DE ESTADO">TOMA DE ESTADO</option>
                                         <option value="RECAUDACION">RECAUDACION Y CUSTODIA DE VALORES</option>
@@ -1320,70 +1381,267 @@
                                         <option value="ADMINSTRATIVO">ADMINISTRATIVO</option>
                                     </select>
                                 </div>
-                              
-                        
-                            
-                                <div class="input-group">
-                                    <label for="operario">Seleccionar operario:</label>
+
+                                <div class="input-modern">
+                                    <label for="seleccionar-empleado">Seleccionar operario</label>
                                     <select id="seleccionar-empleado">
-                                        <!-- Opciones dinámicas de empleados -->
-                                    </select>
+                                        <option value="">Todos los operarios...</option>
+                                        </select>
                                 </div>
-                        
-                                <div class="input-group">
-                                    <label for="buscar" class="label-buscar">Buscar:</label>
-                                    <button type="submit" class="btn-buscar">BUSCAR ASISTENCIA</button>
-                                </div>
-                              
+                            </div>
+
+                            <div class="filter-action">
+                                <button type="button" class="btn-buscar">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                    BUSCAR ASISTENCIA
+                                </button>
+                            </div>
                         </div>
+                    </div>
+
+                    <div class="data-card">
                         
+                        <div class="actions-header-modern">
+                            <h3 class="tabs-label">TIPO DE REPORTE</h3>
+                            <div class="report-tabs">
+                                <button id="btn-asistencias" class="tab-btn-1 tab-blue">Asistencias</button>
+                                <button id="btn-pasajes" class="tab-btn-1 tab-blue">Pasajes</button>
+                                <button id="btn-viaticos" class="tab-btn-1 tab-blue">Viáticos</button>
+                                <button id="btn-consolidado" class="tab-btn-1 tab-orange">Consolidado Asistencia</button>
+                                <button id="btn-consolidado-pasajes" class="tab-btn-1 tab-orange">Consolidado Pasajes</button>
+                            </div>
+                        </div>
 
-                    <div class="table-container-administrativo">
-                        <h3>
-                            REPORTE:
-                            <button id="btn-asistencias">ASISTENCIAS</button>
-                            <button id="btn-pasajes">PASAJES</button>
-                            <button id="btn-viaticos">VIÁTICOS</button>
-                            <button id="btn-consolidado">CONSOLIDADO ASISTENCIA</button>
-                            <button id="btn-consolidado-pasajes">CONSOLIDADO PASAJES</button>
-
-                        </h3>
-                        <div class="scrollable-table">
-                            <table id="tabla-asistencia-administrativo">
+                        <div class="table-responsive-wrapper scrollable-table">
+                            <table id="tabla-asistencia-administrativo" class="modern-table">
                                 <thead>
                                     <tr>
                                         <th>N°</th>
                                         <th>DNI</th>
                                         <th>Nombres y Apellidos</th>
                                         <th>Puesto de Trabajo</th>
-                                        <!-- Se agregarán dinámicamente las columnas para los días del mes -->
-                                    </tr>
+                                        </tr>
                                 </thead>
                                 <tbody>
-                                    <!-- Se llenarán dinámicamente las filas de la tabla -->
-                                </tbody>
-                                <tfoot>
-                                    <tr>
-                                        <td colspan="35" style="text-align: center;">
-                                            
-                                            <div id="spinner" style="display: none; font-weight: bold; color: #184875; margin-bottom: 10px;">
-                                                ⏳ Generando reporte, por favor espera...
-                                            </div>
-                                            
-                                            <button type="submit" class="btn-admin">DESCARGAR REPORTE ACTUAL</button>
-
-                                            <button type="submit" class="btn-completo">DESCARGAR PLANILLA COMPLETA</button>
-                                            
-                                        </td>
-                                        
-                                    </tr>
-                                </tfoot>
+                                    </tbody>
                             </table>
                         </div>
-                    </div>
+
+                        <div class="data-card-footer">
+                            <div id="spinner" class="modern-spinner" style="display: none;">
+                                <div class="loader-circle"></div>
+                                <span>Generando reporte, por favor espera...</span>
+                            </div>
+                            <div class="footer-actions-right">
+                                <button type="button" class="btn-admin">DESCARGAR REPORTE ACTUAL</button>
+                                <button type="button" class="btn-completo">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                    DESCARGAR PLANILLA COMPLETA
+                                </button>
+                            </div>
+                        </div>
+                        
                     </div>
                 </div>
 
+                <!-- GESTIÓN DE EMPLEADOS -->
+                <div id="empleados" class="section">
+                    <div class="module-header">
+                        <h2 class="module-title-bold">GESTIÓN DE EMPLEADOS</h2>
+                        <p class="module-subtitle">Administra la información, cargos y accesos del personal.</p>
+                    </div>
+
+                    <div class="split-layout">
+                        
+                        <div id="columna-tabla" class="col-tabla">
+                            
+                            <div class="toolbar-card">
+                                <div class="toolbar-actions">
+                                    <button type="button" class="btn-primary" id="btn-nuevo-empleado">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                                        Nuevo Empleado
+                                    </button>
+                                    <button type="button" class="btn-secondary" id="btn-generar-reporte">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                        Generar Reporte
+                                    </button>
+                                </div>
+
+                                <div class="search-input-wrapper">
+                                    <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                    <input type="text" id="buscar-empleado" placeholder="Buscar por DNI o Nombres...">
+                                </div>
+                            </div>
+
+                            <div class="data-card">
+                                <div class="table-scroll-fixed">
+                                    <table class="modern-table main-data-table" id="tabla-empleados">
+                                        <thead>
+                                            <tr>
+                                                <th class="col-checkbox"><input type="checkbox" id="check-all"></th>
+                                                <th>DNI</th>
+                                                <th>Nombres y Apellidos</th>
+                                                <th>Área</th>
+                                                <th>Cargo</th>
+                                                <th>Estado</th>
+                                                <th class="col-actions">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tbody-empleados">
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="data-card-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;">
+                                    <span class="text-muted" style="font-size: 13px;" id="info-paginacion"></span>
+                                    <div class="pagination-controls" id="controles-paginacion" style="display: flex; gap: 5px;">
+                                    </div>
+                                </div>
+                            </div>
+                        </div> <div id="columna-perfil" class="col-perfil">
+                            <div class="perfil-header">
+                                <button class="btn-cerrar-perfil" onclick="cerrarPerfil()">&times;</button>
+                                <div class="perfil-portada"></div>
+                                <div class="perfil-foto-container">
+                                    <img id="perfil-foto" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Foto Empleado">
+                                </div>
+                                <h3 id="perfil-nombre">Cargando...</h3>
+                                <p id="perfil-cargo" class="text-muted">Cargando...</p>
+                                <span id="perfil-estado" class="badge">ACTIVO</span>
+                            </div>
+                            
+                            <div class="perfil-body">
+                                
+                                <div class="info-section">
+                                    <h4>Información Personal</h4>
+                                    <div class="info-grid">
+                                        <div class="info-item">
+                                            <span class="info-label">DNI</span>
+                                            <span class="info-valor" id="perfil-dni">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Fecha Nac.</span>
+                                            <span class="info-valor" id="perfil-fecha-nac">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Sexo</span>
+                                            <span class="info-valor" id="perfil-sexo">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Estado Civil</span>
+                                            <span class="info-valor" id="perfil-estado-civil">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Teléfono</span>
+                                            <span class="info-valor" id="perfil-telefono">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Correo Electrónico</span>
+                                            <span class="info-valor" id="perfil-correo" style="word-break: break-all;">-</span>
+                                        </div>
+                                        <div class="info-item" style="grid-column: span 2;">
+                                            <span class="info-label">Dirección</span>
+                                            <span class="info-valor" id="perfil-direccion">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="info-section">
+                                    <h4>Datos Laborales</h4>
+                                    <div class="info-grid">
+                                        <div class="info-item">
+                                            <span class="info-label">Área / Departamento</span>
+                                            <span class="info-valor" id="perfil-area">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Tipo de Contrato</span>
+                                            <span class="info-valor" id="perfil-contrato">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Tipo de Jornada</span>
+                                            <span class="info-valor" id="perfil-jornada">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Régimen Laboral</span>
+                                            <span class="info-valor" id="perfil-regimen">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Fecha de Ingreso</span>
+                                            <span class="info-valor" id="perfil-ingreso">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Fecha de Cese</span>
+                                            <span class="info-valor" id="perfil-cese">-</span>
+                                        </div>
+                                    </div>
+
+                                    <h5 style="margin-top: 15px; font-size: 0.85rem; color: #6c757d; font-weight: bold;">Horario</h5>
+                                    <div class="info-grid">
+                                        <div class="info-item">
+                                            <span class="info-label">Hora Ingreso</span>
+                                            <span class="info-valor" id="perfil-hora-ingreso">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Hora Salida</span>
+                                            <span class="info-valor" id="perfil-hora-salida">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Inicio Refri.</span>
+                                            <span class="info-valor" id="perfil-ref-inicio">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Fin Refri.</span>
+                                            <span class="info-valor" id="perfil-ref-fin">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="info-section">
+                                    <h4>Remuneración</h4>
+                                    <div class="info-grid">
+                                        <div class="info-item">
+                                            <span class="info-label">Sueldo Básico</span>
+                                            <span class="info-valor" id="perfil-sueldo">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Moneda</span>
+                                            <span class="info-valor" id="perfil-moneda">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Asignación Familiar</span>
+                                            <span class="info-valor" id="perfil-asig-fam">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Bonificación Fija</span>
+                                            <span class="info-valor" id="perfil-bono">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="info-section">
+                                    <h4>Datos Bancarios</h4>
+                                    <div class="info-grid">
+                                        <div class="info-item">
+                                            <span class="info-label">Banco</span>
+                                            <span class="info-valor" id="perfil-banco">-</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">Tipo de Cuenta</span>
+                                            <span class="info-valor" id="perfil-tipo-cuenta">-</span>
+                                        </div>
+                                        <div class="info-item" style="grid-column: span 2;">
+                                            <span class="info-label">Número de Cuenta</span>
+                                            <span class="info-valor" id="perfil-cuenta">-</span>
+                                        </div>
+                                        <div class="info-item" style="grid-column: span 2;">
+                                            <span class="info-label">CCI</span>
+                                            <span class="info-valor" id="perfil-cci">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div> </div> </div>
+                
                 <!-- BOLETAS -->
                 <div id="boletas" class="section">
                     <h2>GENERAR BOLETAS DE PAGO</h2>
@@ -2353,6 +2611,109 @@
     </div>
     </div>
 
+    <!-- VENTANA FLOTANTE REPORTES GESTION EMPLEADOS -->
+    <div id="modal-reportes" class="modal">
+        <div class="modal-content">
+
+            <div class="modal-header-fijo">
+                <h2 style="margin-top: 0; margin-bottom: 15px;">Dashboard Gerencial</h2>
+                <div class="report-filters" style="display: flex; gap: 15px; padding: 15px; background: #f1f5f9; border-radius: 8px; margin-bottom: 20px; align-items: flex-end;">
+                    <div>
+                        <label style="display:block; font-size: 12px; font-weight: bold;">Fecha Inicio:</label>
+                        <input type="date" id="fecha-inicio" class="form-control">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size: 12px; font-weight: bold;">Fecha Fin:</label>
+                        <input type="date" id="fecha-fin" class="form-control">
+                    </div>
+                    <div style="min-width: 200px;">
+                        <label style="display:block; font-size: 12px; font-weight: bold; color: #475569;">Tipo de Dashboard:</label>
+                        <select id="tipo-dashboard" class="form-control" style="width: 100%; cursor: pointer;">
+                            <option value="todos">📊 Todos los Dashboards</option>
+                            <option value="asistencias">📅 Récord de Asistencias</option>
+                            <option value="operativo">⚙️ Distribución Operativa (Áreas/Estados)</option>
+                            <option value="gerencial">💰 Gastos e Incidencias</option>
+                        </select>
+                    </div>
+                    <div style="min-width: 250px;">
+                        <label style="display:block; font-size: 12px; font-weight: bold;">
+                            Empleado:
+                        </label>
+                        <select id="select-empleado" placeholder="Buscar empleado...">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                    <button onclick="actualizarReportesPorFecha()" class="btn-primary" style="padding: 8px 16px;">
+                        🔍 Filtrar Datos
+                    </button>
+                </div>
+            </div>
+
+            <div class="modal-body-scroll">
+                <div class="dashboard-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div id="container-areas" class="chart-container" style="height: 300px; position: relative;">
+                        <canvas id="chartAreas"></canvas>
+                    </div>
+                    <div id="container-estados" class="chart-container" style="height: 300px; position: relative;">
+                        <canvas id="chartEstados"></canvas>
+                    </div>
+                    
+                    <div id="container-asistencias" class="chart-container" style="height: 350px; grid-column: span 2; position: relative;">
+                        <canvas id="chartAsistencias"></canvas>
+                    </div>
+                    
+                    <div id="container-incidencias" class="chart-container" style="height: 300px; position: relative;">
+                        <canvas id="chartIncidencias"></canvas>
+                    </div>
+                    <div id="container-ranking-incidencias" class="chart-container" style="height: 300px; position: relative; padding: 10px;">
+                        <h6 style="font-size: 0.8rem; font-weight: bold; color: #1F497D; margin-bottom: 8px;">TOP 10 INCIDENCIAS</h6>
+                        <div class="ranking-scroll">
+                            <table class="ranking-table">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align: left;">Empleado</th>
+                                        <th style="text-align: left;">Área</th> <th style="text-align: center;">Faltas</th>
+                                        <th style="text-align: center;">DM</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="listado-incidencias">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="container-gastos" class="chart-container" style="height: 300px; position: relative;">
+                        <canvas id="chartGastos"></canvas>
+                    </div>
+                    <div id="container-ranking-gastos" class="chart-container" style="height: 300px; position: relative; padding: 10px;">
+                        <h6 style="font-size: 0.8rem; font-weight: bold; color: #1F497D; margin-bottom: 8px;">TOP 10 GASTOS</h6>
+                        <div class="ranking-scroll">
+                            <table class="ranking-table">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align: left;">Empleado</th>
+                                        <th style="text-align: left;">Área</th> <th style="text-align: right;">Pasajes</th>
+                                        <th style="text-align: right;">Viáticos</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="listado-gastos">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer-fijo">
+                <div class="export-options" style="display: flex; gap: 10px;">
+                    <button onclick="exportarExcel()" class="btn-excel">📥 Exportar a Excel</button>
+                    <button onclick="exportarPDF()" class="btn-pdf">📄 Generar PDF General</button>
+                    <button onclick="cerrarModalReportes()" class="btn-danger" style="padding: 8px 16px; border-radius: 6px; border: none; background: #ef4444; color: white; cursor: pointer;">Cerrar</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    
     <!-- VENTANA FLOTANTE DETALLE -->
     <div id="ventana-flotante-detalle" style="display:none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
     background: rgba(0,0,0,0.4); z-index: 9999; align-items: center; justify-content: center;">
@@ -2394,6 +2755,280 @@
         </div>
     </div>
 
+    <!-- VENTANA FLOTANTE AGREGAR EMPLEADO -->
+    <div id="modal-nuevo-empleado" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Registro de Nuevo Empleado</h2>
+                <button class="btn-close-modal" id="btn-close-modal" title="Cerrar">&times;</button>
+            </div>
+
+            <div class="modal-tabs">
+                <button class="tab-btn active" data-target="tab-personales">Datos Personales</button>
+                <button class="tab-btn" data-target="tab-laborales">Datos Laborales</button>
+                <button class="tab-btn" data-target="tab-remuneracion">Remuneración</button>
+                <button class="tab-btn" data-target="tab-bancarios">Datos Bancarios</button>
+                <button class="tab-btn" data-target="tab-cargas">Cargas Familiares</button>
+                <button class="tab-btn" data-target="tab-documentos">Documentos</button>
+            </div>
+
+            <div class="modal-body">
+                <form id="form-empleado">
+                    
+                    <div id="tab-personales" class="tab-pane active">
+                        <div class="form-grid">
+                            <div class="input-group">
+                                <label>Nombres <span class="text-danger">*</span></label>
+                                <input type="text" id="emp_nombres" placeholder="Ej. Juan Carlos" required>
+                            </div>
+                            <div class="input-group">
+                                <label>Apellidos <span class="text-danger">*</span></label>
+                                <input type="text" id="emp_apellidos" placeholder="Ej. Pérez Gómez" required>
+                            </div>
+                            <div class="input-group">
+                                <label>DNI / Documento <span class="text-danger">*</span></label>
+                                <input type="text" id="emp_dni" maxlength="15">
+                            </div>
+                            <div class="input-group">
+                                <label>Fecha de Nacimiento</label>
+                                <input type="date" id="emp_fecha_nac">
+                            </div>
+                            <div class="input-group">
+                                <label>Sexo</label>
+                                <select id="emp_sexo">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="MASCULINO">MASCULINO</option>
+                                    <option value="FEMENINO">FEMENINO</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Estado Civil</label>
+                                <select id="emp_estado_civil">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="SOLTERO">SOLTERO/A</option>
+                                    <option value="CASADO">CASADO/A</option>
+                                    <option value="VIUDO">VIUDO/A</option>
+                                    <option value="DIVORCIADO">DIVORCIADO/A</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Teléfono</label>
+                                <input type="text" id="emp_telefono">
+                            </div>
+                            <div class="input-group">
+                                <label>Correo Electrónico</label>
+                                <input type="email" id="emp_correo">
+                            </div>
+                            <div class="input-group full-width">
+                                <label>Dirección</label>
+                                <input type="text" id="emp_direccion" placeholder="Calle, Avenida, Distrito...">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-laborales" class="tab-pane">
+                        <div class="form-grid">
+                            <div class="input-group">
+                                <label>Área / Departamento <span class="text-danger">*</span></label>
+                                <input type="text" id="emp_area">
+                            </div>
+                            <div class="input-group">
+                                <label>Cargo <span class="text-danger">*</span></label>
+                                <input type="text" id="emp_cargo">
+                            </div>
+                            <div class="input-group">
+                                <label>Tipo de Contrato</label>
+                                <select id="emp_tipo_contrato">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="PLAZO INDETERMINADO">PLAZO INDETERMINADO</option>
+                                    <option value="PLAZO FIJO">PLAZO FIJO</option>
+                                    <option value="PART TIME">PART TIME</option>
+                                    <option value="RECIBO POR HONORARIOS">RECIBO POR HONORARIOS</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Tipo de Jornada <span style="color: red;">*</span></label>
+                                <select id="emp_jornada"> <option value="">Seleccionar...</option>
+                                    <option value="FIJO">Horario Fijo</option>
+                                    <option value="ROTATIVO">Horario Rotativo</option>
+                                    <option value="PART_TIME">Medio Tiempo</option>
+                                    <option value="ATIPICO">Atípico / Minería</option>
+                                </select>
+                            </div>
+
+                            <div class="row-horarios" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <div class="input-group">
+                                    <label>Hora Ingreso</label>
+                                    <input type="time" id="emp_hora_ingreso">
+                                </div>
+                                <div class="input-group">
+                                    <label>Inicio Refrigerio</label>
+                                    <input type="time" id="emp_ref_inicio">
+                                </div>
+                                <div class="input-group">
+                                    <label>Fin Refrigerio</label>
+                                    <input type="time" id="emp_ref_fin">
+                                </div>
+                                <div class="input-group">
+                                    <label>Hora Salida</label>
+                                    <input type="time" id="emp_hora_salida">
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label>Régimen Laboral</label>
+                                <select id="emp_regimen">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="GENERAL">GENERAL</option>
+                                    <option value="MYPE">MYPE</option>
+                                    <option value="CONSTRUCCION CIVIL">CONSTRUCCION CIVIL</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Estado</label>
+                                <select id="emp_estado">
+                                    <option value="ACTIVO" selected>ACTIVO</option>
+                                    <option value="CESADO">CESADO</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Fecha de Ingreso <span class="text-danger">*</span></label>
+                                <input type="date" id="emp_fecha_ingreso">
+                            </div>
+                            <div class="input-group">
+                                <label>Fecha de Cese (Opcional)</label>
+                                <input type="date" id="emp_fecha_cese">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-remuneracion" class="tab-pane">
+                        <div class="form-grid">
+                            <div class="input-group">
+                                <label>Sueldo Básico</label>
+                                <input type="number" id="rem_sueldo" step="0.01" min="0" placeholder="0.00">
+                            </div>
+                            <div class="input-group">
+                                <label>Moneda</label>
+                                <select id="rem_moneda">
+                                    <option value="PEN">Soles (PEN)</option>
+                                    <option value="USD">Dólares (USD)</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Asignación Familiar</label>
+                                <input type="number" id="rem_asig_fam" step="0.01" min="0" placeholder="0.00" value="0">
+                            </div>
+                            <div class="input-group">
+                                <label>Bonificación Fija</label>
+                                <input type="number" id="rem_bono" step="0.01" min="0" placeholder="0.00" value="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-bancarios" class="tab-pane">
+                        <div class="form-grid">
+                            <div class="input-group">
+                                <label>Banco</label>
+                                <select id="ban_nombre">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="BCP">BCP</option>
+                                    <option value="BBVA">BBVA</option>
+                                    <option value="INTERBANK">INTERBANK</option>
+                                    <option value="SCOTIABANK">SCOTIABANK</option>
+                                    <option value="BANCO DE LA NACION">BANCO DE LA NACION</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Tipo de Cuenta</label>
+                                <select id="ban_tipo">
+                                    <option value="AHORROS">AHORROS</option>
+                                    <option value="CORRIENTE">CORRIENTE</option>
+                                    <option value="SUELDO">CUENTA SUELDO</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Número de Cuenta</label>
+                                <input type="text" id="ban_cuenta" placeholder="Ej. 193-0000000-0-00">
+                            </div>
+                            <div class="input-group">
+                                <label>CCI (Cuenta Interbancaria)</label>
+                                <input type="text" id="ban_cci" placeholder="20 dígitos">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-cargas" class="tab-pane">
+                        <div class="empty-state">
+                            <p class="text-muted" style="margin-bottom: 15px;">Añade los dependientes del empleado (Hijos, Cónyuge).</p>
+                            <div class="form-grid" style="background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px dashed #cbd5e1;">
+                                <div class="input-group full-width">
+                                    <label>Nombres Completos del Dependiente</label>
+                                    <input type="text" id="car_nombres">
+                                </div>
+                                <div class="input-group">
+                                    <label>Parentesco</label>
+                                    <select id="car_parentesco">
+                                        <option value="">Seleccionar...</option>
+                                        <option value="HIJO(A)">HIJO(A)</option>
+                                        <option value="CONYUGE">CONYUGE</option>
+                                    </select>
+                                </div>
+                                <div class="input-group">
+                                    <label>Fecha de Nacimiento</label>
+                                    <input type="date" id="car_fecha_nac">
+                                </div>
+                            </div>
+                            </div>
+                    </div>
+
+                    <div id="tab-documentos" class="tab-pane">
+                        <div class="documentos-wrapper">
+                            
+                            <div id="seccion-documentos-actuales" style="display: none;">
+                                <h4 class="doc-section-title">Archivos Adjuntos</h4>
+                                
+                                <div id="lista-documentos" class="doc-list">
+                                    </div>
+                            </div>
+
+                            <div class="upload-section">
+                                <h4 class="doc-section-title">Agregar Nuevo Documento</h4>
+                                <p class="text-muted" style="margin-bottom: 15px; font-size: 0.9rem;">Sube el CV, DNI u otros documentos escaneados. (PDF, JPG, PNG)</p>
+                                
+                                <div class="form-grid upload-grid">
+                                    <div class="input-group">
+                                        <label for="doc_tipo">Tipo de Documento</label>
+                                        <select id="doc_tipo" class="form-control">
+                                            <option value="">Seleccione...</option>
+                                            <option value="1">DNI Escaneado</option>
+                                            <option value="2">Currículum Vitae (CV)</option>
+                                            <option value="3">Contrato Firmado</option>
+                                            <option value="4">Foto Carnet</option>
+                                        </select>
+                                    </div>
+                                    <div class="input-group">
+                                        <label for="doc_archivo">Archivo</label>
+                                        <input type="file" id="doc_archivo" class="form-control">
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="btn-cancelar-modal">Cancelar</button>
+                <button type="button" class="btn-primary" id="btn-guardar-final">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    Guardar Empleado
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal de Renombrado -->
     <div id="modal-renombrar" style="display:none; position:fixed; top:0; left:0; 
         width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000;">
@@ -2415,7 +3050,7 @@
 
     <div id="modal-cartas-overlay" class="modal-overlay"></div>
 
-        <div id="modal-cartas-recibos" class="modal-ventana">
+    <div id="modal-cartas-recibos" class="modal-ventana">
             
             <span class="modal-cerrar" id="cerrar-modal-cartas">&times;</span>
             
@@ -2425,7 +3060,35 @@
             <input type="date" id="fecha-emision-carta" class="modal-input-fecha">
             
             <button id="btn-generar-cartas" class="modal-boton-azul">GENERAR</button>
+    </div>
+
+    <div id="visor-documentos-overlay" class="visor-overlay">
+        <div class="visor-container">
+            <div class="visor-header">
+                <div class="visor-info">
+                    <h3 id="visor-titulo">Nombre del Documento</h3>
+                    <span id="visor-fecha">Subido el: --</span>
+                </div>
+                <div class="visor-actions">
+                    <button id="visor-btn-borrar" class="visor-btn btn-danger" title="Eliminar Documento"><i class="fas fa-trash-alt"></i></button>
+                    <button id="visor-btn-cerrar" class="visor-btn" title="Cerrar Visor"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            
+            <div class="visor-body">
+                <button id="visor-btn-prev" class="visor-nav-btn"><i class="fas fa-chevron-left"></i></button>
+                
+                <div id="visor-content-area">
+                    </div>
+                
+                <button id="visor-btn-next" class="visor-nav-btn"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            
+            <div class="visor-footer">
+                <span id="visor-contador">1 / 1</span>
+            </div>
         </div>
+    </div>
 
 
 
@@ -2433,7 +3096,9 @@
 
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-
+    <link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
@@ -2442,7 +3107,7 @@
     <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 
 </body>
