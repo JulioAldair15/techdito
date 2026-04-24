@@ -1,6 +1,6 @@
 import os
 from flask import Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen
 from flask_bcrypt import check_password_hash 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func
