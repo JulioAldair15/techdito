@@ -492,7 +492,10 @@ def auditar_busqueda_fecha():
 @log_evento("acceso_modulo")
 def filtrar_empleado():
     try:
-        empleados = Empleado.query.filter(Empleado.area == 'RECAUDACION').all()
+        empleados = Empleado.query.filter(
+            Empleado.area == 'RECAUDACION', 
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if not empleados:
             return jsonify({"mensaje": "No se encontraron empleados en RECAUDACION"}), 404
@@ -517,7 +520,7 @@ def filtrar_empleado():
 @app.route('/añadir-empleados', methods=['GET'])
 def filtrar_empleados_añadir():
     # Filtrar todos los empleados sin especificar el área
-    empleados = Empleado.query.all()  # Eliminar el filtro por área
+    empleados = Empleado.query.filter(Empleado.estado != 'CESADO').all()
     
     # Convertir los datos a JSON
     empleados_data = [
@@ -534,7 +537,6 @@ def filtrar_empleados_añadir():
     return jsonify(empleados_data)
 
 @app.route('/cargar-asistencia', methods=['GET'])
-
 def cargar_asistencia():
     try:
         fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
@@ -544,8 +546,14 @@ def cargar_asistencia():
         fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
 
-        # Buscar registros en empleado_recaudacion para la fecha seleccionada
-        registros_asistencia = EmpleadoRecaudacion.query.filter_by(fec_asist=fecha_consulta).all()
+        # ====================================================================
+        # MODIFICACIÓN 1: Si ya hay registros en la fecha seleccionada, 
+        # hacemos JOIN con Empleado para traer solo a los que NO están cesados.
+        # ====================================================================
+        registros_asistencia = EmpleadoRecaudacion.query.join(Empleado).filter(
+            EmpleadoRecaudacion.fec_asist == fecha_consulta,
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if registros_asistencia:
             # Si hay registros, se devuelven para su modificación
@@ -570,18 +578,22 @@ def cargar_asistencia():
             ]
             return jsonify({"tipo": "modificacion", "datos": asistencia_data})
 
-        # Si no hay registros, filtrar empleados sin asistencia en el mes
+        # ====================================================================
+        # MODIFICACIÓN 2: Si no hay registros (hoja nueva), filtramos a los 
+        # empleados de RECAUDACION agregando la condición estado != 'CESADO'
+        # ====================================================================
         empleados_sin_asistencia = db.session.query(Empleado).filter(
             ~Empleado.id_empleado.in_(
                 db.session.query(EmpleadoRecaudacion.id_empleado).filter(
                     EmpleadoRecaudacion.mes == mes_consulta
                 )
             ),
-            Empleado.area == 'RECAUDACION'
+            Empleado.area == 'RECAUDACION',
+            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
         ).all()
 
         if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes"}), 404
+            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
 
         # Construir respuesta con empleados sin asistencia
         empleados_data = [
@@ -700,7 +712,10 @@ def eliminar_asistencia():
 @app.route('/filtrar-empleados-lectura', methods=['GET'])
 def filtrar_empleado_lectura():
     try:
-        empleados = Empleado.query.filter(Empleado.area == 'TOMA DE ESTADO').all()
+        empleados = Empleado.query.filter(
+            Empleado.area == 'TOMA DE ESTADO', 
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if not empleados:
             return jsonify({"mensaje": "No se encontraron empleados en TOMA DE ESTADO"}), 404
@@ -732,8 +747,14 @@ def cargar_asistencia_lectura():
         fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
 
-        # Buscar registros en empleado_recaudacion para la fecha seleccionada
-        registros_asistencia = EmpleadoLectura.query.filter_by(fec_asist=fecha_consulta).all()
+        # ====================================================================
+        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
+        # registros ya existentes.
+        # ====================================================================
+        registros_asistencia = EmpleadoLectura.query.join(Empleado).filter(
+            EmpleadoLectura.fec_asist == fecha_consulta,
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if registros_asistencia:
             # Si hay registros, se devuelven para su modificación
@@ -758,18 +779,22 @@ def cargar_asistencia_lectura():
             ]
             return jsonify({"tipo": "modificacion", "datos": asistencia_data})
 
-        # Si no hay registros, filtrar empleados sin asistencia en el mes
+        # ====================================================================
+        # MODIFICACIÓN 2: Filtramos empleados de TOMA DE ESTADO y DISTRIBUCION
+        # agregando la condición Empleado.estado != 'CESADO' para listas nuevas.
+        # ====================================================================
         empleados_sin_asistencia = db.session.query(Empleado).filter(
             ~Empleado.id_empleado.in_(
                 db.session.query(EmpleadoLectura.id_empleado).filter(
                     EmpleadoLectura.mes == mes_consulta
                 )
             ),
-            Empleado.area.in_(['TOMA DE ESTADO', 'DISTRIBUCION'])
+            Empleado.area.in_(['TOMA DE ESTADO', 'DISTRIBUCION']),
+            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
         ).all()
 
         if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes"}), 404
+            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
 
         # Construir respuesta con empleados sin asistencia
         empleados_data = [
@@ -937,7 +962,10 @@ def eliminar_asistencia_lectura():
 @app.route('/filtrar-empleados-distribucion', methods=['GET'])
 def filtrar_empleado_distribucion():
     try:
-        empleados = Empleado.query.filter(Empleado.area == 'DISTRIBUCION').all()
+        empleados = Empleado.query.filter(
+            Empleado.area == 'DISTRIBUCION', 
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if not empleados:
             return jsonify({"mensaje": "No se encontraron empleados en DISTRIBUCION"}), 404
@@ -969,8 +997,14 @@ def cargar_asistencia_distribucion():
         fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
 
-        # Buscar registros en empleado_recaudacion para la fecha seleccionada
-        registros_asistencia = EmpleadoDistribucion.query.filter_by(fec_asist=fecha_consulta).all()
+        # ====================================================================
+        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
+        # los registros de asistencia ya existentes.
+        # ====================================================================
+        registros_asistencia = EmpleadoDistribucion.query.join(Empleado).filter(
+            EmpleadoDistribucion.fec_asist == fecha_consulta,
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if registros_asistencia:
             # Si hay registros, se devuelven para su modificación
@@ -995,18 +1029,22 @@ def cargar_asistencia_distribucion():
             ]
             return jsonify({"tipo": "modificacion", "datos": asistencia_data})
 
-        # Si no hay registros, filtrar empleados sin asistencia en el mes
+        # ====================================================================
+        # MODIFICACIÓN 2: Filtramos empleados de DISTRIBUCION y TOMA DE ESTADO
+        # que aún no tienen asistencia, asegurando que no estén 'CESADO'.
+        # ====================================================================
         empleados_sin_asistencia = db.session.query(Empleado).filter(
             ~Empleado.id_empleado.in_(
                 db.session.query(EmpleadoDistribucion.id_empleado).filter(
                     EmpleadoDistribucion.mes == mes_consulta
                 )
             ),
-            Empleado.area.in_(['DISTRIBUCION', 'TOMA DE ESTADO'])
+            Empleado.area.in_(['DISTRIBUCION', 'TOMA DE ESTADO']),
+            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
         ).all()
 
         if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes"}), 404
+            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
 
         # Construir respuesta con empleados sin asistencia
         empleados_data = [
@@ -1173,7 +1211,10 @@ def eliminar_asistencia_distribucion():
 @app.route('/filtrar-empleados-inspecciones', methods=['GET'])
 def filtrar_empleado_inspecciones():
     try:
-        empleados = Empleado.query.filter(Empleado.area == 'INSPECCIONES').all()
+        empleados = Empleado.query.filter(
+            Empleado.area == 'INSPECCIONES', 
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if not empleados:
             return jsonify({"mensaje": "No se encontraron empleados en INSPECCIONES"}), 404
@@ -1205,8 +1246,14 @@ def cargar_asistencia_inspecciones():
         fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
 
-        # Buscar registros en empleado_recaudacion para la fecha seleccionada
-        registros_asistencia = EmpleadoInspecciones.query.filter_by(fec_asist=fecha_consulta).all()
+        # ====================================================================
+        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
+        # registros de asistencia ya existentes.
+        # ====================================================================
+        registros_asistencia = EmpleadoInspecciones.query.join(Empleado).filter(
+            EmpleadoInspecciones.fec_asist == fecha_consulta,
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if registros_asistencia:
             # Si hay registros, se devuelven para su modificación
@@ -1231,18 +1278,22 @@ def cargar_asistencia_inspecciones():
             ]
             return jsonify({"tipo": "modificacion", "datos": asistencia_data})
 
-        # Si no hay registros, filtrar empleados sin asistencia en el mes
+        # ====================================================================
+        # MODIFICACIÓN 2: Filtramos empleados de INSPECCIONES que aún no 
+        # tienen asistencia, asegurando que su estado laboral no sea 'CESADO'.
+        # ====================================================================
         empleados_sin_asistencia = db.session.query(Empleado).filter(
             ~Empleado.id_empleado.in_(
                 db.session.query(EmpleadoInspecciones.id_empleado).filter(
                     EmpleadoInspecciones.mes == mes_consulta
                 )
             ),
-            Empleado.area.in_(['INSPECCIONES'])
+            Empleado.area.in_(['INSPECCIONES']),
+            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
         ).all()
 
         if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes"}), 404
+            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
 
         # Construir respuesta con empleados sin asistencia
         empleados_data = [
@@ -1260,7 +1311,6 @@ def cargar_asistencia_inspecciones():
 
     except Exception as e:
         return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
 
 @app.route('/guardar-asistencia-detalle-inspecciones', methods=['POST'])
 def guardar_asistencia_detalle_inspecciones():
@@ -1409,7 +1459,10 @@ def eliminar_asistencia_inspecciones():
 @app.route('/filtrar-empleados-catastro', methods=['GET'])
 def filtrar_empleado_catastro():
     try:
-        empleados = Empleado.query.filter(Empleado.area == 'CATASTRO').all()
+        empleados = Empleado.query.filter(
+            Empleado.area == 'CATASTRO', 
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if not empleados:
             return jsonify({"mensaje": "No se encontraron empleados en CATASTRO"}), 404
@@ -1441,8 +1494,14 @@ def cargar_asistencia_catastro():
         fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
 
-        # Buscar registros en empleado_recaudacion para la fecha seleccionada
-        registros_asistencia = EmpleadoCatastro.query.filter_by(fec_asist=fecha_consulta).all()
+        # ====================================================================
+        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
+        # registros de asistencia ya guardados.
+        # ====================================================================
+        registros_asistencia = EmpleadoCatastro.query.join(Empleado).filter(
+            EmpleadoCatastro.fec_asist == fecha_consulta,
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if registros_asistencia:
             # Si hay registros, se devuelven para su modificación
@@ -1467,18 +1526,22 @@ def cargar_asistencia_catastro():
             ]
             return jsonify({"tipo": "modificacion", "datos": asistencia_data})
 
-        # Si no hay registros, filtrar empleados sin asistencia en el mes
+        # ====================================================================
+        # MODIFICACIÓN 2: Filtramos empleados de CATASTRO que aún no 
+        # tienen asistencia, asegurando que su estado no sea 'CESADO'.
+        # ====================================================================
         empleados_sin_asistencia = db.session.query(Empleado).filter(
             ~Empleado.id_empleado.in_(
                 db.session.query(EmpleadoCatastro.id_empleado).filter(
                     EmpleadoCatastro.mes == mes_consulta
                 )
             ),
-            Empleado.area.in_(['CATASTRO'])
+            Empleado.area.in_(['CATASTRO']),
+            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
         ).all()
 
         if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes"}), 404
+            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
 
         # Construir respuesta con empleados sin asistencia
         empleados_data = [
@@ -1645,7 +1708,10 @@ def eliminar_asistencia_catastro():
 @app.route('/filtrar-empleados-medidores', methods=['GET'])
 def filtrar_empleado_medidores():
     try:
-        empleados = Empleado.query.filter(Empleado.area == 'MEDICION').all()
+        empleados = Empleado.query.filter(
+            Empleado.area == 'MEDICION', 
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if not empleados:
             return jsonify({"mensaje": "No se encontraron empleados en MEDICION"}), 404
@@ -1677,8 +1743,14 @@ def cargar_asistencia_medidores():
         fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
 
-        # Buscar registros en empleado_recaudacion para la fecha seleccionada
-        registros_asistencia = EmpleadoMedidores.query.filter_by(fec_asist=fecha_consulta).all()
+        # ====================================================================
+        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
+        # registros de asistencia ya guardados.
+        # ====================================================================
+        registros_asistencia = EmpleadoMedidores.query.join(Empleado).filter(
+            EmpleadoMedidores.fec_asist == fecha_consulta,
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if registros_asistencia:
             # Si hay registros, se devuelven para su modificación
@@ -1703,18 +1775,22 @@ def cargar_asistencia_medidores():
             ]
             return jsonify({"tipo": "modificacion", "datos": asistencia_data})
 
-        # Si no hay registros, filtrar empleados sin asistencia en el mes
+        # ====================================================================
+        # MODIFICACIÓN 2: Filtramos empleados de MEDICION que aún no 
+        # tienen asistencia, asegurando que su estado no sea 'CESADO'.
+        # ====================================================================
         empleados_sin_asistencia = db.session.query(Empleado).filter(
             ~Empleado.id_empleado.in_(
                 db.session.query(EmpleadoMedidores.id_empleado).filter(
                     EmpleadoMedidores.mes == mes_consulta
                 )
             ),
-            Empleado.area.in_(['MEDICION'])
+            Empleado.area.in_(['MEDICION']),
+            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
         ).all()
 
         if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes"}), 404
+            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
 
         # Construir respuesta con empleados sin asistencia
         empleados_data = [
@@ -1881,7 +1957,10 @@ def eliminar_asistencia_medidores():
 @app.route('/filtrar-empleados-persuasivas', methods=['GET'])
 def filtrar_empleado_persuasivas():
     try:
-        empleados = Empleado.query.filter(Empleado.area == 'PERSUASIVAS').all()
+        empleados = Empleado.query.filter(
+            Empleado.area == 'PERSUASIVAS', 
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if not empleados:
             return jsonify({"mensaje": "No se encontraron empleados en PERSUASIVAS"}), 404
@@ -1913,8 +1992,14 @@ def cargar_asistencia_persuasivas():
         fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
 
-        # Buscar registros en empleado_recaudacion para la fecha seleccionada
-        registros_asistencia = EmpleadoPersuasivas.query.filter_by(fec_asist=fecha_consulta).all()
+        # ====================================================================
+        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
+        # registros de asistencia ya guardados.
+        # ====================================================================
+        registros_asistencia = EmpleadoPersuasivas.query.join(Empleado).filter(
+            EmpleadoPersuasivas.fec_asist == fecha_consulta,
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if registros_asistencia:
             # Si hay registros, se devuelven para su modificación
@@ -1939,18 +2024,22 @@ def cargar_asistencia_persuasivas():
             ]
             return jsonify({"tipo": "modificacion", "datos": asistencia_data})
 
-        # Si no hay registros, filtrar empleados sin asistencia en el mes
+        # ====================================================================
+        # MODIFICACIÓN 2: Filtramos empleados de PERSUASIVAS que aún no 
+        # tienen asistencia, asegurando que su estado no sea 'CESADO'.
+        # ====================================================================
         empleados_sin_asistencia = db.session.query(Empleado).filter(
             ~Empleado.id_empleado.in_(
                 db.session.query(EmpleadoPersuasivas.id_empleado).filter(
                     EmpleadoPersuasivas.mes == mes_consulta
                 )
             ),
-            Empleado.area.in_(['PERSUASIVAS'])
+            Empleado.area.in_(['PERSUASIVAS']),
+            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
         ).all()
 
         if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes"}), 404
+            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
 
         # Construir respuesta con empleados sin asistencia
         empleados_data = [
@@ -2115,11 +2204,15 @@ def eliminar_asistencia_persuasivas():
 
 
 
+
 # MÓDULO NORTE
 @app.route('/filtrar-empleados-norte', methods=['GET'])
 def filtrar_empleado_norte():
     try:
-        empleados = Empleado.query.filter(Empleado.area == 'NORTE').all()
+        empleados = Empleado.query.filter(
+            Empleado.area == 'NORTE', 
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if not empleados:
             return jsonify({"mensaje": "No se encontraron empleados en NORTE"}), 404
@@ -2151,8 +2244,14 @@ def cargar_asistencia_norte():
         fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
 
-        # Buscar registros en empleado_recaudacion para la fecha seleccionada
-        registros_asistencia = EmpleadoNorte.query.filter_by(fec_asist=fecha_consulta).all()
+        # ====================================================================
+        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
+        # registros de asistencia ya guardados para el área Norte.
+        # ====================================================================
+        registros_asistencia = EmpleadoNorte.query.join(Empleado).filter(
+            EmpleadoNorte.fec_asist == fecha_consulta,
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if registros_asistencia:
             # Si hay registros, se devuelven para su modificación
@@ -2177,18 +2276,22 @@ def cargar_asistencia_norte():
             ]
             return jsonify({"tipo": "modificacion", "datos": asistencia_data})
 
-        # Si no hay registros, filtrar empleados sin asistencia en el mes
+        # ====================================================================
+        # MODIFICACIÓN 2: Filtramos empleados del área NORTE que aún no 
+        # tienen asistencia, asegurando que su estado laboral no sea 'CESADO'.
+        # ====================================================================
         empleados_sin_asistencia = db.session.query(Empleado).filter(
             ~Empleado.id_empleado.in_(
                 db.session.query(EmpleadoNorte.id_empleado).filter(
                     EmpleadoNorte.mes == mes_consulta
                 )
             ),
-            Empleado.area.in_(['NORTE'])
+            Empleado.area.in_(['NORTE']),
+            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
         ).all()
 
         if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes"}), 404
+            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
 
         # Construir respuesta con empleados sin asistencia
         empleados_data = [
@@ -2355,7 +2458,10 @@ def eliminar_asistencia_norte():
 @app.route('/filtrar-empleados-administrativo_1', methods=['GET'])
 def filtrar_empleado_administrativo_1():
     try:
-        empleados = Empleado.query.filter(Empleado.area == 'ADMINSTRATIVO').all()
+        empleados = Empleado.query.filter(
+            Empleado.area == 'ADMINSTRATIVO', 
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if not empleados:
             return jsonify({"mensaje": "No se encontraron empleados en ADMINSTRATIVO"}), 404
@@ -2387,8 +2493,14 @@ def cargar_asistencia_administrativo_1():
         fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
 
-        # Buscar registros en empleado_recaudacion para la fecha seleccionada
-        registros_asistencia = EmpleadoAdministrativo.query.filter_by(fec_asist=fecha_consulta).all()
+        # ====================================================================
+        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
+        # registros de asistencia ya guardados para el área Administrativa.
+        # ====================================================================
+        registros_asistencia = EmpleadoAdministrativo.query.join(Empleado).filter(
+            EmpleadoAdministrativo.fec_asist == fecha_consulta,
+            Empleado.estado != 'CESADO'
+        ).all()
 
         if registros_asistencia:
             # Si hay registros, se devuelven para su modificación
@@ -2413,18 +2525,22 @@ def cargar_asistencia_administrativo_1():
             ]
             return jsonify({"tipo": "modificacion", "datos": asistencia_data})
 
-        # Si no hay registros, filtrar empleados sin asistencia en el mes
+        # ====================================================================
+        # MODIFICACIÓN 2: Filtramos empleados del área ADMINISTRATIVO que aún no 
+        # tienen asistencia, asegurando que su estado laboral no sea 'CESADO'.
+        # ====================================================================
         empleados_sin_asistencia = db.session.query(Empleado).filter(
             ~Empleado.id_empleado.in_(
                 db.session.query(EmpleadoAdministrativo.id_empleado).filter(
                     EmpleadoAdministrativo.mes == mes_consulta
                 )
             ),
-            Empleado.area.in_(['ADMINSTRATIVO'])
+            Empleado.area.in_(['ADMINSTRATIVO']), # Se mantiene el nombre de área de tu código original
+            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
         ).all()
 
         if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes"}), 404
+            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
 
         # Construir respuesta con empleados sin asistencia
         empleados_data = [
