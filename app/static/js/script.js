@@ -8927,6 +8927,7 @@ document.addEventListener("DOMContentLoaded", () => {
         let rotacionActual = 0;
         let zoomActual = 1;
         let grupoActual = null;
+        let categoria = "lecturas";
 
         const contenedorPrincipal = document.createElement("div");
 
@@ -9226,7 +9227,7 @@ document.addEventListener("DOMContentLoaded", () => {
             contenedorImagen.appendChild(marcoImagen);
 
 
-            mostrar = () => {
+            const mostrar = () => {
                 const ruta = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${categoria}/${grupo.carpeta}/${imagenesActuales[indiceImagenActual]}`;
                 img.src = ruta;
                 offsetX = 0;
@@ -9353,8 +9354,10 @@ document.addEventListener("DOMContentLoaded", () => {
             indiceImagenActual = 0;
             rotacionActual = 0;
             zoomActual = 1;
+            categoria = "lecturas";
             mostrarImagen(grupoActual);
         } else if (grupoOrdenes.length) {
+            categoria = "ordenes";
             mostrarOpciones(grupoOrdenes);
         }
         
