@@ -12917,7 +12917,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const inputFechaIngreso = document.getElementById('emp_fecha_ingreso').value; 
             const inputFechaCese = document.getElementById('emp_fecha_cese').value;
 
-            if (!inputNombres || !inputDni || !inputCargo || !inputArea || !inputFechaIngreso || !inputFechaCese) {
+            if (!inputNombres || !inputDni || !inputCargo || !inputArea || !inputFechaIngreso) {
                 alert("Por favor, completa los campos obligatorios.");
                 return;
             }
