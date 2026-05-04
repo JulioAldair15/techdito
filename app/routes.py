@@ -7187,6 +7187,7 @@ def listar_empleados():
             'cargo': emp.cargo,
             'estado': emp.estado,
             'fecha_ingreso': emp.fecha_ingreso.strftime('%d/%m/%Y') if emp.fecha_ingreso else '-',
+            'fecha_cese': emp.fecha_cese.strftime('%d/%m/%Y') if emp.fecha_cese else '-',
             'fecha_nacimiento': emp.fecha_nacimiento.strftime('%d/%m/%Y') if emp.fecha_nacimiento else '-',
             # ✅ Usamos la función format_time para evitar el crash
             'hora_ingreso': format_time(emp.hora_ingreso),
@@ -7216,6 +7217,7 @@ def registrar_empleado_completo():
         cargo = datos.get('cargo')
         area = datos.get('area')
         fecha_ingreso = datos.get('fecha_ingreso')
+        fecha_cese=datos.get('fecha_cese')
 
         if not nombres_f or not dni or not cargo or not area or not fecha_ingreso:
             return jsonify({'error': 'Faltan campos obligatorios (Nombres, DNI, Cargo, Área o Ingreso)'}), 400
@@ -7235,6 +7237,7 @@ def registrar_empleado_completo():
             cargo=cargo,
             area=area,
             fecha_ingreso=to_date(fecha_ingreso),
+            fecha_cese=to_date(fecha_cese),
             fecha_nacimiento=to_date(datos.get('fecha_nacimiento')),
             sexo=datos.get('sexo'),
             estado_civil=datos.get('estado_civil'),
@@ -7361,6 +7364,7 @@ def obtener_empleado(id_empleado):
             'cargo': empleado.cargo,
             'area': empleado.area,
             'fecha_ingreso': empleado.fecha_ingreso.strftime('%Y-%m-%d') if empleado.fecha_ingreso else '',
+            'fecha_cese': empleado.fecha_cese.strftime('%Y-%m-%d') if empleado.fecha_cese else '',
             'fecha_nacimiento': empleado.fecha_nacimiento.strftime('%Y-%m-%d') if empleado.fecha_nacimiento else '',
             'sexo': empleado.sexo,
             'estado_civil': empleado.estado_civil,
@@ -7407,6 +7411,7 @@ def actualizar_empleado_completo(id_empleado):
         
         # Guardamos directamente los datos sin conversiones extra
         empleado.fecha_ingreso = datos.get('fecha_ingreso') if datos.get('fecha_ingreso') else None
+        empleado.fecha_cese = datos.get('fecha_cese') if datos.get('fecha_cese') else None
         empleado.fecha_nacimiento = datos.get('fecha_nacimiento') if datos.get('fecha_nacimiento') else None
         empleado.sexo = datos.get('sexo')
         empleado.estado_civil = datos.get('estado_civil')
@@ -7716,14 +7721,9 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
     ws = wb.active
     ws.title = "Récord de Asistencias"
 
-    DNI_DEBUG = "AQUI_PON_EL_DNI_CON_ERROR" 
-
-    print(f"\n{'='*50}\n[DEBUG INICIADO] Rastreando al DNI: {DNI_DEBUG}\n{'='*50}")
-
     # ==========================================
     # 1. DISEÑO Y ESTILOS PROFESIONALES
     # ==========================================
-    # Ajustamos el merge del título para que llegue hasta la columna W (23)
     ws.merge_cells('A1:W1') 
     ws['A1'] = f"RÉCORD GENERAL DE ASISTENCIAS ({inicio} al {fin})"
     ws['A1'].font = Font(name='Arial', size=16, bold=True, color="FFFFFF")
@@ -7739,9 +7739,8 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
     align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     # ==========================================
-    # 2. ESTRUCTURA DE CABECERAS (Con columna N°)
+    # 2. ESTRUCTURA DE CABECERAS
     # ==========================================
-    # Desplazamos las columnas informativas para insertar N° en la A
     cabeceras_info = ['N°', 'DNI', 'NOMBRES Y APELLIDOS', 'CARGO', 'ÁREA', 'FECHA INGRESO', 'FECHA CESE']
     for i, titulo in enumerate(cabeceras_info, start=1):
         col = ws.cell(row=3, column=i)
@@ -7752,7 +7751,6 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
         col.alignment = align_center
         col.border = borde_fino
 
-    # Grupos superiores desplazados (+1 columna por el N°)
     grupos = [
         ('H3:J3', 'TAREO'),
         ('K3:N3', 'DESCANSOS'),
@@ -7770,14 +7768,13 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
         celda.alignment = align_center
         celda.border = borde_fino
 
-    # Sub-cabeceras desplazadas (+1 columna)
     sub_cabeceras = [
         ('H4', 'Días Laborados', 'A'), ('I4', 'Lic. Sin Goce', 'LSG'), ('J4', 'Suspensión', 'SU'),
         ('K4', 'Médicos', 'DM'), ('L4', 'Días Subsidiados', 'DS'), ('M4', 'Lic. Paternidad', 'LP'), ('N4', 'Fallecimiento', 'LD'),
         ('O4', 'Faltas', 'F'),
-        ('P4', 'Feriados', 'FT'), ('Q4', 'Domingos', 'DT'),
-        ('R4', 'Lic. Con Goce', 'LG'), ('S4', 'Vacaciones', 'V'), ('T4', 'Feriado Ganado', 'FG'), ('U4', 'Día Compensado', 'DC'),
-        ('V4', 'Domingo Ganado', 'DG')
+        ('P4', 'Feriados Trab.', 'FT'), ('Q4', 'Domingos Trab.', 'DT'), 
+        ('R4', 'Lic. Con Goce', 'LG'), ('S4', 'Vacaciones', 'V'), ('T4', 'Día Compensado', 'DC'), 
+        ('U4', 'Feriado Ganado', 'FG'), ('V4', 'Domingo Ganado', 'DG')
     ]
     
     mapa_columnas = {clave: ws[celda].column for celda, nombre, clave in sub_cabeceras}
@@ -7791,15 +7788,41 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
         c.border = borde_fino
 
     # ==========================================
-    # 3. PROCESAMIENTO DE DATOS (Con Logs)
+    # 3. PROCESAMIENTO DE DATOS EN BD Y FILTRADO
     # ==========================================
+    # Convertimos las fechas del reporte a objetos 'date' desde el inicio
+    inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+    fin_dt = datetime.strptime(fin, "%Y-%m-%d").date()
+
     query_empleados = Empleado.query
     if empleado_id and empleado_id != "":
         query_empleados = query_empleados.filter(Empleado.id_empleado == empleado_id)
-    empleados = query_empleados.all()
+    empleados_db = query_empleados.all()
     
+    empleados = []
+    for emp in empleados_db:
+        if not emp.dni or not emp.fecha_ingreso:
+            continue # Si no tiene DNI o fecha de ingreso registrada, lo omitimos
+            
+        # Aseguramos que la fecha sea objeto date para poder compararla
+        emp_ingreso = emp.fecha_ingreso.date() if isinstance(emp.fecha_ingreso, datetime) else emp.fecha_ingreso
+        
+        # REGLA 1: Si ingresó DESPUÉS del fin del reporte, no debe salir en el Excel
+        if emp_ingreso > fin_dt:
+            continue
+            
+        # REGLA 2: Si tiene fecha de cese y cesó ANTES del inicio del reporte, tampoco sale
+        if emp.fecha_cese:
+            emp_cese = emp.fecha_cese.date() if isinstance(emp.fecha_cese, datetime) else emp.fecha_cese
+            if emp_cese < inicio_dt:
+                continue
+                
+        # Si sobrevive a los filtros, es un empleado válido para este mes
+        empleados.append(emp)
+    
+    # Inicializamos el diccionario SOLO para los empleados válidos del periodo
     datos_asistencia = {
-        emp.dni: {k: 0 for k in mapa_columnas.keys()} for emp in empleados if emp.dni
+        emp.dni: {k: 0 for k in mapa_columnas.keys()} for emp in empleados
     }
 
     tablas_asistencia = [
@@ -7829,15 +7852,10 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
             if not row.dni or not row.fec_asist:
                 continue
             
-            # Normalizar fecha a objeto date
             fecha_dt = row.fec_asist.date() if isinstance(row.fec_asist, datetime) else row.fec_asist
-            
-            # Limpiar estado (maneja NULL de BD, vacíos y espacios)
             estado_raw = row.estado if row.estado is not None else ""
             estado_limpio = estado_raw.strip().upper()
             
-            # ALMACENAMIENTO ÚNICO: Si un empleado trabajó en 2 áreas el mismo día,
-            # aquí se sobrescribe y solo queda 1 registro por día. Adiós a los > 31 días.
             registros_diarios[row.dni][fecha_dt] = estado_limpio
 
     # ==========================================
@@ -7846,92 +7864,61 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
     for dni, fechas in registros_diarios.items():
         if dni in datos_asistencia:
             for fecha, estado in fechas.items():
-                # NO contamos estados vacíos o guiones como días de columna
                 if estado not in ['', '-', 'NULL'] and estado in datos_asistencia[dni]:
                     datos_asistencia[dni][estado] += 1
 
     # ==========================================
-    # 3.2 CALCULAR DOMINGOS GANADOS (POR CALENDARIO)
+    # 3.2 DETECCIÓN INTELIGENTE DE FERIADOS
     # ==========================================
     inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
     fin_dt = datetime.strptime(fin, "%Y-%m-%d").date()
+    
+    feriados_dinamicos = set()
+    dia_evaluacion = inicio_dt
+    
+    while dia_evaluacion <= fin_dt:
+        if dia_evaluacion.weekday() < 6: # Solo Lunes a Sábado
+            asistencias_normales = sum(
+                1 for emp_fechas in registros_diarios.values() 
+                if str(emp_fechas.get(dia_evaluacion, '')).strip() == 'A'
+            )
+            
+            if asistencias_normales == 0: 
+                feriados_dinamicos.add(dia_evaluacion)
+                
+        dia_evaluacion += timedelta(days=1)
+        
+    print(f"[SISTEMA] Feriados deducidos automáticamente: {feriados_dinamicos}")
 
+    # ==========================================
+    # 3.3 CÁLCULO DE DOMINGOS Y FERIADOS GANADOS
+    # ==========================================
     for emp in empleados:
         if not emp.dni: continue
 
-        # Ajustar rango según contrato del empleado
         emp_inicio = max(inicio_dt, emp.fecha_ingreso) if emp.fecha_ingreso else inicio_dt
         emp_fin = min(fin_dt, emp.fecha_cese) if emp.fecha_cese else fin_dt
 
         domingos_ganados = 0
+        feriados_ganados = 0
         actual = emp_inicio
 
         while actual <= emp_fin:
-            if actual.weekday() == 6:  # Es Domingo
-                # Buscamos si existe algo en el diccionario para ese día
-                estado_en_dict = registros_diarios.get(emp.dni, {}).get(actual)
-                
-                # REGLA FINAL: Es Domingo Ganado si:
-                # - No hay registro en ninguna tabla (estado_en_dict es None)
-                # - Hay registro pero es NULL, vacío o un guion
-                if estado_en_dict is None or estado_en_dict in ['', '-', 'NULL']:
-                    domingos_ganados += 1
-                    if emp.dni == DNI_DEBUG:
-                        print(f"  [+] Domingo Ganado: {actual} (Razón: {'Sin registro' if estado_en_dict is None else 'Registro vacío'})")
-            
-            actual += timedelta(days=1)
+            registro_dia = registros_diarios.get(emp.dni, {}).get(actual)
+            es_vacio = registro_dia is None or str(registro_dia).strip() in ['', '-', 'NULL']
 
-        datos_asistencia[emp.dni]['DG'] = domingos_ganados
-
-    # ==========================================
-    # NUEVO: CALCULAR DOMINGOS GANADOS (En memoria)
-    # ==========================================
-    inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
-    fin_dt = datetime.strptime(fin, "%Y-%m-%d").date()
-
-    print(f"\n[DEBUG] Analizando Domingos Ganados para {DNI_DEBUG}...")
-
-    for emp in empleados:
-        if not emp.dni:
-            continue
-
-        emp_inicio = max(inicio_dt, emp.fecha_ingreso) if emp.fecha_ingreso else inicio_dt
-        emp_fin = min(fin_dt, emp.fecha_cese) if emp.fecha_cese else fin_dt
-
-        domingos_ganados = 0
-        actual = emp_inicio
-
-        while actual <= emp_fin:
             if actual.weekday() == 6:  # Es domingo
-                # Obtenemos el estado registrado ese domingo (si existe)
-                registro_domingo = registros_diarios.get(emp.dni, {}).get(actual)
-                
-                # REGLA: Es domingo ganado si:
-                # 1. No hay registro (None)
-                # 2. El registro es un guion '-'
-                # 3. El registro está vacío o solo tiene espacios
-                es_vacio = registro_domingo is None or registro_domingo.strip() in ['', '-']
-
                 if es_vacio:
                     domingos_ganados += 1
-                    if emp.dni == DNI_DEBUG:
-                        print(f"  [+] DG Identificado en {actual}: (Estado en BD: '{registro_domingo}')")
-                
-                # IMPORTANTE: Si el domingo tenía un '-', lo quitamos del conteo de estados
-                # para que no sume en 'Días Laborados' ni otras columnas, solo en DG.
-                if registro_domingo and registro_domingo.strip() == '-' and emp.dni in datos_asistencia:
-                    # Esto evita que el '-' ensucie otras métricas
-                    pass 
-
+            
+            elif actual.weekday() < 6 and actual in feriados_dinamicos: # Es feriado inteligente
+                if es_vacio:
+                    feriados_ganados += 1
+                    
             actual += timedelta(days=1)
 
         datos_asistencia[emp.dni]['DG'] = domingos_ganados
-
-    if DNI_DEBUG in datos_asistencia:
-        total_verificacion = sum(datos_asistencia[DNI_DEBUG].values())
-        print(f"\n[DEBUG] Conteo FINAL para {DNI_DEBUG}: {datos_asistencia[DNI_DEBUG]}")
-        print(f"[DEBUG] SUMA TOTAL de columnas: {total_verificacion}")
-        print(f"{'='*50}\n")
+        datos_asistencia[emp.dni]['FG'] = feriados_ganados
 
     # ==========================================
     # 4. LLENADO DE FILAS
@@ -7944,7 +7931,7 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
         nombres_completos = f"{emp.nombres or ''} {emp.apellidos or ''}".strip()
         asist = datos_asistencia.get(emp.dni, {k: 0 for k in mapa_columnas.keys()})
         
-        ws.cell(row=fila_actual, column=1, value=idx) # Columna N°
+        ws.cell(row=fila_actual, column=1, value=idx) 
         ws.cell(row=fila_actual, column=2, value=emp.dni)
         ws.cell(row=fila_actual, column=3, value=nombres_completos.upper())
         ws.cell(row=fila_actual, column=4, value=emp.cargo or '')
@@ -7959,7 +7946,7 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
             celda.alignment = Alignment(horizontal="center")
             total_dias += valor
 
-        celda_total = ws.cell(row=fila_actual, column=23, value=total_dias) # Columna W
+        celda_total = ws.cell(row=fila_actual, column=23, value=total_dias) # Columna W (23)
         celda_total.font = Font(bold=True)
         celda_total.alignment = Alignment(horizontal="center")
 
@@ -7969,28 +7956,24 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
         fila_actual += 1
 
     # ==========================================
-    # 5. AJUSTES VISUALES (Corrección MergedCells)
+    # 5. AJUSTES VISUALES
     # ==========================================
     for i, col in enumerate(ws.columns, start=1):
         max_length = 0
-        # Usamos el helper para obtener la letra según el índice (1, 2, 3...)
         column_letter = get_column_letter(i) 
         
-        # Saltamos las filas de cabecera (1 a 4) para medir solo el contenido
         for cell in col[4:]: 
             try:
                 if cell.value:
                     length = len(str(cell.value))
                     if length > max_length:
                         max_length = length
-            except:
+            except Exception:
                 pass
         
-        # Ajuste de ancho: mínimo 10, máximo 50
         adjusted_width = max(max_length + 3, 10)
         ws.column_dimensions[column_letter].width = min(adjusted_width, 50)
 
-    # Congelamos paneles y aplicamos filtro hasta la columna W
     ws.freeze_panes = 'D5'
     ws.auto_filter.ref = f"A4:W{fila_actual-1}"
 
@@ -8007,7 +7990,6 @@ def generar_excel_record_asistencias(inicio, fin, empleado_id=None):
         as_attachment=True,
         download_name=f'Record_Asistencias_{inicio}_al_{fin}.xlsx'
     )
-
 
 # =====================================================================
 # 2. GENERACIÓN DE PDF EJECUTIVO (Diseño Profesional)
@@ -8147,4 +8129,5 @@ def listar_empleados_select():
         })
 
     return jsonify(data)
+
 
