@@ -12015,6 +12015,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('perfil-area').textContent = emp.area || '-';
             
             document.getElementById('perfil-ingreso').textContent = emp.fecha_ingreso || '-';
+            document.getElementById('perfil-cese').textContent = emp.fecha_cese || '-';
             document.getElementById('perfil-fecha-nac').textContent = emp.fecha_nacimiento || '-';
             document.getElementById('perfil-sueldo').textContent = emp.sueldo_basico || '0.00';
             document.getElementById('perfil-banco').textContent = emp.banco || '-';
@@ -12691,6 +12692,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         document.getElementById('emp_regimen').value = datos.regimen_laboral || "";
                         document.getElementById('emp_estado').value = datos.estado || "ACTIVO";
                         document.getElementById('emp_fecha_ingreso').value = datos.fecha_ingreso || "";
+                        document.getElementById('emp_fecha_cese').value = datos.emp_fecha_cese || "";
                         
                         if(document.getElementById('rem_sueldo')) document.getElementById('rem_sueldo').value = datos.sueldo_basico || "";
                         if(document.getElementById('rem_moneda')) document.getElementById('rem_moneda').value = datos.moneda || "PEN";
@@ -12912,9 +12914,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const inputDni = document.getElementById('emp_dni').value.trim();
             const inputCargo = document.getElementById('emp_cargo').value.trim();
             const inputArea = document.getElementById('emp_area').value.trim();
-            const inputFechaIngreso = document.getElementById('emp_fecha_ingreso').value;
+            const inputFechaIngreso = document.getElementById('emp_fecha_ingreso').value; 
+            const inputFechaCese = document.getElementById('emp_fecha_cese').value;
 
-            if (!inputNombres || !inputDni || !inputCargo || !inputArea || !inputFechaIngreso) {
+            if (!inputNombres || !inputDni || !inputCargo || !inputArea || !inputFechaIngreso || !inputFechaCese) {
                 alert("Por favor, completa los campos obligatorios.");
                 return;
             }
@@ -12942,6 +12945,7 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('regimen_laboral', document.getElementById('emp_regimen').value);
             formData.append('estado', document.getElementById('emp_estado').value);
             formData.append('fecha_ingreso', inputFechaIngreso);
+            formData.append('fecha_cese', inputFechaCese);
             
             const remSueldo = document.getElementById('rem_sueldo');
             const remMoneda = document.getElementById('rem_moneda');
