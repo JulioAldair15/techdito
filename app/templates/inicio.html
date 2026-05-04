@@ -143,53 +143,53 @@
         
         <aside class="sidebar collapsed" id="sidebar">
             <ul>
-                {% if user_name not in ['digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'sup_medicion'] %}
+                {% if user_name not in ['digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_nancy', 'administrativo_angel', 'validacion_lecturas', 'catastro', 'administrativo_luis', 'administrativo_xiomara'] %}
                 <li><a href="#" data-section="asistencias"><i class="fas fa-calendar-check"></i> <span>Asistencias</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan'] %}
+                {% if user_name not in ['administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_angel', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_xiomara' ] %}
                 <li><a href="#" data-section="administrativo"><i class="fas fa-file-invoice-dollar"></i> <span>Reportes</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura' ] %}
+                {% if user_name not in ['administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_angel' , 'administrativo_xiomara'] %}
                 <li><a href="#" data-section="empleados"><i class="fas fa-users-cog"></i> <span>Gestión de Empleados</span></a></li>
                 {% endif %}
                 
-                {% if user_name not in ['digitacion_catastro'] %}
+                {% if user_name not in ['digitacion_catastro', 'administrativo_angel', 'catastro', 'validacion_lecturas', 'administrativo_nancy', 'administrativo_xiomara'] %}
                 <li><a href="#" data-section="mapa"><i class="fas fa-map-location-dot"></i> <span>Mapa</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'administrativo_yta', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana'] %}
+                {% if user_name not in ['sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'administrativo_yta', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_angel', 'administrativo_nancy', 'administrativo_xiomara'] %}
                 <li><a href="#" data-section="reportes"><i class="fas fa-tasks"></i> <span>Validación Lecturas</span></a></li>
                 {% endif %}
 
                 <li><a href="#" data-section="fotos"><i class="fas fa-images"></i> <span>Fotoconsulta</span></a></li>
 
-                {% if user_name not in ['sup_inspecciones', 'sup_recaudacion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'digitacion_catastro'] %}
+                {% if user_name not in ['sup_inspecciones', 'sup_recaudacion', 'sup_medicion', 'sup_lecturas',  'sup_norte', 'administrativo_yta', 'digitacion_catastro', 'administrativo_nancy', 'administrativo_angel', 'administrativo_luis', 'digitacion_catastro', 'catastro', 'validacion_lecturas', 'administrativo_susan', 'administrativo_xiomara'] %}
                 <li><a href="#" data-section="fichas"><i class="fas fa-folder-open"></i> <span>Documentos</span></a></li>
                 {% endif %}
                 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro'] %}
+                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_susan', 'administrativo_angel'] %}
                 <li><a href="#" data-section="renombrado"><i class="fas fa-pen-nib"></i> <span>Renombrado</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana'] %}
+                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara'] %}
                 <li><a href="#" data-section="materiales"><i class="fas fa-boxes-stacked"></i> <span>Control de Materiales</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana'] %}
+                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara'] %}
                 <li><a href="#" data-section="dbf"><i class="fas fa-file-code"></i> <span>Convertir DBF</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana'] %}
+                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara'] %}
                 <li><a href="#" data-section="generar-carga"><i class="fas fa-upload"></i> <span>Generar Carga</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana'] %}
+                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo'] %}
                 <li><a href="#" data-section="dashboard"><i class="fas fa-chart-pie"></i> <span>Dashboard</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana'] %}
+                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_nancy', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo'] %}
                 <li><a href="#" data-section="cartas"><i class="fas fa-envelope-open-text"></i> <span>Recibos</span></a></li>
                 {% endif %}
 
@@ -210,18 +210,29 @@
                     <p>¿Qué vamos a gestionar hoy? Aquí tienes tus accesos rápidos:</p>
                 </div>
                 <div class="quick-cards">
+                    <!-- Tarjeta Asistencias: Misma validación del sidebar -->
+                    {% if user_name not in ['digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara'  ]%}
                     <div class="card" onclick="showSection('asistencias')">
                         <i class="fas fa-calendar-check"></i>
                         <span>Asistencias</span>
                     </div>
+                    {% endif %}
+
+                    <!-- Tarjeta Reportes: Misma validación del sidebar -->
+                    {% if user_name not in ['digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara'  ]%}
                     <div class="card" onclick="showSection('administrativo')">
                         <i class="fas fa-file-invoice-dollar"></i>
                         <span>Ver Reportes</span>
                     </div>
+                    {% endif %}
+
+                    <!-- Tarjeta Gestión Personal: Misma validación del sidebar -->
+                    {% if user_name not in ['administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_angel', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_xiomara' ] %}
                     <div class="card" onclick="showSection('empleados')">
                         <i class="fas fa-users-cog"></i>
                         <span>Gestión Personal</span>
                     </div>
+                    {% endif %}
                 </div>
             </div>
 
@@ -2832,11 +2843,59 @@
                         <div class="form-grid">
                             <div class="input-group">
                                 <label>Área / Departamento <span class="text-danger">*</span></label>
-                                <input type="text" id="emp_area">
+                                <input type="text" id="emp_area" name="area" list="lista_areas" placeholder="Buscar o seleccionar área..." required>
+                                
+                                <datalist id="lista_areas">
+                                    <option value="ADMINISTRATIVO"></option>
+                                    <option value="CATASTRO"></option>
+                                    <option value="DISTRIBUCION"></option>
+                                    <option value="INSPECCIONES"></option>
+                                    <option value="MEDICION"></option>
+                                    <option value="NORTE"></option>
+                                    <option value="PERSUASIVAS"></option>
+                                    <option value="RECAUDACION"></option>
+                                    <option value="TOMA DE ESTADO"></option>
+                                </datalist>
                             </div>
                             <div class="input-group">
                                 <label>Cargo <span class="text-danger">*</span></label>
-                                <input type="text" id="emp_cargo">
+                                <!-- El atributo 'list' conecta el input con el datalist de abajo -->
+                                <input type="text" id="emp_cargo" name="cargo" list="lista_cargos" placeholder="Buscar o seleccionar cargo..." required>
+                                
+                                <datalist id="lista_cargos">
+                                    <option value="ANALISTA DE SISTEMAS"></option>
+                                    <option value="ASISTENTE ADMINISTRATIVO"></option>
+                                    <option value="ASISTENTE DE COORDINACION ZONA NORTE"></option>
+                                    <option value="ASISTENTE DE OPERACIONES"></option>
+                                    <option value="ASISTENTE DE RECAUDACION"></option>
+                                    <option value="ASISTENTE DE SUPERVISION DE ACCIONES PERSUASIVAS"></option>
+                                    <option value="AYUDANTE DE ALMACEN"></option>
+                                    <option value="CONDUCTOR DE CAMION"></option>
+                                    <option value="CONDUCTOR DE CAMIONETA"></option>
+                                    <option value="COORDINADOR GENERAL"></option>
+                                    <option value="COORDINADOR ZONA NORTE"></option>
+                                    <option value="DIGITADOR"></option>
+                                    <option value="ENCARGADA DE ALMACEN"></option>
+                                    <option value="ENFERMERA OCUPACIONAL"></option>
+                                    <option value="INGENIERA/O DE SEGURIDAD"></option>
+                                    <option value="INSPECTOR DE CAMPO"></option>
+                                    <option value="JEFE DE ADMINISTRACION"></option>
+                                    <option value="JEFE DE CUADRILLA"></option>
+                                    <option value="JEFE DPTO DE RR.HH"></option>
+                                    <option value="OPERARIO COMERCIAL 1"></option>
+                                    <option value="OPERARIO COMERCIAL 2"></option>
+                                    <option value="OPERARIO COMERCIAL 3"></option>
+                                    <option value="OPERARIO DE LIMPIEZA"></option>
+                                    <option value="OPERARIO ESPECIALIZADO"></option>
+                                    <option value="RECAUDADOR"></option>
+                                    <option value="SUPERVISOR DE ACCIONES PERSUASIVAS"></option>
+                                    <option value="SUPERVISOR DE GESTIÓN DE LA MEDICIÓN"></option>
+                                    <option value="SUPERVISOR DE IMPRESIÓN Y DISTRIBUCIÓN DE RECIBOS Y COMUNICACIONES"></option>
+                                    <option value="SUPERVISOR DE INSPECCIONES Y NUEVOS SUMINISTROS"></option>
+                                    <option value="SUPERVISOR DE RECAUDACION Y CUSTODIA DE VALORES"></option>
+                                    <option value="SUPERVISOR DE TOMA DE ESTADO"></option>
+                                    <option value="SUPERVISORA DE GESTION CATASTRAL"></option>
+                                </datalist>
                             </div>
                             <div class="input-group">
                                 <label>Tipo de Contrato</label>
