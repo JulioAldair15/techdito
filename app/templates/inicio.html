@@ -143,53 +143,53 @@
         
         <aside class="sidebar collapsed" id="sidebar">
             <ul>
-                {% if user_name not in ['digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_nancy', 'administrativo_angel', 'validacion_lecturas', 'catastro', 'administrativo_luis', 'administrativo_xiomara'] %}
+                {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_nancy', 'administrativo_angel', 'validacion_lecturas', 'catastro', 'administrativo_luis', 'administrativo_xiomara'] %}
                 <li><a href="#" data-section="asistencias"><i class="fas fa-calendar-check"></i> <span>Asistencias</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_angel', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_xiomara' ] %}
+                {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_angel', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_xiomara' ] %}
                 <li><a href="#" data-section="administrativo"><i class="fas fa-file-invoice-dollar"></i> <span>Reportes</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_angel' , 'administrativo_xiomara'] %}
+                {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_angel' , 'administrativo_xiomara', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="empleados"><i class="fas fa-users-cog"></i> <span>Gestión de Empleados</span></a></li>
                 {% endif %}
                 
-                {% if user_name not in ['digitacion_catastro', 'administrativo_angel', 'catastro', 'validacion_lecturas', 'administrativo_nancy', 'administrativo_xiomara'] %}
+                {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_angel', 'catastro', 'validacion_lecturas', 'administrativo_nancy', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="mapa"><i class="fas fa-map-location-dot"></i> <span>Mapa</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'administrativo_yta', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_angel', 'administrativo_nancy', 'administrativo_xiomara'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'administrativo_yta', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_angel', 'administrativo_nancy', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="reportes"><i class="fas fa-tasks"></i> <span>Validación Lecturas</span></a></li>
                 {% endif %}
 
                 <li><a href="#" data-section="fotos"><i class="fas fa-images"></i> <span>Fotoconsulta</span></a></li>
 
-                {% if user_name not in ['sup_inspecciones', 'sup_recaudacion', 'sup_medicion', 'sup_lecturas',  'sup_norte', 'administrativo_yta', 'digitacion_catastro', 'administrativo_nancy', 'administrativo_angel', 'administrativo_luis', 'digitacion_catastro', 'catastro', 'validacion_lecturas', 'administrativo_susan', 'administrativo_xiomara'] %}
+                {% if user_name not in ['administrativo_medicion','sup_inspecciones', 'sup_recaudacion', 'sup_medicion', 'sup_lecturas',  'sup_norte', 'administrativo_yta', 'digitacion_catastro', 'administrativo_nancy', 'administrativo_angel', 'administrativo_luis', 'digitacion_catastro', 'catastro', 'validacion_lecturas', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="fichas"><i class="fas fa-folder-open"></i> <span>Documentos</span></a></li>
                 {% endif %}
                 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_susan', 'administrativo_angel'] %}
+                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_susan', 'administrativo_angel', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="renombrado"><i class="fas fa-pen-nib"></i> <span>Renombrado</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="materiales"><i class="fas fa-boxes-stacked"></i> <span>Control de Materiales</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="dbf"><i class="fas fa-file-code"></i> <span>Convertir DBF</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="generar-carga"><i class="fas fa-upload"></i> <span>Generar Carga</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="dashboard"><i class="fas fa-chart-pie"></i> <span>Dashboard</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_nancy', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_nancy', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo', 'sup_recaudacion_2'] %}
                 <li><a href="#" data-section="cartas"><i class="fas fa-envelope-open-text"></i> <span>Recibos</span></a></li>
                 {% endif %}
 
@@ -211,7 +211,7 @@
                 </div>
                 <div class="quick-cards">
                     <!-- Tarjeta Asistencias: Misma validación del sidebar -->
-                    {% if user_name not in ['digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara'  ]%}
+                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara'  ]%}
                     <div class="card" onclick="showSection('asistencias')">
                         <i class="fas fa-calendar-check"></i>
                         <span>Asistencias</span>
@@ -219,7 +219,7 @@
                     {% endif %}
 
                     <!-- Tarjeta Reportes: Misma validación del sidebar -->
-                    {% if user_name not in ['digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara'  ]%}
+                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara'  ]%}
                     <div class="card" onclick="showSection('administrativo')">
                         <i class="fas fa-file-invoice-dollar"></i>
                         <span>Ver Reportes</span>
@@ -227,7 +227,7 @@
                     {% endif %}
 
                     <!-- Tarjeta Gestión Personal: Misma validación del sidebar -->
-                    {% if user_name not in ['administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_angel', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_xiomara' ] %}
+                    {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_angel', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_xiomara', 'sup_recaudacion_2' ] %}
                     <div class="card" onclick="showSection('empleados')">
                         <i class="fas fa-users-cog"></i>
                         <span>Gestión Personal</span>
@@ -255,7 +255,7 @@
                                 <option value="inspecciones">Inspecciones Comerciales</option>
                             {% endif %}
 
-                            {% if user_name in ['sup_recaudacion', 'supervisor1'] %}
+                            {% if user_name in ['sup_recaudacion', 'supervisor1', 'sup_recaudacion_2'] %}
                                 <option value="recaudacion">Recaudación y custodia de valores</option>
                             {% endif %}
 
