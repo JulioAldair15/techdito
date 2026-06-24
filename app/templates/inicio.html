@@ -26,6 +26,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 </head>
 
 <style>
@@ -143,55 +144,61 @@
         
         <aside class="sidebar collapsed" id="sidebar">
             <ul>
-                {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_nancy', 'administrativo_angel', 'validacion_lecturas', 'catastro', 'administrativo_luis', 'administrativo_xiomara'] %}
+                {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_nancy', 'administrativo_angel', 'validacion_lecturas', 'catastro', 'administrativo_luis', 'administrativo_xiomara', 'prueba'] %}
                 <li><a href="#" data-section="asistencias"><i class="fas fa-calendar-check"></i> <span>Asistencias</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_angel', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_xiomara' ] %}
+                {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_angel', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_xiomara', 'prueba' ] %}
                 <li><a href="#" data-section="administrativo"><i class="fas fa-file-invoice-dollar"></i> <span>Reportes</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_angel' , 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_angel' , 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="empleados"><i class="fas fa-users-cog"></i> <span>Gestión de Empleados</span></a></li>
                 {% endif %}
                 
-                {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_angel', 'catastro', 'validacion_lecturas', 'administrativo_nancy', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_angel', 'catastro', 'validacion_lecturas', 'administrativo_nancy', 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="mapa"><i class="fas fa-map-location-dot"></i> <span>Mapa</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_medicion','sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'administrativo_yta', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_angel', 'administrativo_nancy', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'administrativo_yta', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_angel', 'administrativo_nancy', 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="reportes"><i class="fas fa-tasks"></i> <span>Validación Lecturas</span></a></li>
                 {% endif %}
 
                 <li><a href="#" data-section="fotos"><i class="fas fa-images"></i> <span>Fotoconsulta</span></a></li>
 
-                {% if user_name not in ['administrativo_medicion','sup_inspecciones', 'sup_recaudacion', 'sup_medicion', 'sup_lecturas',  'sup_norte', 'administrativo_yta', 'digitacion_catastro', 'administrativo_nancy', 'administrativo_angel', 'administrativo_luis', 'digitacion_catastro', 'catastro', 'validacion_lecturas', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['administrativo_medicion','sup_inspecciones', 'sup_recaudacion', 'sup_medicion', 'sup_lecturas',  'sup_norte', 'administrativo_yta', 'digitacion_catastro', 'administrativo_nancy', 'administrativo_angel', 'administrativo_luis', 'digitacion_catastro', 'catastro', 'validacion_lecturas', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="fichas"><i class="fas fa-folder-open"></i> <span>Documentos</span></a></li>
                 {% endif %}
                 
-                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_susan', 'administrativo_angel', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_susan', 'administrativo_angel', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="renombrado"><i class="fas fa-pen-nib"></i> <span>Renombrado</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="materiales"><i class="fas fa-boxes-stacked"></i> <span>Control de Materiales</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion',  'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro','administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="dbf"><i class="fas fa-file-code"></i> <span>Convertir DBF</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="generar-carga"><i class="fas fa-upload"></i> <span>Generar Carga</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="dashboard"><i class="fas fa-chart-pie"></i> <span>Dashboard</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_nancy', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo', 'sup_recaudacion_2'] %}
+                {% if user_name not in ['administrativo_medicion','sup_catastro', 'administrativo_luis', 'sup_recaudacion', 'sup_medicion', 'sup_norte', 'administrativo_yta', 'sup_lectura', 'administrativo_elias', 'digitacion_catastro', 'administrativo_mario', 'administrativo_ana', 'administrativo_nancy', 'administrativo_susan', 'administrativo_xiomara', 'administrativo_izquierdo', 'sup_recaudacion_2', 'prueba'] %}
                 <li><a href="#" data-section="cartas"><i class="fas fa-envelope-open-text"></i> <span>Recibos</span></a></li>
                 {% endif %}
+
+                {% if user_name not in ['administrativo_medicion', 'administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_angel' , 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                <li><a href="#" data-section="almacen"><i class="fas fa-truck-loading"></i> <span>Almacén</span></a></li>
+                {% endif %}
+                
+                <li><a href="#" data-section="revalidacion"><i class="fas fa-check-double"></i> <span>Revalidación</span></a></li>
 
                 <li class="logout-item">
                     <a href="{{ url_for('logout') }}" class="logout-link">
@@ -211,7 +218,7 @@
                 </div>
                 <div class="quick-cards">
                     <!-- Tarjeta Asistencias: Misma validación del sidebar -->
-                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara'  ]%}
+                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara' , 'prueba' ]%}
                     <div class="card" onclick="showSection('asistencias')">
                         <i class="fas fa-calendar-check"></i>
                         <span>Asistencias</span>
@@ -219,7 +226,7 @@
                     {% endif %}
 
                     <!-- Tarjeta Reportes: Misma validación del sidebar -->
-                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara'  ]%}
+                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara' , 'prueba' ]%}
                     <div class="card" onclick="showSection('administrativo')">
                         <i class="fas fa-file-invoice-dollar"></i>
                         <span>Ver Reportes</span>
@@ -227,10 +234,17 @@
                     {% endif %}
 
                     <!-- Tarjeta Gestión Personal: Misma validación del sidebar -->
-                    {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_angel', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_xiomara', 'sup_recaudacion_2' ] %}
+                    {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_angel', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba' ] %}
                     <div class="card" onclick="showSection('empleados')">
                         <i class="fas fa-users-cog"></i>
                         <span>Gestión Personal</span>
+                    </div>
+                    {% endif %}
+                    
+                    {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_angel', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                    <div class="card" onclick="showSection('almacen')">
+                        <i class="fas fa-truck-loading"></i>
+                        <span>Gestión de Almacén</span>
                     </div>
                     {% endif %}
                 </div>
@@ -2306,8 +2320,8 @@
                                 <select id="selector-actividad-1" onchange="verificarActividad()">
                                     <option value="">Seleccione</option>
                                     <option value="INSPECCIONES">INSPECCIONES COMERCIALES</option>
-                                    <option value="CIERRE">CIERRE ALCANTARILLADO</option>
-                                    <option value="REAPERTURA">REAPERTURA SIMPLE</option>
+                                    <option value="PERSUASIVAS">REAPERTURAS</option>
+                                    <option value="CIERRES">CIERRES SIMPLES</option>
                                 </select>
                             </div>
 
@@ -2324,10 +2338,38 @@
                                 </div>
 
                                 <div class="grupo-dato boton-container">
-                                    <button type="button" id="btn-convertir" onclick="simularConversion()">CONVERTIR</button>
+                                    <button type="button" id="btn-convertir" onclick="previsualizarConversion()">CONVERTIR</button>
                                 </div>
-
                             </div>
+
+                            <div id="campos-persuasivas" style="display: none;" class="grupo-flex">
+                                <div class="grupo-dato">
+                                    <label for="archivos-dbf-cdx">Archivos de entrada:</label>
+                                    <input type="file" id="archivos-dbf-cdx" accept=".dbf, .cdx" multiple>
+                                </div>
+                                <div class="grupo-dato">
+                                    <label for="archivo-reporte">Reporte (Excel):</label>
+                                    <input type="file" id="archivo-reporte" accept=".xlsx, .xls">
+                                </div>
+                                <div class="grupo-dato boton-container">
+                                    <button type="button" id="btn-generar-entregable" onclick="generarEntregable()">GENERAR ENTREGABLE</button>
+                                </div>
+                            </div>
+
+                            <div id="campos-cierres" style="display: none;" class="grupo-flex">
+                                <div class="grupo-dato">
+                                    <label for="archivos-dbf-cdx-cierres">Archivos de entrada:</label>
+                                    <input type="file" id="archivos-dbf-cdx-cierres" accept=".dbf, .cdx" multiple>
+                                </div>
+                                <div class="grupo-dato">
+                                    <label for="archivo-reporte-cierres">Reporte (Excel):</label>
+                                    <input type="file" id="archivo-reporte-cierres" accept=".xlsx, .xls">
+                                </div>
+                                <div class="grupo-dato boton-container">
+                                    <button type="button" id="btn-generar-cierres" onclick="generarEntregableCierres()">GENERAR CIERRES</button>
+                                </div>
+                            </div>
+                            
                         </div>
 
                         <div id="contenedor-resultado" class="caja-resultado" style="display: none;">
@@ -2348,8 +2390,6 @@
                                 <button id="btn-descargar-1">DESCARGAR ZIP</button>
                             </div>
                         </div>
-
-                    
                 </div>
 
                 <!-- GENERAR CARGAS -->
@@ -2529,18 +2569,22 @@
                 <!-- CARTAS -->
                 <div id="cartas" class="section">
     
-                    <h2>DISTRIBUCIÓN DE RECIBOS</h2>
+                    <h2>GESTIÓN DE ÓRDENES DE TRABAJO DE RECIBOS Y COMUNICADOS</h2>
 
                     <div class="tab-nav">
-                        <button class="tab-link active" onclick="openSubTab(event, 'tab-generar')">
-                            📄 Generar Cartas
+                        <button class="tab-link active" onclick="openSubTab(event, 'tab-transformar')">
+                            Generar Excel
                         </button>
+
                         <button class="tab-link" onclick="openSubTab(event, 'tab-cargas')">
-                            📦 Cargas Masivas
+                            Cargas Masivas
+                        </button>
+                        <button class="tab-link" onclick="openSubTab(event, 'tab-generar')">
+                            Generar Cartas
                         </button>
                     </div>
 
-                    <div id="tab-generar" class="sub-tab-content active">
+                    <div id="tab-generar" class="sub-tab-content">
                         <div class="section-header-internal">
                             <h3>Emisión de Documentos</h3>
                         </div>
@@ -2571,45 +2615,762 @@
                             <h3>Asignación de Cargas de Trabajo</h3>
                         </div>
 
-                        <form id="formCargasSetup" class="control-panel">
+                        <form id="formCargasSetup">
                             <div class="input-group">
-                                <label for="archivoCarga">1. Órden de Trabajo (Excel .xlsx)</label>
+                                <label for="subActividad">1. Sub - Actividad</label>
+                                <select id="subActividad" name="subActividad" required>
+                                    <option value="CONTINUOS" selected>RECIBOS CONTINUOS</option>
+                                    <option value="DISPERSOS">RECIBOS DISPERSOS</option>
+                                </select>
+                            </div>
+
+                            <div class="input-group">
+                                <label for="archivoCarga">2. Órden de Trabajo (Excel .xlsx)</label>
                                 <input type="file" id="archivoCarga" name="archivoCarga" accept=".xlsx, .xls" required>
                             </div>
 
                             <div class="input-group">
-                                <label for="fechaCalendario">2. Fecha Calendario</label>
+                                <label for="fechaCalendario">3. Fecha Calendario</label>
                                 <input type="date" id="fechaCalendario" name="fechaCalendario" required>
                             </div>
 
                             <div class="input-group">
-                                <label for="fechaEjecucion">3. Fecha a Ejecutarse</label>
+                                <label for="fechaEjecucion">4. Fecha a Ejecutarse</label>
                                 <input type="date" id="fechaEjecucion" name="fechaEjecucion" required>
                             </div>
 
-                            <button type="button" class="btn-generar" onclick="analizarCargas()" style="background-color: #4a5568;">
-                                🔍 BUSCAR CARGAS
-                            </button>
+                            <div class="input-group">
+                                <label style="visibility: hidden;">Acción</label>
+                                <button type="button" class="btn-moderno" onclick="analizarCargas()">
+                                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                    </svg>
+                                    BUSCAR CARGAS
+                                </button>
+                            </div>
                         </form>
 
                         <div id="areaAsignacion" style="display:none; margin-top: 15px;">
-    
-                            <div class="section-header-internal" style="margin-bottom: 10px;">
+                            <div class="section-header-internal" id="tituloOperarios" style="margin-bottom: 10px;">
                                 <h3 style="font-size: 1rem; margin: 0;">Asignar Operarios</h3>
                             </div>
 
                             <div id="loadsGrid" class="loads-grid">
-                                </div>
+                            </div>
 
                             <div style="margin-top: 15px; text-align: right; padding-top: 10px; border-top: 2px solid #edf2f7;">
-                                <button type="button" class="btn-generar" onclick="generarAsignacionFinal()" style="background-color: #3182ce; padding: 10px 20px; font-size: 0.9rem;">
+                                <button type="button" class="btn-generar" onclick="generarAsignacionFinal()" style="background-color: #3182ce; padding: 10px 20px; font-size: 0.9rem; color: white; border: none; border-radius: 6px; cursor: pointer;">
                                     📥 GENERAR ASIGNACIÓN
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-transformar" class="sub-tab-content active">
+                        <div class="section-header-internal">
+                            <h3>Transformación y Limpieza de Datos</h3>
+                        </div>
+
+                        <form id="formTransformarSetup" class="control-panel">
+                            <div class="input-group">
+                                <label for="subActividadTransform">1. Tipo Sub - Actividad</label>
+                                <select id="subActividadTransform" required onchange="actualizarPrevisualizacion()">
+                                    <option value="13">COMUNICACIÓN TARIFA</option>
+                                    <option value="14">COMUNICACIÓN ATENCIÓN</option>
+                                    <option value="15">COMUNICACIÓN CONSUMO</option>
+                                    <option value="16">COMUNICACIÓN RECUPERO</option>
+                                    <option value="17">COMUNICACIÓN RESOLUCION</option>
+                                    <option value="23">COMUNICACIÓN ATÍPICAS</option>
+                                    <option value="51">COMUNICACIÓN CARTA VP</option>
+                                    <option value="52">COMUNICACIÓN RESULTADO VP</option>
+                                    <option value="46">COMUNICACIÓN VERIFICACIÓN POSTERIOR</option>
+                                    <option value="44">COMUNICACIÓN MANTENIMIENTO DE MEDIDORES</option>
+                                    <option value="48">COMUNICACIÓN INSTALACION DE MEDIDORES</option>
+                                    <option value="50">COMUNICACIÓN NUEVOS SUMINISTROS</option>
+                                </select>
+                            </div>
+
+                            <div class="input-group">
+                                <label for="archivoExcelTransform">2. Archivo Excel (.xlsx)</label>
+                                <input type="file" id="archivoExcelTransform" accept=".xlsx, .xls" required onchange="procesarExcelTransformacion(event)">
+                            </div>
+
+                            <div class="input-group">
+                                <label for="fechaEmisionTransform">3. Fecha Emisión</label>
+                                <input type="date" id="fechaEmisionTransform" required onchange="actualizarPrevisualizacion()">
+                            </div>
+
+                            <div class="input-group">
+                                <label for="fechaEnvioTransform">4. Fecha Envío</label>
+                                <input type="date" id="fechaEnvioTransform" required onchange="actualizarPrevisualizacion()">
+                            </div>
+                        </form>
+
+                        <div class="transform-layout" style="display: none;" id="panelTransformacion">
+                            
+                            <div class="mapping-section">
+                                <h4 class="section-subtitle">Mapeo de Columnas</h4>
+                                <p style="font-size: 0.8rem; color: #718096; margin-bottom: 15px;">Selecciona la columna del Excel original que corresponde a cada campo requerido.</p>
+                                
+                                <div class="mapping-grid">
+                                    <div class="map-group"><label>SUMINISTRO</label><select id="map_suministro" onchange="actualizarPrevisualizacion()"></select></div>
+                                    <div class="map-group"><label>NOMBRE</label><select id="map_nombre" onchange="actualizarPrevisualizacion()"></select></div>
+                                    <div class="map-group"><label>LOCALIDAD</label><select id="map_localidad" onchange="actualizarPrevisualizacion()"></select></div>
+                                    <div class="map-group"><label>URBANIZACIÓN</label><select id="map_urbanizacion" onchange="actualizarPrevisualizacion()"></select></div>
+                                    <div class="map-group"><label>CALLE</label><select id="map_calle" onchange="actualizarPrevisualizacion()"></select></div>
+                                    <div class="map-group"><label>NÚMERO</label><select id="map_numero" onchange="actualizarPrevisualizacion()"></select></div>
+                                    <div class="map-group"><label>CICLO</label><select id="map_ciclo" onchange="actualizarPrevisualizacion()"></select></div>
+                                    <div class="map-group"><label>MEDIDOR</label><select id="map_medidor" onchange="actualizarPrevisualizacion()"></select></div>
+                                    <div class="map-group"><label>N° DOCUMENTO</label><select id="map_documento" onchange="actualizarPrevisualizacion()"></select></div>
+                                    
+                                    <hr style="border: 0; border-top: 1px dashed #cbd5e1; margin: 10px 0;">
+                                    <div class="map-group"><label>ITEM</label><input type="text" value="Autogenerado (Correlativo)" disabled></div>
+                                    <div class="map-group"><label>FECHAS</label><input type="text" value="Desde filtros superiores" disabled></div>
+                                    <div class="map-group"><label>CARGA/ORDEN_RD</label><input type="text" value="Vacíos por defecto" disabled></div>
+                                    <div class="map-group"><label>TIPO_ORDEN</label><input type="text" value="Según Sub-Actividad" disabled></div>
+                                </div>
+                            </div>
+
+                            <div class="preview-section">
+                                <div class="preview-header-flex">
+                                    <h4 class="section-subtitle">Vista Previa del Documento</h4>
+                                    <button type="button" class="btn-descarga-premium" onclick="generarZipTransformado()">
+                                        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                        DESCARGAR ZIP FINAL
+                                    </button>
+                                </div>
+                                
+                                <div class="table-responsive-1">
+                                    <table id="tablaPreview" class="modern-table">
+                                        <thead>
+                                            <tr>
+                                                <th>ITEM</th><th>SUMINISTRO</th><th>NOMBRE</th><th>LOCALIDAD</th><th>URBANIZACIÓN</th>
+                                                <th>CALLE</th><th>NUMERO</th><th>CICLO</th><th>MEDIDOR</th><th>N° DOCUMENTO</th>
+                                                <th>FECHA EMISION</th><th>FECHA ENVIO</th><th>CARGA_RD</th><th>ORDEN_RD</th><th>TIPO_ORDEN</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- MÓDULO DE INVENTARIO Y ALMACÉN -->
+                <div id="almacen" class="section">
+                    
+                    <div class="alm-header-wrapper">
+                        <div>
+                            <h2 class="alm-main-title">Módulo de Inventario y Almacén</h2>
+                            <p class="alm-subtitle">Gestión de Kardex, control de stock y auditoría de movimientos.</p>
+                        </div>
+                    </div>
+
+                    <!-- PESTAÑAS PRINCIPALES: KARDEX vs INVENTARIO -->
+                    <div class="alm-main-tabs">
+                        <button class="alm-main-tab active" data-view="alm-view-kardex"><i class="fas fa-exchange-alt"></i> Kardex de Movimientos</button>
+                        <button class="alm-main-tab" data-view="alm-view-inventario"><i class="fas fa-clipboard-check"></i> Inventario Físico</button>
+                        <button class="alm-main-tab" data-view="alm-view-catalogos"><i class="fas fa-tags"></i> Catálogos Maestros</button>
+                    </div>
+
+                    <!-- ========================================== -->
+                    <!-- VISTA 1: KARDEX -->
+                    <!-- ========================================== -->
+                    <div id="alm-view-kardex" class="alm-view-content active">
+                        <div class="alm-kardex-grid">
+                            
+                            <!-- TABLA ENTRADAS -->
+                            <div class="alm-card">
+                                <div class="alm-card-head alm-border-green">
+                                    <h3><i class="fas fa-box-open alm-icon-green"></i> Registro de Entradas de Almacén</h3>
+                                </div>
+                                
+                                <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 400px; overflow-y: auto; position: relative;">
+                                    <table class="alm-table" style="width: 100%; border-collapse: collapse; margin: 0;">
+    
+                                        <thead style="position: sticky; top: 0; z-index: 20; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+                                            <tr>
+                                                <th style="width: 110px; text-align: center;">Fecha Factura</th>
+                                                <th style="width: 110px; text-align: center;">Fecha Ingreso</th>
+                                                <th style="width: 110px;">Nro Factura</th>
+                                                <th style="width: 110px;">Nro Guía</th>
+                                                <th style="width: 90px; text-align: center;">Código</th>
+                                                
+                                                <th style="min-width: 220px;">Nombre Producto</th>
+                                                <th style="width: 60px; text-align: center;">Talla</th>
+                                                <th style="min-width: 200px;">Empleado (Recupero)</th>
+                                                
+                                                <th style="width: 80px; text-align: center;">Cantidad</th>
+                                                <th style="width: 90px; text-align: center;">Precio (S/)</th>
+                                                
+                                                <th style="min-width: 200px;">Proveedor</th>
+                                                <th style="min-width: 150px;">Observaciones</th>
+                                                <th style="width: 80px; text-align: center;">Acción</th>
+                                            </tr>
+                                        </thead>
+                                        
+                                        <tbody style="position: sticky; top: 45px; z-index: 15; background-color: #f0fdf4; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                            <tr class="alm-entry-row">
+                                                <td><input type="date" id="ent-fecha-fac" class="alm-input alm-input-lock" style="width: 100%;"></td>
+                                                <td><input type="date" id="ent-fecha-ing" class="alm-input alm-input-lock" style="width: 100%;"></td>
+                                                <td><input type="text" id="ent-factura" class="alm-input alm-input-lock" placeholder="F001" style="width: 100%; text-transform: uppercase;"></td>
+                                                <td><input type="text" id="ent-guia" class="alm-input alm-input-lock" placeholder="G001" style="width: 100%; text-transform: uppercase;"></td>
+                                                <td><input type="text" id="ent-codigo" class="alm-input" placeholder="Auto" disabled style="width: 100%; background-color: #e2e8f0; font-weight: bold; text-align: center;"></td>
+                                                
+                                                <td>
+                                                    <select id="ent-sel-producto" class="alm-input" style="width: 100%;">
+                                                        <option value="">Buscar producto...</option>
+                                                    </select>
+                                                </td>
+                                                
+                                                <td>
+                                                    <input type="text" id="ent-talla" class="alm-input" placeholder="-" disabled 
+                                                        style="width: 100%; text-align: center; background-color: #cbd5e1; border-color: transparent; color: #64748b; font-weight: bold; transition: all 0.2s; padding: 5px; text-transform: uppercase;">
+                                                </td>
+
+                                                <td>
+                                                    <select id="ent-sel-empleado-recupero" class="alm-input" disabled style="width: 100%; background-color: #cbd5e1; border-color: transparent;">
+                                                        <option value="">- No aplica -</option>
+                                                    </select>
+                                                </td>
+                                                
+                                                <td><input type="number" id="ent-cantidad" class="alm-input" placeholder="0" style="width: 100%; font-weight: bold; color: #16a34a; border-color: #22c55e; text-align: center;"></td>
+                                                <td><input type="number" step="0.01" id="ent-precio" class="alm-input" placeholder="0.00" style="width: 100%; text-align: center;"></td>
+                                                <td>
+                                                    <select id="ent-sel-proveedor" class="alm-input alm-input-lock" style="width: 100%;">
+                                                        <option value="">Buscar proveedor...</option>
+                                                    </select>
+                                                </td>
+                                                <td><input type="text" id="ent-obs" class="alm-input" placeholder="Opcional..." style="width: 100%;"></td>
+                                                <td class="alm-text-center">
+                                                    <div class="alm-action-group">
+                                                        <button type="button" class="alm-btn-add alm-bg-accent" onclick="agregarFilaTemporal()" title="Añadir a la Factura"><i class="fas fa-plus"></i></button>
+                                                        <button type="button" id="btn-guardar-lote" class="alm-btn-add alm-bg-green" onclick="guardarEntradasLote()" title="Guardar Factura"><i class="fas fa-save"></i></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                        
+                                        <tbody id="body-tabla-entradas">
+                                            <tr>
+                                                <td colspan="13" class="alm-text-center" style="color: #94a3b8; padding: 20px;">
+                                                    Agregue productos a la lista con el botón (+).
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                        
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- TABLA SALIDAS -->
+                            <div class="alm-card">
+                                <div class="alm-card-head alm-border-red">
+                                    <h3><i class="fas fa-dolly alm-icon-red"></i> Registro de Salidas</h3>
+                                </div>
+                                
+                                <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 400px; overflow-y: auto; position: relative;">
+                                    <table class="alm-table" style="width: 100%; border-collapse: collapse; margin: 0;">
+                                        
+                                        <thead style="position: sticky; top: 0; z-index: 20; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+                                            <tr>
+                                                <th>Fecha Salida</th>
+                                                <th>Cantidad</th>
+                                                <th>Código</th>
+                                                <th>Nombre Producto</th>
+                                                <th>Empleado</th>
+                                                <th>Área</th>
+                                                <th>Observación</th>
+                                                <th class="alm-text-center">Adjunto / Acción</th>
+                                            </tr>
+                                        </thead>
+                                        
+                                        <tbody style="position: sticky; top: 45px; z-index: 15; background-color: #fef2f2; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                            <tr class="alm-entry-row">
+                                                <td><input type="date" id="sal-fecha" class="alm-input alm-input-lock-sal"></td>
+                                                <td><input type="number" id="sal-cantidad" class="alm-input alm-input-sm" placeholder="0" style="width: 80px; font-weight: bold; color: #ef4444; border-color: #ef4444;"></td>
+                                                <td><input type="text" id="sal-codigo" class="alm-input" placeholder="Auto" disabled style="background-color: #e2e8f0; font-weight: bold; width: 90px;"></td>
+                                                <td style="min-width: 300px;">
+                                                    <select id="sal-sel-producto" class="alm-input" style="width: 100%;">
+                                                        <option value="">Buscar producto...</option>
+                                                    </select>
+                                                </td>
+                                                <td style="min-width: 200px;">
+                                                    <select id="sal-sel-empleado" class="alm-input alm-input-lock-sal" style="width: 100%;">
+                                                        <option value="">Buscar empleado...</option>
+                                                    </select>
+                                                </td>
+                                                <td><input type="text" id="sal-area" class="alm-input alm-input-lock-sal" placeholder="Área destino"></td>
+                                                <td><input type="text" id="sal-obs" class="alm-input" placeholder="Obs..."></td>
+                                                <td class="alm-text-center">
+                                                    <div class="alm-action-group">
+                                                        <button type="button" class="alm-btn-add alm-bg-accent" onclick="agregarFilaTemporalSalida()" title="Añadir a la lista"><i class="fas fa-plus"></i></button>
+                                                        <button type="button" id="btn-guardar-lote-salida" class="alm-btn-add alm-bg-red" onclick="guardarSalidasLote()" title="Guardar Salida Completa"><i class="fas fa-save"></i></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                        
+                                        <tbody id="body-tabla-salidas">
+                                            <tr>
+                                                <td colspan="8" class="alm-text-center" style="color: #94a3b8; padding: 20px;">
+                                                    <i class="fas fa-spinner fa-spin"></i> Cargando salidas...
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                        
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- HISTÓRICO GENERAL -->
+                        <div class="alm-card alm-mt-4">
+                            <div class="alm-card-head alm-header-tabs" style="flex-wrap: wrap; gap: 15px;">
+                                <div class="alm-header-title">
+                                    <h3><i class="fas fa-history alm-text-accent"></i> Histórico de Movimientos</h3>
+                                </div>
+                                
+                                <div class="alm-tabs-container">
+                                    <button class="alm-sub-tab active" data-target="TODO" onclick="filtrarHistorial('TODO')">Todos</button>
+                                    <button class="alm-sub-tab" data-target="ENTRADA" onclick="filtrarHistorial('ENTRADA')"><i class="fas fa-arrow-down" style="color:#10b981;"></i> Entradas</button>
+                                    <button class="alm-sub-tab" data-target="SALIDA" onclick="filtrarHistorial('SALIDA')"><i class="fas fa-arrow-up" style="color:#ef4444;"></i> Salidas</button>
+                                </div>
+                            </div>
+
+                            <div class="alm-filter-bar" style="padding: 15px 20px; border-bottom: 1px solid var(--border); background-color: #f8fafc; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+    
+                                <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; flex: 1;">
+                                    
+                                    <div style="flex: 1; max-width: 400px; min-width: 200px;">
+                                        <input type="text" id="filtro-hist-texto" class="alm-input" placeholder="🔍 Buscar código, producto, proveedor..." onkeyup="ejecutarBusquedaHistorial()">
+                                    </div>
+                                    
+                                    <div style="display: flex; gap: 10px; align-items: center; background: #ffffff; padding: 4px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                                        <span style="font-size: 0.8rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">DESDE:</span>
+                                        <input type="date" id="filtro-hist-inicio" class="alm-input" style="border: none; background: transparent; padding: 4px; box-shadow: none;" onchange="cargarHistorialKardex(1)">
+                                        
+                                        <span style="font-size: 0.8rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px; margin-left: 5px;">HASTA:</span>
+                                        <input type="date" id="filtro-hist-fin" class="alm-input" style="border: none; background: transparent; padding: 4px; box-shadow: none;" onchange="cargarHistorialKardex(1)">
+                                    </div>
+
+                                </div>
+
+                                <div>
+                                    <button type="button" class="alm-btn" onclick="exportarExcelKardex()" 
+                                        style="background-color: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2); transition: background-color 0.2s;">
+                                        <i class="fas fa-file-excel" style="font-size: 1.1rem;"></i> 
+                                        <span>Exportar</span>
+                                    </button>
+                                </div>
+
+                            </div>
+                            
+                            <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 500px; overflow-y: auto; overflow-x: auto; position: relative;">
+                                <table class="alm-table" style="width: 100%; min-width: 2200px; border-collapse: collapse; margin: 0; white-space: nowrap;">
+                                    <thead style="position: sticky; top: 0; z-index: 20; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+                                        <tr>
+                                            <th>Fecha y Hora</th>
+                                            <th class="alm-text-center">Tipo</th>
+                                            <th>Cód. Producto</th>
+                                            <th style="min-width: 250px;">Nombre Producto</th>
+                                            <th style="width: 60px; text-align: center;">Talla</th>
+                                            <th>Unidad</th> <th>Categoría</th>
+                                            <th class="alm-text-center">Cant. Movimiento</th>
+                                            <th>Stock Final</th>
+                                            <th style="min-width: 200px;">Proveedor / Entidad</th>
+                                            <th style="min-width: 200px;">Empleado (Retorno)</th>
+                                            <th style="min-width: 200px;">Empleado Solicitante</th>
+                                            <th>Área destino</th>
+                                            <th>Cargo</th> <th>Doc. Referencia</th>
+                                            <th>Fecha Factura</th> <th>Guía Remisión</th>
+                                            <th style="min-width: 200px;">Observación</th>
+                                            <th class="alm-text-center">Adjunto</th>
+                                        </tr>
+                                    </thead>
+                                    
+                                    <tbody id="body-tabla-historico">
+                                        <tr>
+                                            <td colspan="17" class="alm-text-center" style="color: #94a3b8; padding: 40px;">
+                                                <i class="fas fa-spinner fa-spin fa-2x"></i><br><br>Cargando historial de movimientos...
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background-color: #ffffff; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px;">
+                                <div id="hist-pag-info" style="color: #64748b; font-size: 0.9rem;">
+                                    Mostrando 0 a 0 de 0 registros
+                                </div>
+                                <div class="alm-action-group" id="hist-pag-controles">
+                                    </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ========================================== -->
+                    <!-- VISTA 2: INVENTARIO FÍSICO -->
+                    <!-- ========================================== -->
+                    <div id="alm-view-inventario" class="alm-view-content" style="display: none;">
+                        <div class="alm-card">
+                            <div class="alm-card-head" style="border-top: 4px solid #0ea5e9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+                                <h3><i class="fas fa-clipboard-check" style="color: #0ea5e9;"></i> Inventario Físico Registrado</h3>
+                                
+                                <div style="display: flex; gap: 15px; align-items: center;">
+                                    <div style="width: 300px;">
+                                        <input type="text" id="filtro-busqueda-inv" class="alm-input" placeholder="🔍 Buscar código, producto, proveedor..." onkeyup="filtrarInventario()">
+                                    </div>
+                                    <button type="button" class="alm-btn" onclick="exportarExcelInventario()" 
+                                        style="background-color: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2); transition: background-color 0.2s;">
+                                        <i class="fas fa-file-excel" style="font-size: 1.1rem;"></i> 
+                                        <span>Exportar</span>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 65vh;">
+                                <table class="alm-table">
+                                    <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                        <tr>
+                                            <th>Fecha Ingreso</th>
+                                            <th>Cód. Identificador</th>
+                                            <th style="min-width: 200px;">Nombre Producto</th>
+                                            
+                                            <th style="width: 60px; text-align: center;">Talla</th>
+                                            
+                                            <th>Proveedor</th>
+                                            <th>Categoría</th>
+                                            <th>Unidad</th>
+                                            <th>Stock</th>
+                                            <th>Precio (S/)</th>
+                                            <th>Total (S/)</th>
+                                            <th style="width: 120px;">Conteo Físico</th>
+                                            <th>Diferencia</th>
+                                            <th class="alm-text-center">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="body-tabla-inventario">
+                                        <tr>
+                                            <td colspan="13" class="alm-text-center" style="color: #94a3b8; padding: 40px;">
+                                                <i class="fas fa-spinner fa-spin fa-2x"></i><br><br>Cargando inventario...
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot id="foot-tabla-inventario" style="position: sticky; bottom: 0; background-color: #ffffff; box-shadow: 0 -4px 10px rgba(0,0,0,0.04); z-index: 10;">
+                                        <tr style="border-top: 2px solid #e2e8f0;">
+                                            <td colspan="8" class="alm-text-right alm-bold" style="padding: 12px 20px; font-size: 0.95rem; color: #64748b;">
+                                                Totales Generales:
+                                            </td>
+                                            <td id="inv-total-precio" class="alm-bold" style="padding: 12px 10px; color: #0ea5e9; font-size: 0.95rem;">
+                                                S/ 0.00
+                                            </td>
+                                            <td id="inv-total-general" class="alm-bold" style="padding: 12px 10px; color: #0369a1; font-size: 1rem;">
+                                                S/ 0.00
+                                            </td>
+                                            <td colspan="3" style="padding: 12px 10px;"></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="alm-view-catalogos" class="alm-view-content" style="display: none;">
+        
+                        <div class="alm-kardex-grid">
+                            
+                            <div class="alm-card">
+                                <div class="alm-card-head" style="border-top: 4px solid var(--accent);">
+                                    <h3><i class="fas fa-boxes alm-text-accent"></i> Directorio de Productos y Categorías</h3>
+                                </div>
+                                <div class="alm-table-scroll alm-custom-scrollbar">
+                                    <table class="alm-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Categoría Base</th>
+                                                <th>Cód. Generado</th>
+                                                <th>Nombre del Producto</th>
+                                                <th>Unidad</th>
+                                                <th class="alm-text-center">Acción</th>
+                                            </tr>
+                                        </thead>
+                                        
+                                        <tbody id="tabla-productos-body">
+                                            
+                                            <tr class="alm-entry-row" style="background-color: #f8fafc !important;">
+                                                <td colspan="3">
+                                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                                        <span class="alm-badge" style="background:#e2e8f0; color:#475569;">+ Categoría</span>
+                                                        <input type="text" id="txt-nueva-cat" class="alm-input" placeholder="Nombre de nueva categoría (Ej. ÚTILES DE OFICINA)" style="text-transform: uppercase; width: 100%;">
+                                                    </div>
+                                                </td>
+                                                <td><span class="alm-text-muted alm-bold" style="font-size: 0.75rem;">Autogenerado</span></td>
+                                                <td class="alm-text-center">
+                                                    <div class="alm-action-group">
+                                                        <button class="alm-btn-add alm-bg-accent" onclick="guardarCategoria()" title="Guardar Categoría"><i class="fas fa-save"></i></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr class="alm-entry-row">
+                                                <td style="min-width: 200px;">
+                                                    <input type="hidden" id="id-producto-editar" value="">
+                                                    <select id="sel-cat-producto" class="alm-input" style="width: 100%;">
+                                                        <option value="">Seleccione Categoría...</option>
+                                                    </select>
+                                                </td>
+                                                <td><input type="text" id="txt-codigo-generado" class="alm-input" placeholder="Automático" disabled style="background-color: #f1f5f9; font-weight: bold; color: var(--accent);"></td>
+                                                <td><input type="text" id="txt-nombre-prod" class="alm-input" placeholder="Nombre único del producto..." style="text-transform: uppercase;"></td>
+                                                <td>
+                                                    <select id="sel-unidad-prod" class="alm-input">
+                                                        <option value="BIDÓN">BIDÓN</option>
+                                                        <option value="CAJA">CAJA</option>
+                                                        <option value="GALÓN">GALÓN</option>
+                                                        <option value="METRO">METRO</option>
+                                                        <option value="ML">ML</option>
+                                                        <option value="PAR">PAR</option>
+                                                        <option value="UND">UND</option>
+                                                    </select>
+                                                </td>
+                                                <td class="alm-text-center">
+                                                    <div class="alm-action-group">
+                                                        <button id="btn-guardar-prod" class="alm-btn-add alm-bg-green" onclick="guardarProducto()" title="Guardar Producto"><i class="fas fa-plus"></i></button>
+                                                        <button id="btn-cancelar-edicion" class="alm-btn-add alm-bg-red" style="display: none;" onclick="cancelarEdicion()" title="Cancelar Edición"><i class="fas fa-times"></i></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+
+                                            <tr>
+                                                <td colspan="5" style="padding: 0; border: none;">
+                                                    <button type="button" id="btn-toggle-listado" class="alm-btn-toggle" onclick="toggleListadoProductos()">
+                                                        <i class="fas fa-list-ul"></i> Ver Listado de Productos Registrados <i class="fas fa-chevron-down alm-toggle-icon"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+
+                                            <tr id="panel-listado-productos" style="display: none;">
+                                                <td colspan="5" style="padding: 15px 20px; background-color: #f8fafc; border-bottom: 2px solid var(--border);">
+                                                    
+                                                    <div class="alm-filter-bar">
+                                                        <div class="alm-input-group" style="flex: 2;">
+                                                            <input type="text" id="filtro-busqueda" class="alm-input" placeholder="🔍 Buscar por código o nombre del producto..." onkeyup="filtrarProductos()">
+                                                        </div>
+                                                        <div class="alm-input-group" style="flex: 1;">
+                                                            <select id="filtro-categoria-lista" class="alm-input" onchange="filtrarProductos()">
+                                                                <option value="TODOS">Todas las Categorías</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 350px; border: 1px solid var(--border); border-radius: 6px; background: var(--white);">
+                                                        <table class="alm-table" style="margin: 0;">
+                                                            <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                                                <tr>
+                                                                    <th>Código</th>
+                                                                    <th>Producto</th>
+                                                                    <th>Categoría</th>
+                                                                    <th>Unid.</th>
+                                                                    <th class="alm-text-center">Acción</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody id="body-tabla-productos">
+                                                                <tr>
+                                                                    <td colspan="5" class="alm-text-center" style="color: #94a3b8; padding: 20px;">
+                                                                        <i class="fas fa-spinner fa-spin"></i> Cargando productos...
+                                                                    </td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <div class="alm-card">
+                                <div class="alm-card-head" style="border-top: 4px solid #f59e0b;">
+                                    <h3><i class="fas fa-truck" style="color: #f59e0b;"></i> Directorio de Proveedores</h3>
+                                </div>
+                                
+                                <div class="alm-table-scroll alm-custom-scrollbar">
+                                    <table class="alm-table">
+                                        <thead>
+                                            <tr>
+                                                <th>RUC</th>
+                                                <th>Razón Social</th>
+                                                <th>Nombre Comercial</th>
+                                                <th>Celular</th>
+                                                <th>Correo</th>
+                                                <th>Dirección</th>
+                                                <th class="alm-text-center">Acción</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="alm-entry-row" style="background-color: #fffbeb !important;">
+                                                <td>
+                                                    <input type="hidden" id="id-proveedor-editar" value="">
+                                                    <input type="text" id="prov-ruc" class="alm-input" placeholder="11 dígitos" maxlength="11">
+                                                </td>
+                                                <td><input type="text" id="prov-razon" class="alm-input" placeholder="Razón Social" style="text-transform: uppercase;"></td>
+                                                <td><input type="text" id="prov-comercial" class="alm-input" placeholder="Comercial (Opcional)" style="text-transform: uppercase;"></td>
+                                                <td><input type="text" id="prov-celular" class="alm-input" placeholder="Celular"></td>
+                                                <td><input type="email" id="prov-correo" class="alm-input" placeholder="correo@empresa.com"></td>
+                                                <td><input type="text" id="prov-dir" class="alm-input" placeholder="Dirección"></td>
+                                                <td class="alm-text-center">
+                                                    <div class="alm-action-group">
+                                                        <button id="btn-guardar-prov" class="alm-btn-add" style="background-color:#f59e0b;" onclick="guardarProveedor()" title="Guardar Proveedor"><i class="fas fa-plus"></i></button>
+                                                        <button id="btn-cancelar-edicion-prov" class="alm-btn-add alm-bg-red" style="display: none;" onclick="cancelarEdicionProveedor()" title="Cancelar Edición"><i class="fas fa-times"></i></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+
+                                            <tr>
+                                                <td colspan="7" style="padding: 0; border: none;">
+                                                    <button type="button" id="btn-toggle-listado-prov" class="alm-btn-toggle" onclick="toggleListadoProveedores()">
+                                                        <i class="fas fa-list-ul"></i> Ver Listado de Proveedores Registrados <i class="fas fa-chevron-down alm-toggle-icon"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+
+                                            <tr id="panel-listado-proveedores" style="display: none;">
+                                                <td colspan="7" style="padding: 15px 20px; background-color: #f8fafc; border-bottom: 2px solid var(--border);">
+                                                    
+                                                    <div class="alm-filter-bar">
+                                                        <div class="alm-input-group" style="flex: 1;">
+                                                            <input type="text" id="filtro-busqueda-prov" class="alm-input" placeholder="🔍 Buscar por RUC o Razón Social..." onkeyup="filtrarProveedores()">
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 350px; border: 1px solid var(--border); border-radius: 6px; background: var(--white);">
+                                                        <table class="alm-table" style="margin: 0;">
+                                                            <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                                                <tr>
+                                                                    <th>RUC</th>
+                                                                    <th>Razón Social</th>
+                                                                    <th>Comercial</th>
+                                                                    <th>Celular</th>
+                                                                    <th>Correo</th>
+                                                                    <th>Dirección</th>
+                                                                    <th class="alm-text-center">Acción</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody id="body-tabla-proveedores">
+                                                                <tr>
+                                                                    <td colspan="7" class="alm-text-center" style="color: #94a3b8; padding: 20px;">
+                                                                        <i class="fas fa-spinner fa-spin"></i> Cargando proveedores...
+                                                                    </td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
 
                         </div>
                     </div>
 
+                </div>
+
+                <!-- REVALIDACIÓN DE LECTURAS -->
+                <div id="revalidacion" class="section">
+                    <div class="page-header-pro">
+                        <h2>Validación de Lecturas en Campo</h2>
+                        <p>Carga de matrices operativas y contrastación con evidencias fotográficas.</p>
+                    </div>
+
+                    <div class="module-wrapper">
+                        <div class="toolbar-pro">
+                            <div class="toolbar-group">
+                                <div class="input-wrap">
+                                    <label>FECHA LECTURA</label>
+                                    <input type="date" class="control-pro" id="fecha-lectura">
+                                </div>
+                                <div class="input-wrap" style="min-width: 280px;"> <label>OPERARIO DE CAMPO</label>
+                                    <select class="control-pro" id="operario-select">
+                                        <option value="">Buscar operario...</option>
+                                        </select>
+                                </div>
+                                <div class="input-wrap">
+                                    <label>ESTADO (Opcional)</label>
+                                    <select class="control-pro" id="estado-select">
+                                        <option value="POR MODIFICAR">POR MODIFICAR</option>
+                                        <option value="PENDIENTE">PENDIENTE</option>
+                                        <option value="VALIDADO">VALIDADO</option>
+                                        <option value="MODIFICADO">MODIFICADO</option>
+                                        <option value="RECHAZADO">RECHAZADO</option>
+                                    </select>
+                                </div>
+                                <button class="btn-pro btn-blue-outline" id="btn-buscar-lecturas">
+                                    <i class="fas fa-search"></i> Buscar
+                                </button>
+                            </div>
+                            
+                            <div class="toolbar-group">
+                                <button class="btn-pro btn-green" onclick="document.getElementById('modal-gestion').style.display='flex'">
+                                    <i class="fas fa-layer-group"></i> Gestión de Matriz
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="revalidacion-grid-pro">
+                            
+                            <div class="card-pro border-top-blue">
+                                <div class="card-header-pro">
+                                    <h3><i class="fas fa-list-ul"></i> Matriz de Lecturas</h3>
+                                </div>
+                                
+                                <div class="card-body-pro p-0 scroll-minimalista">
+                                    <table class="table-pro">
+                                        <thead>
+                                            <tr>
+                                                <th>SUMINISTRO</th>
+                                                <th>NUEVA LECTURA</th>
+                                                <th>NUEVA OBSERVACIÓN</th>
+                                                <th>ESTADO</th>
+                                                <th>ACCIÓN</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            </tbody>
+                                    </table>
+                                </div>
+                                <div class="pagination-pro" id="pagination-revalidacion" style="display: none; padding: 15px;">
+                                </div>
+                            </div>
+
+                            <div class="card-pro border-top-red">
+                                <div class="card-header-pro flex-between">
+                                    <h3><i class="fas fa-image"></i> Evidencia Fotográfica</h3>
+                                    <span class="text-muted text-sm">Cód: <span class="fw-600 text-dark" id="visor-suministro-codigo">Ninguno</span></span>
+                                </div>
+                                <div class="card-body-pro visor-body-pro">
+                                    <div class="photo-frame-pro">
+                                        <div class="no-photo-placeholder">
+                                            <i class="fas fa-camera-retro"></i>
+                                            <p>Seleccione un suministro para ver las fotos</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="photo-controls-pro">
+                                        <button class="btn-icon-text" id="btn-foto-prev"><i class="fas fa-chevron-left"></i> Anterior</button>
+                                        <button class="btn-icon-text text-blue" id="btn-foto-rotar"><i class="fas fa-sync-alt"></i> Rotar</button>
+                                        <button class="btn-icon-text" id="btn-foto-next">Siguiente <i class="fas fa-chevron-right"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
                 </div>
                 
                      
@@ -3109,20 +3870,6 @@
         </div>
     </div>
 
-    <div id="modal-cartas-overlay" class="modal-overlay"></div>
-
-    <div id="modal-cartas-recibos" class="modal-ventana">
-            
-            <span class="modal-cerrar" id="cerrar-modal-cartas">&times;</span>
-            
-            <h2>GENERADOR DE CARTAS</h2>
-            
-            <label for="fecha-emision-carta">Seleccionar fecha emisión:</label>
-            <input type="date" id="fecha-emision-carta" class="modal-input-fecha">
-            
-            <button id="btn-generar-cartas" class="modal-boton-azul">GENERAR</button>
-    </div>
-
     <div id="visor-documentos-overlay" class="visor-overlay">
         <div class="visor-container">
             <div class="visor-header">
@@ -3151,6 +3898,156 @@
         </div>
     </div>
 
+    <div class="modal-overlay-clean" id="modal-gestion" style="display: none;">
+        <div class="modal-dialog-clean">
+            <!-- Botón cerrar (X) -->
+            <button class="btn-close-clean" onclick="document.getElementById('modal-gestion').style.display='none'"><i class="fas fa-times"></i></button>
+            
+            <!-- Cabecera igual a Nuevo Empleado -->
+            <div class="modal-header-clean">
+                <h3>Gestión Operativa</h3>
+            </div>
+            
+            <!-- Pestañas limpias -->
+            <div class="modal-tabs-clean">
+                <button class="tab-btn-clean active" onclick="switchTabPro(event, 'tab-subir')">Subir Archivo</button>
+                <button class="tab-btn-clean" onclick="switchTabPro(event, 'tab-gestion')">Gestión de Lecturas</button>
+                <button class="tab-btn-clean" onclick="switchTabPro(event, 'tab-avance')">Avance de Validación</button>
+            </div>
+
+            <div class="modal-body-clean">
+                <!-- SECCIÓN 1: SUBIR -->
+                <div id="tab-subir" class="tab-content-clean active">
+                    <div class="upload-section-clean">
+                        <label class="btn-clean-outline" for="csv-upload">
+                            <i class="fas fa-folder-open"></i> Seleccionar CSV
+                            <input type="file" id="csv-upload" accept=".csv" style="display: none;">
+                        </label>
+                        <span class="file-name-clean text-muted">Ningún archivo seleccionado...</span>
+                    </div>
+
+                    <div class="preview-container-clean mt-15">
+                        <span class="text-sm fw-600 text-muted d-block mb-10">PREVISUALIZACIÓN DE DATA:</span>
+                        <div class="table-scroll-clean">
+                            <table class="table-pro table-preview">
+                                <thead>
+                                    <tr>
+                                        <th>CLICODFAC</th>
+                                        <th>MEDCODYGO</th>
+                                        <th>LECTURA</th>
+                                        <th>FECLEC</th>
+                                        <th>HORALEC</th>
+                                        <th>OBS1</th>
+                                        <th>OBS2</th>
+                                        <th>NEWMED</th>
+                                        <th>OPERADOR</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="preview-tbody">
+                                    <tr>
+                                        <td colspan="09" class="text-center text-muted py-20">
+                                            <i class="fas fa-file-csv" style="font-size: 2rem; color: #ccc; margin-bottom: 10px; display:block;"></i>
+                                            La data del CSV aparecerá aquí antes de subir.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-gestion" class="tab-content-clean" >
+                
+                    <div class="form-group-clean" style="margin-bottom: 25px;">
+                        <label>Filtrar por Fecha y Operario</label>
+                        <div style="display: flex; gap: 10px; align-items: center; width: 100%;">
+                            
+                            <input type="date" class="control-pro" id="filtro-fecha-gestion" style="width: 150px; flex-shrink: 0;" title="Seleccionar Fecha">
+
+                            <div style="position: relative; flex-grow: 1;">
+                                <input class="control-pro" list="lista-operarios-gestion" id="filtro-operario-gestion" placeholder="Ej. TODOS, o escriba un nombre..." style="width: 100%; box-sizing: border-box; padding-right: 40px;">
+                                <i class="fas fa-times clear-input-icon" id="clear-operario-gestion" title="Limpiar"></i>
+                            </div>
+                            
+                            <datalist id="lista-operarios-gestion">
+                                <option value="TODOS"></option>
+                            </datalist>
+
+                            <button class="btn-clean-primary" id="btn-buscar-gestion" style="padding: 8px 20px; flex-shrink: 0;"><i class="fas fa-search"></i> Buscar</button>
+                        </div>
+                    </div>
+
+                    <div class="preview-container-clean">
+                        <div class="table-scroll-clean" style="max-height: 280px; min-height: 200px;">
+                            <table class="table-pro table-preview">
+                                <thead>
+                                    <tr>
+                                        <th>CLICODFAC</th>
+                                        <th>MEDCODYGO</th>
+                                        <th>LECTURA</th>
+                                        <th>FECLEC</th>
+                                        <th>ESTADO</th>
+                                        </tr>
+                                </thead>
+                                <tbody id="tbody-gestion-lecturas">
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-20">Utilice los filtros y presione Buscar.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="pagination-pro mt-15" style="display: none;">
+                        </div>
+
+                </div>
+
+                <!-- SECCIÓN 2: AVANCE -->
+                <div id="tab-avance" class="tab-content-clean">
+                    <div class="form-group-clean" style="margin-bottom: 25px;">
+        
+                        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                            
+                            <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-weight: 600; color: #475569; font-size: 0.85rem; margin: 0;">FECHA</label>
+                                <input type="date" class="control-pro" id="avance-fecha" title="Fecha Obligatoria" required style="width: 160px; height: 40px; box-sizing: border-box; margin: 0; border: 1px solid #d1d5db; border-radius: 6px; padding: 0 10px; color: #334155;">
+                            </div>
+
+                            <div style="flex-grow: 1; max-width: 420px; display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-weight: 600; color: #475569; font-size: 0.85rem; margin: 0;">OPERARIO (Opcional)</label>
+                                <select class="control-pro" id="avance-operario" style="width: 100%;">
+                                    <option value="">Ej. TODOS, o escriba un operario...</option>
+                                </select>
+                            </div>
+
+                            <div style="flex-shrink: 0;">
+                                <button class="btn-clean-primary" id="btn-buscar-avance" style="height: 40px; padding: 0 25px; display: flex; align-items: center; gap: 8px; margin: 0;">
+                                    <i class="fas fa-search"></i> Buscar
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <hr style="border: 0; border-top: 1px solid #f1f5f9; margin-bottom: 20px;">
+
+                    <div id="contenedor-barras-avance" class="scroll-minimalista" style="max-height: 420px; display: flex; flex-direction: column; gap: 10px; padding-right: 6px;">
+                        <div style="margin: auto; text-align: center; color: #94a3b8; padding: 40px;">
+                            <i class="fas fa-chart-bar" style="font-size: 3rem; color: #cbd5e1; margin-bottom: 12px; display: block;"></i>
+                            <p style="margin: 0; font-size: 0.95rem; font-weight: 600; color: #64748b;">Seleccione una fecha y haga clic en Buscar</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer-clean">
+                <button class="btn-clean-ghost" onclick="document.getElementById('modal-gestion').style.display='none'">Cancelar</button>
+                <button class="btn-clean-primary" id="btn-accion-matriz">Subir Data</button>
+            </div>
+        </div>
+    </div>
+
 
 
 
@@ -3170,6 +4067,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 </body>
 </html>
