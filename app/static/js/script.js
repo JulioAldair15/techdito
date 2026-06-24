@@ -10997,27 +10997,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 //CONVERTIR A DBF
-// --- 1. Lógica para mostrar/ocultar campos (sin cambios) ---
+// --- 1. Lógica para mostrar/ocultar campos ---
 function verificarActividad() {
     const selector = document.getElementById('selector-actividad-1');
-    const camposExtra = document.getElementById('campos-inspecciones');
+    const camposInspecciones = document.getElementById('campos-inspecciones');
+    const camposPersuasivas = document.getElementById('campos-persuasivas');
+    const camposCierres = document.getElementById('campos-cierres'); // Nuevo
     const resultado = document.getElementById('contenedor-resultado');
 
+    camposInspecciones.style.display = 'none';
+    camposPersuasivas.style.display = 'none';
+    camposCierres.style.display = 'none'; // Nuevo
+    if (resultado) resultado.style.display = 'none';
+
     if (selector.value === 'INSPECCIONES') {
-        camposExtra.style.display = 'flex';
-    } else {
-        camposExtra.style.display = 'none';
-        resultado.style.display = 'none';
+        camposInspecciones.style.display = 'flex';
+    } else if (selector.value === 'PERSUASIVAS') {
+        camposPersuasivas.style.display = 'flex';
+    } else if (selector.value === 'CIERRES') {
+        camposCierres.style.display = 'flex'; // Mostrar nuevo
     }
 }
 
-// --- 2. NUEVA FUNCIÓN: Pinta la tabla con los datos de un grupo específico ---
+// --- 2. FUNCIÓN DINÁMICA: Detecta el esquema y pinta la tabla correspondiente ---
 function renderTablaGrupo(data) {
     const contenedorResultado = document.getElementById('contenedor-resultado');
     const thead = contenedorResultado.querySelector('table thead');
     const tbody = contenedorResultado.querySelector('table tbody');
 
-    // Limpiar tabla anterior
     thead.innerHTML = '';
     tbody.innerHTML = '';
 
@@ -11026,14 +11033,37 @@ function renderTablaGrupo(data) {
         return;
     }
 
-    // --- Crear Cabecera (Thead) ---
-    const headersToShow = [
+    // Definición de las columnas de cada área para respetar el orden exacto
+    const headersInspecciones = [
         'CLICODFAC', 'NACTINT', 'NACTEXT', 'CICLOREAL', 'FECNOTIMED',
         'HORANOTI', 'FCHINSREAL', 'HREAL', 'LECTURA', 'OBS', 'FUGAINT',
         'FUGAEXT', 'FUGANOVIS', 'AUSENTE', 'DCLAJUDA', 'USACEPCONS', 'OBSERS', 'NUU', 'USOINM'
-
     ];
+
+    const headersPersuasivas = [
+        'NRCX_OFI', 'NRCX_AGE', 'NRCX_NRO', 'NRCX_CLI', 'NRCX_NOM', 
+        'NRCX_DIR', 'NRCX_MED', 'NRCX_TAR', 'NRCX_OBS', 'NRCX_FOB', 'NRCX_HOB', 'NRCX_GLO'
+    ];
+
+    const headersCierres = [
+        'NEX_CLI', 'NEX_NOM', 'NRCX_OPECX', 'NRX_AMB', 'CODPRECINT', 
+        'TIPODISPCX', 'NEX_GLO', 'NEX_FEC', 'NEX_HRA', 'SERVIDOR'
+    ];
+
+    // Mapeo dinámico: Evalúa el primer registro para saber qué juego de cabeceras usar
+    let headersToShow = [];
+    if ('CLICODFAC' in data[0]) {
+        headersToShow = headersInspecciones;
+    } else if ('NRCX_FOB' in data[0] || 'NRCX_OBS' in data[0]) { 
+        headersToShow = headersPersuasivas;
+    } else if ('TIPODISPCX' in data[0] && 'NEX_CLI' in data[0]) {
+        // Detecta que son Cierres por la combinación de estas columnas
+        headersToShow = headersCierres;
+    } else {
+        headersToShow = Object.keys(data[0]);
+    }
     
+    // --- Crear Cabecera (Thead) ---
     const headerRow = document.createElement('tr');
     headersToShow.forEach(headerText => {
         const th = document.createElement('th');
@@ -11058,61 +11088,50 @@ function renderTablaGrupo(data) {
     });
 }
 
-
-// --- 3. FUNCIÓN MODIFICADA: Ahora construye las PESTAÑAS ---
+// --- 3. Construcción de Pestañas (Tabs) ---
 function construirTabsYTabla(dataPorGrupo) {
     const contenedorResultado = document.getElementById('contenedor-resultado');
     const tabsContainer = document.getElementById('tabla-tabs-container');
-    tabsContainer.innerHTML = ''; // Limpiar pestañas anteriores
+    tabsContainer.innerHTML = ''; 
 
     const grupos = Object.keys(dataPorGrupo);
 
     if (grupos.length === 0) {
-        // No hay grupos, mostrar mensaje
-        renderTablaGrupo(null); // Llama a render para mostrar mensaje de "sin datos"
+        renderTablaGrupo(null); 
         contenedorResultado.style.display = 'block';
         return;
     }
 
-    // Crear una pestaña (botón) para cada grupo
     grupos.forEach((grupo, index) => {
         const tabButton = document.createElement('button');
         tabButton.className = 'tab-button';
         tabButton.textContent = `Grupo ${grupo} (${dataPorGrupo[grupo].length} filas)`;
         tabButton.dataset.grupo = grupo;
 
-        // Añadir evento de clic
         tabButton.addEventListener('click', () => {
-            // 1. Quitar 'active' de todas las pestañas
             tabsContainer.querySelectorAll('.tab-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            // 2. Añadir 'active' a esta pestaña
             tabButton.classList.add('active');
-            // 3. Renderizar la tabla para este grupo
             renderTablaGrupo(dataPorGrupo[grupo]);
         });
 
         tabsContainer.appendChild(tabButton);
     });
 
-    // Mostrar el contenedor principal
     contenedorResultado.style.display = 'block';
     
-    // Simular clic en la primera pestaña para mostrarla por defecto
     if (tabsContainer.firstChild) {
         tabsContainer.firstChild.click();
     }
 }
 
-
-// --- 4. Función para PREVISUALIZAR (Botón "CONVERTIR") ---
+// --- 4. MÓDULO INSPECCIONES: Previsualizar ---
 async function previsualizarConversion() {
     const fechaInput = document.getElementById('fecha-input');
     const archivoInput = document.getElementById('archivo-input');
     const btnConvertir = document.getElementById('btn-convertir');
 
-    // Validaciones
     if (!fechaInput.value) { alert('Por favor, seleccione una fecha.'); return; }
     if (archivoInput.files.length === 0) { alert('Por favor, seleccione un archivo Excel.'); return; }
 
@@ -11131,17 +11150,14 @@ async function previsualizarConversion() {
 
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.error || 'Error desconocido en el servidor');
+            throw new Error(errorData.error || 'Error en el servidor');
         }
 
-        // ¡Ahora esperamos un objeto de grupos!
         const dataPorGrupo = await response.json();
-        
-        // Llamamos a la nueva función que construye las pestañas
         construirTabsYTabla(dataPorGrupo);
 
     } catch (error) {
-        console.error('Error en la previsualización:', error);
+        console.error(error);
         alert(`Error: ${error.message}`);
         document.getElementById('contenedor-resultado').style.display = 'none';
     } finally {
@@ -11150,55 +11166,195 @@ async function previsualizarConversion() {
     }
 }
 
-// --- 5. Función para DESCARGAR (Botón "DESCARGAR ZIP" - sin cambios) ---
-async function descargarZip() {
-    const fechaInput = document.getElementById('fecha-input');
-    const archivoInput = document.getElementById('archivo-input');
-    const btnDescargar = document.getElementById('btn-descargar-1');
+// --- 5. MÓDULO PERSUASIVAS: Previsualizar entregable ---
+async function generarEntregable() {
+    const archivosInput = document.getElementById('archivos-dbf-cdx');
+    const reporteInput = document.getElementById('archivo-reporte');
+    const btnGenerar = document.getElementById('btn-generar-entregable');
 
-    if (!fechaInput.value || archivoInput.files.length === 0) {
-        alert('Faltan la fecha o el archivo para descargar.');
-        return;
-    }
+    if (archivosInput.files.length === 0) { alert('Por favor, cargue los archivos .dbf y .cdx originales.'); return; }
+    if (reporteInput.files.length === 0) { alert('Por favor, cargue el reporte Excel de su sistema.'); return; }
 
     const formData = new FormData();
-    formData.append('fecha', fechaInput.value);
-    formData.append('archivo', archivoInput.files[0]);
+    for (let i = 0; i < archivosInput.files.length; i++) {
+        formData.append('archivos_base', archivosInput.files[i]);
+    }
+    formData.append('reporte', reporteInput.files[0]);
 
-    btnDescargar.textContent = 'GENERANDO ZIP...';
-    btnDescargar.disabled = true;
+    btnGenerar.textContent = 'PROCESANDO VISTA...';
+    btnGenerar.disabled = true;
 
     try {
-        const response = await fetch('/descargar-dbf', {
+        const response = await fetch('/api/persuasivas/previsualizar', {
             method: 'POST',
             body: formData
         });
 
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.error || 'Error al generar el ZIP');
+            throw new Error(errorData.error || 'Error procesando archivos.');
         }
+
+        const dataPorServidor = await response.json();
+        construirTabsYTabla(dataPorServidor);
+
+    } catch (error) {
+        console.error(error);
+        alert(`Error: ${error.message}`);
+    } finally {
+        btnGenerar.textContent = 'GENERAR ENTREGABLE';
+        btnGenerar.disabled = false;
+    }
+}
+
+// --- 5B. NUEVO MÓDULO CIERRES: Previsualizar entregable ---
+async function generarEntregableCierres() {
+    const archivosInput = document.getElementById('archivos-dbf-cdx-cierres');
+    const reporteInput = document.getElementById('archivo-reporte-cierres');
+    const btnGenerar = document.getElementById('btn-generar-cierres');
+
+    if (archivosInput.files.length === 0) { alert('Cargue los archivos .dbf y .cdx originales.'); return; }
+    if (reporteInput.files.length === 0) { alert('Cargue el reporte Excel de cierres.'); return; }
+
+    const formData = new FormData();
+    for (let i = 0; i < archivosInput.files.length; i++) {
+        formData.append('archivos_base', archivosInput.files[i]);
+    }
+    formData.append('reporte', reporteInput.files[0]);
+
+    btnGenerar.textContent = 'PROCESANDO...';
+    btnGenerar.disabled = true;
+
+    try {
+        const response = await fetch('/api/cierres/previsualizar', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error procesando archivos.');
+        }
+
+        const dataPorServidor = await response.json();
+        construirTabsYTabla(dataPorServidor);
+
+    } catch (error) {
+        console.error(error);
+        alert(`Error: ${error.message}`);
+    } finally {
+        btnGenerar.textContent = 'GENERAR CIERRES';
+        btnGenerar.disabled = false;
+    }
+}
+
+// --- 6. FUNCIÓN DE DESCARGA: Discrimina la ruta según el selector activo ---
+async function ejecutarDescargaZip() {
+    const actividad = document.getElementById('selector-actividad-1').value;
+    const btnDescargar = document.getElementById('btn-descargar-1');
+    const formData = new FormData();
+    let endpoint = '';
+    let nombreBase = ''; // Usamos nombreBase sin el ".zip" para poder concatenarle la fecha
+
+    // --- GENERADOR DE FECHA Y HORA (Formato: YYYYMMDD_HHMMSS) ---
+    const ahora = new Date();
+    const timestamp = ahora.getFullYear().toString() +
+                      String(ahora.getMonth() + 1).padStart(2, '0') +
+                      String(ahora.getDate()).padStart(2, '0') + '_' +
+                      String(ahora.getHours()).padStart(2, '0') +
+                      String(ahora.getMinutes()).padStart(2, '0') +
+                      String(ahora.getSeconds()).padStart(2, '0');
+
+    if (actividad === 'INSPECCIONES') {
+        const fechaInput = document.getElementById('fecha-input');
+        const archivoInput = document.getElementById('archivo-input');
+        if (!fechaInput.value || archivoInput.files.length === 0) { alert('Faltan datos de inspecciones.'); return; }
+        
+        formData.append('fecha', fechaInput.value);
+        formData.append('archivo', archivoInput.files[0]);
+        endpoint = '/descargar-dbf';
+        nombreBase = 'conversiones_inspecciones';
+        
+    } else if (actividad === 'PERSUASIVAS') {
+        const archivosInput = document.getElementById('archivos-dbf-cdx');
+        const reporteInput = document.getElementById('archivo-reporte');
+        if (archivosInput.files.length === 0 || reporteInput.files.length === 0) { alert('Faltan archivos de persuasivas.'); return; }
+
+        for (let i = 0; i < archivosInput.files.length; i++) {
+            formData.append('archivos_base', archivosInput.files[i]);
+        }
+        formData.append('reporte', reporteInput.files[0]);
+        endpoint = '/api/persuasivas/descargar';
+        nombreBase = 'entregable_persuasivas';
+        
+    } else if (actividad === 'CIERRES') {
+        const archivosInput = document.getElementById('archivos-dbf-cdx-cierres');
+        const reporteInput = document.getElementById('archivo-reporte-cierres');
+        if (archivosInput.files.length === 0 || reporteInput.files.length === 0) { alert('Faltan archivos de cierres.'); return; }
+
+        for (let i = 0; i < archivosInput.files.length; i++) {
+            formData.append('archivos_base', archivosInput.files[i]);
+        }
+        formData.append('reporte', reporteInput.files[0]);
+        endpoint = '/api/cierres/descargar';
+        nombreBase = 'entregable_cierres';
+    }
+
+    btnDescargar.textContent = 'GENERANDO ZIP...';
+    btnDescargar.disabled = true;
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) throw new Error('Error al generar el archivo ZIP.');
 
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.style.display = 'none';
         a.href = url;
-        a.download = 'conversiones_dbf.zip';
+        
+        // CORRECCIÓN AQUÍ: Usamos la variable combinada en lugar del ternario quemado en duro
+        a.download = `${nombreBase}_${timestamp}.zip`; 
+        
         document.body.appendChild(a);
         a.click();
-        
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
 
     } catch (error) {
-        console.error('Error en la descarga:', error);
-        alert(`Error: ${error.message}`);
+        alert(error.message);
     } finally {
         btnDescargar.textContent = 'DESCARGAR ZIP';
         btnDescargar.disabled = false;
     }
 }
+
+
+// --- 7. Inicialización de Eventos de Escucha ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Evento para Inspecciones
+    const btnConvertir = document.getElementById('btn-convertir');
+    if (btnConvertir) {
+        btnConvertir.onclick = null;
+        btnConvertir.addEventListener('click', previsualizarConversion);
+    }
+
+    // Evento para Persuasivas
+    const btnGenerarEntregable = document.getElementById('btn-generar-entregable');
+    if (btnGenerarEntregable) {
+        btnGenerarEntregable.addEventListener('click', generarEntregable);
+    }
+
+    // Reasociación unificada del botón Descargar
+    const btnDescargar = document.getElementById('btn-descargar-1');
+    if (btnDescargar) {
+        btnDescargar.replaceWith(btnDescargar.cloneNode(true)); 
+        document.getElementById('btn-descargar-1').addEventListener('click', ejecutarDescargaZip);
+    }
+});
 
 
 // --- 6. Asignar los eventos a los botones (sin cambios) ---
@@ -11559,8 +11715,7 @@ document.getElementById('formCartas').addEventListener('submit', async function(
         });
 
 function openSubTab(evt, tabId) {
-    // 1. Ocultar todos los contenidos con clase "sub-tab-content" DENTRO de #cartas
-    // Esto asegura que no afectemos a otras partes de la web
+
     const parentSection = document.getElementById('cartas');
     const tabContents = parentSection.getElementsByClassName("sub-tab-content");
     
@@ -11629,56 +11784,63 @@ const EMPLEADOS_DB = [
 
 // 1. FUNCIÓN PARA CREAR EL DATALIST (Solo una vez)
 function setupDatalist() {
-    // Si ya existe, no lo creamos de nuevo
     if (document.getElementById('listaEmpleados')) return;
-
+    
+    console.log("Configurando datalist de empleados...");
     const datalist = document.createElement('datalist');
     datalist.id = 'listaEmpleados';
     
     let options = '';
     EMPLEADOS_DB.forEach(emp => {
-        // En el datalist, el value es lo que se busca y selecciona
         options += `<option value="${emp}">`; 
     });
     
     datalist.innerHTML = options;
-    document.body.appendChild(datalist); // Lo agregamos al final del body invisiblemente
+    document.body.appendChild(datalist);
 }
 
-// 2. FUNCIÓN ANALIZAR (ACTUALIZADA CON INPUT BUSCABLE)
+// 2. FUNCIÓN ANALIZAR (CORREGIDA PARA LEER EXCEL EN AMBOS MODOS)
 function analizarCargas() {
+    console.log("--- INICIANDO analizarCargas() ---");
     setupDatalist();
 
     const fileInput = document.getElementById('archivoCarga');
     const fCalendario = document.getElementById('fechaCalendario');
     const fEjecucion = document.getElementById('fechaEjecucion');
+    const subActividad = document.getElementById('subActividad').value; 
     const grid = document.getElementById('loadsGrid');
     const area = document.getElementById('areaAsignacion');
+    const tituloOperarios = document.getElementById('tituloOperarios');
 
-    if (!fileInput.files.length || !fCalendario.value || !fEjecucion.value) {
-        alert("Por favor, complete todos los campos (Archivo y ambas Fechas).");
+    console.log("Sub-Actividad seleccionada:", subActividad);
+
+    if (!fileInput.files.length || !fCalendario.value || !fEjecucion.value || !subActividad) {
+        alert("Por favor, complete todos los campos obligatorios.");
         return;
     }
 
+    // Aseguramos mostrar el contenedor de UI de operarios
+    if (tituloOperarios) tituloOperarios.style.display = 'block'; 
+
+    console.log("Iniciando lectura del archivo Excel...");
     const file = fileInput.files[0];
     const reader = new FileReader();
     reader.readAsArrayBuffer(file);
 
     reader.onload = function(e) {
+        console.log("Excel leído en memoria. Procesando datos con SheetJS...");
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, {type: 'array'});
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         
-        // Leer como matriz para procesar fila por fila
         const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
         if (rawData.length === 0) return;
 
-        // --- BUSCAR COLUMNAS CLAVE ---
         let colCargard = -1;
         let colFciclo = -1;
         let headerRow = -1;
 
-        // Buscamos en las primeras 10 filas
+        // Buscar columnas clave
         for (let r = 0; r < Math.min(rawData.length, 10); r++) {
             const row = rawData[r];
             for (let c = 0; c < row.length; c++) {
@@ -11694,36 +11856,61 @@ function analizarCargas() {
             return;
         }
 
-        // --- LÓGICA DE RE-CÁLCULO (SIMULANDO AL BACKEND) ---
-        const limite = 528;
         const cargasSimuladas = new Set();
-        
-        // Agrupar filas por ciclo (fciclo) para calcular los nuevos IDs de carga
-        const filasPorCiclo = {};
-        for (let i = headerRow + 1; i < rawData.length; i++) {
-            const row = rawData[i];
-            const ciclo = colFciclo !== -1 ? String(row[colFciclo]).trim() : "unico";
-            if (!filasPorCiclo[ciclo]) filasPorCiclo[ciclo] = [];
-            filasPorCiclo[ciclo].push(row[colCargard]);
+
+        // --- BIFURCACIÓN DE LÓGICA SEGÚN SUB-ACTIVIDAD ---
+        if (subActividad === 'CONTINUOS') {
+            console.log("Modo CONTINUOS: Aplicando regla de partición límite 528...");
+            const limite = 528;
+            const filasPorCiclo = {};
+
+            for (let i = headerRow + 1; i < rawData.length; i++) {
+                const row = rawData[i];
+                const ciclo = colFciclo !== -1 ? String(row[colFciclo]).trim() : "unico";
+                if (!filasPorCiclo[ciclo]) filasPorCiclo[ciclo] = [];
+                filasPorCiclo[ciclo].push(row[colCargard]);
+            }
+
+            Object.keys(filasPorCiclo).forEach(ciclo => {
+                const filas = filasPorCiclo[ciclo];
+                if (filas.length === 0) return;
+                const cargaBase = parseInt(filas[0]) || 0;
+
+                filas.forEach((_, index) => {
+                    const nuevaCarga = cargaBase + Math.floor(index / limite);
+                    cargasSimuladas.add(nuevaCarga.toString());
+                });
+            });
+
+        } else if (subActividad === 'DISPERSOS') {
+            console.log("Modo DISPERSOS: Extrayendo cargas únicas sin partición...");
+            // Solo extraemos las cargas que ya vienen por defecto en el archivo
+            for (let i = headerRow + 1; i < rawData.length; i++) {
+                const row = rawData[i];
+                const valorCarga = row[colCargard];
+                if (valorCarga !== undefined && valorCarga !== "") {
+                    // Limpiamos la carga a enteros si es posible, para mantener uniformidad
+                    const numCarga = parseInt(valorCarga);
+                    if (!isNaN(numCarga)) {
+                        cargasSimuladas.add(numCarga.toString());
+                    } else {
+                        cargasSimuladas.add(String(valorCarga).trim());
+                    }
+                }
+            }
         }
 
-        // Calcular qué números de carga resultarán después de la partición
-        Object.keys(filasPorCiclo).forEach(ciclo => {
-            const filas = filasPorCiclo[ciclo];
-            if (filas.length === 0) return;
-
-            // Tomamos el primer ID de carga del ciclo como base
-            const cargaBase = parseInt(filas[0]) || 0;
-
-            filas.forEach((_, index) => {
-                const nuevaCarga = cargaBase + Math.floor(index / limite);
-                cargasSimuladas.add(nuevaCarga.toString());
-            });
+        // --- GENERACIÓN DE TARJETAS UI (PARA AMBOS MODOS) ---
+        grid.innerHTML = ''; 
+        
+        // Ordenamos numéricamente
+        const sortedCargas = Array.from(cargasSimuladas).sort((a, b) => {
+            const numA = parseInt(a), numB = parseInt(b);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.localeCompare(b);
         });
 
-        // --- GENERAR UI ---
-        grid.innerHTML = ''; 
-        const sortedCargas = Array.from(cargasSimuladas).sort((a, b) => a - b);
+        console.log("Cargas generadas para UI:", sortedCargas);
 
         sortedCargas.forEach(carga => {
             const card = document.createElement('div');
@@ -11736,44 +11923,53 @@ function analizarCargas() {
             grid.appendChild(card);
         });
 
+        console.log("Tarjetas renderizadas en pantalla.");
         area.style.display = 'block';
     };
 }
 
-// 3. FUNCIÓN GENERAR FINAL (ACTUALIZADA PARA EXTRAER EL ID)
+// 3. FUNCIÓN GENERAR FINAL (CORREGIDA PARA ENVIAR OPERARIOS EN AMBOS MODOS)
 async function generarAsignacionFinal() {
+    console.log("--- INICIANDO generarAsignacionFinal() ---");
     const inputs = document.querySelectorAll('.operario-input');
+    const subActividad = document.getElementById('subActividad').value; 
     const mapping = {};
     let faltantes = 0;
 
+    console.log("Recopilando asignaciones de operarios para modo:", subActividad);
+    
+    // AHORA RECOPILAMOS LOS INPUTS SIN IMPORTAR SI ES CONTINUOS O DISPERSOS
     inputs.forEach(inp => {
         const cargaName = inp.name.replace('carga_', '');
-        const val = inp.value; // Ejemplo: "3 ACOSTA..."
+        const val = inp.value;
 
         if (val) {
-            // EXTRAER SOLO EL CÓDIGO (Números al inicio)
-            // Si el valor es "3 ACOSTA...", extraemos "3"
             const match = val.match(/^(\d+)/);
             if (match) {
-                mapping[cargaName] = match[1]; // Guardamos solo el ID
+                mapping[cargaName] = match[1]; 
             } else {
-                mapping[cargaName] = val; // Si no hay número, guardamos todo
+                mapping[cargaName] = val; 
             }
         } else {
             faltantes++;
         }
     });
 
+    console.log("Mapeo recopilado:", mapping);
+
     if (faltantes > 0) {
-        if (!confirm(`Hay ${faltantes} cargas sin operario asignado. ¿Desea continuar?`)) return;
+        console.warn(`Faltan ${faltantes} cargas por asignar.`);
+        if (!confirm(`Hay ${faltantes} cargas sin operario asignado. ¿Desea continuar?`)) {
+            return;
+        }
     }
 
     const formData = new FormData();
     formData.append('archivo', document.getElementById('archivoCarga').files[0]);
-    // ENVIAMOS LAS DOS FECHAS
     formData.append('fecha_calendario', document.getElementById('fechaCalendario').value);
     formData.append('fecha_ejecucion', document.getElementById('fechaEjecucion').value);
-    formData.append('mapping', JSON.stringify(mapping));
+    formData.append('sub_actividad', subActividad); 
+    formData.append('mapping', JSON.stringify(mapping)); // Ahora siempre enviará datos
 
     try {
         const btn = document.querySelector('#areaAsignacion button');
@@ -11808,6 +12004,432 @@ async function generarAsignacionFinal() {
         const btn = document.querySelector('#areaAsignacion button');
         btn.disabled = false;
         btn.innerText = "📥 GENERAR ASIGNACIÓN";
+    }
+}
+
+let datosOriginalesExcel = []; // Almacenará el Excel subido en memoria
+let datosLimpiosFinales = []; // Lo que enviaremos al ZIP
+
+// Diccionario de sinónimos para autodetectar columnas
+const diccionariosDetect = {
+    'map_suministro': ['suministro', 'codigo', 'clicodfac', 'codigo cliente', 'número de suministro', 'numero de suministro'],
+    'map_nombre': ['nombre completo', 'nombre', 'nombre del usuario que solicita la verificación', 'clinombre', 'cl nombre'],
+    'map_localidad': ['localidad', 'distrito'],
+    'map_urbanizacion': ['urbanizacion', 'urbanización', 'urbanizac', 'dirección donde se encuentra el medidor', 'urbaniza'],
+    'map_calle': ['calle', 'direccion', 'dirección'],
+    'map_numero': ['numero', 'número', 'nummun', 'n°', 'n'],
+    'map_ciclo': ['ciclo', 'cicloreal'],
+    'map_medidor': ['medcodigo', 'medidor', 'n° de serie del medidor', 'serie'],
+    'map_documento': ['carta', 'conact', 'secuencia', 'n° reclamo', 'reclamo', 'item']
+};
+
+// Función auxiliar para detectar datos basura (Vacíos o Errores de Excel)
+function esCeldaVaciaOError(celda) {
+    if (celda === undefined || celda === null) return true;
+    const val = String(celda).trim().toUpperCase();
+    return val === "" || val === "N/D" || val === "#N/D" || val === "N/A" || val === "#N/A";
+}
+
+// 1. LEE EL ARCHIVO, IGNORA HOJAS CON #N/D MASIVOS Y ENCUENTRA LA HOJA REAL
+function procesarExcelTransformacion(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, {type: 'array'});
+        
+        let sheetEncontrada = false;
+        let cabecerasDetectadas = [];
+        datosOriginalesExcel = []; 
+
+        console.log("Iniciando escaneo inteligente de hojas...");
+
+        // PASO 1: Recorrer TODAS las hojas del libro de Excel
+        for (let s = 0; s < workbook.SheetNames.length; s++) {
+            const sheetName = workbook.SheetNames[s];
+            const worksheet = workbook.Sheets[sheetName];
+            
+            const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+            if (rawData.length === 0) continue; 
+
+            let headerRowIndex = -1;
+
+            // PASO 2: Buscar la fila de cabeceras (máximo hasta la fila 20)
+            for (let r = 0; r < Math.min(rawData.length, 20); r++) {
+                const row = rawData[r];
+                
+                // Extraemos dinámicamente TODAS tus palabras clave del diccionario principal
+                const todasLasPalabrasClave = Object.values(diccionariosDetect).flat();
+
+                const pareceCabecera = row.some(celda => {
+                    const val = String(celda).toLowerCase().trim();
+                    return todasLasPalabrasClave.includes(val);
+                });
+
+                if (pareceCabecera) {
+                    headerRowIndex = r;
+                    break; 
+                }
+            }
+
+            // PASO 3: Evaluar si la hoja tiene DATOS REALES debajo de la cabecera
+            if (headerRowIndex !== -1) {
+                let tieneDatosReales = false;
+                
+                // Detectar qué columnas son "ITEM" o correlativos para IGNORARLAS en la validación
+                const cabecerasHoja = rawData[headerRowIndex].map(c => String(c).toLowerCase().trim());
+                const indicesAIgnorar = [];
+                cabecerasHoja.forEach((cab, idx) => {
+                    if (cab === 'item' || cab === 'n°' || cab === 'nro') {
+                        indicesAIgnorar.push(idx);
+                    }
+                });
+                
+                // Revisamos las filas que están justo debajo de las cabeceras
+                for (let d = headerRowIndex + 1; d < rawData.length; d++) {
+                    const rowData = rawData[d];
+                    
+                    // Comprobamos si esta fila tiene al menos UNA celda válida (y que no pertenezca a la columna ITEM)
+                    const esFilaValida = rowData.some((celda, idx) => {
+                        if (indicesAIgnorar.includes(idx)) return false; // Ignoramos si es la columna ITEM
+                        return !esCeldaVaciaOError(celda);
+                    });
+
+                    if (esFilaValida) {
+                        tieneDatosReales = true;
+                        break; // Encontramos datos, detenemos la búsqueda en esta hoja
+                    }
+                }
+
+                // PASO 4: Procesar solo si la hoja demostró tener datos reales
+                if (tieneDatosReales) {
+                    console.log(`✅ Hoja válida encontrada: "${sheetName}". Extrayendo datos...`);
+                    
+                    cabecerasDetectadas = rawData[headerRowIndex].map((c, index) => String(c).trim() || `Columna_Vacia_${index}`);
+                    
+                    // Extraer los datos, omitiendo también las filas individuales que sean puro #N/D
+                    for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+                        const rawRow = rawData[i];
+                        
+                        // Si la fila solo tiene un correlativo en ITEM pero el resto es basura, se ignora
+                        const esFilaTotalmenteBasura = !rawRow.some((celda, idx) => {
+                            if (indicesAIgnorar.includes(idx)) return false; // Ignoramos si es la columna ITEM
+                            return !esCeldaVaciaOError(celda);
+                        });
+                        
+                        if (esFilaTotalmenteBasura) continue; 
+
+                        const objFila = {};
+                        cabecerasDetectadas.forEach((cabecera, idx) => {
+                            const valorCelda = rawRow[idx];
+                            objFila[cabecera] = esCeldaVaciaOError(valorCelda) ? "" : valorCelda;
+                        });
+                        
+                        datosOriginalesExcel.push(objFila);
+                    }
+                    
+                    sheetEncontrada = true;
+                    break; // Salimos del bucle principal de hojas
+                } else {
+                    console.log(`⚠️ Hoja descartada: "${sheetName}". Solo contiene correlativos en ITEM y el resto es basura o #N/D.`);
+                }
+            }
+        }
+
+        // Validación final si el Excel entero era pura basura
+        if (!sheetEncontrada || datosOriginalesExcel.length === 0) {
+            alert("No se encontró ninguna hoja válida. El archivo parece estar completamente vacío o solo contiene correlativos con errores como #N/D.");
+            document.getElementById('panelTransformacion').style.display = 'none';
+            return;
+        }
+
+        llenarSelectores(cabecerasDetectadas);
+        document.getElementById('panelTransformacion').style.display = 'flex';
+        actualizarPrevisualizacion();
+    };
+    
+    reader.readAsArrayBuffer(file);
+}
+
+// 2. AUTO-MAPPING INTELIGENTE
+function llenarSelectores(cabeceras) {
+    const selectsIds = Object.keys(diccionariosDetect);
+    
+    selectsIds.forEach(idSelect => {
+        const selectElement = document.getElementById(idSelect);
+        selectElement.innerHTML = '<option value="">-- No existe --</option>'; // Opción por defecto
+        
+        let mejorCoincidencia = "";
+
+        // Llenar opciones
+        cabeceras.forEach(cabecera => {
+            const cabeceraLimpia = cabecera.toLowerCase().trim();
+            const option = document.createElement('option');
+            option.value = cabecera;
+            option.text = cabecera;
+            selectElement.appendChild(option);
+
+            // Buscar si coincide con el diccionario
+            if (diccionariosDetect[idSelect].includes(cabeceraLimpia)) {
+                mejorCoincidencia = cabecera;
+            }
+        });
+
+        // Si encontró una columna que se llama igual, la selecciona automáticamente
+        if (mejorCoincidencia !== "") {
+            selectElement.value = mejorCoincidencia;
+        }
+    });
+}
+
+// Función auxiliar para crear exactamente 11 dígitos
+function generarSuministroAleatorio() {
+    let codigo = '';
+    
+    // Generamos el primer dígito (del 1 al 9 para asegurar que no empiece con cero)
+    codigo += Math.floor(Math.random() * 9) + 1;
+    
+    // Generamos los 10 dígitos restantes (del 0 al 9)
+    for (let i = 0; i < 10; i++) {
+        codigo += Math.floor(Math.random() * 10);
+    }
+    
+    return codigo;
+}
+
+// 3. REGLAS DE LIMPIEZA
+function limpiarSuministro(val) {
+    // Si la celda viene completamente nula o indefinida desde el Excel
+    if (!val) return generarSuministroAleatorio();
+    
+    // Elimina TODO lo que no sea un número (letras, espacios, guiones, etc.)
+    const num = String(val).replace(/\D/g, ''); 
+    
+    // Si después de quitar las letras el resultado quedó vacío, genera el aleatorio
+    return num === "" ? generarSuministroAleatorio() : num;
+}
+
+function limpiarTexto(val) {
+    if (!val) return "-";
+    // Quitamos espacios extra y saltos de línea
+    let txt = String(val).trim().replace(/[\r\n\t]/g, ' '); 
+    
+    // Si es mayor a 50 caracteres, lo recortamos inteligentemente
+    if (txt.length > 50) {
+        let truncado = txt.substring(0, 50);
+        // Buscamos el último espacio para no cortar una palabra por la mitad
+        let ultimoEspacio = truncado.lastIndexOf(" ");
+        if (ultimoEspacio > 0) {
+            truncado = truncado.substring(0, ultimoEspacio);
+        }
+        return truncado + "...";
+    }
+    return txt;
+}
+
+// Función exclusiva para limpiar el NOMBRE (Sin puntos, ni comas)
+function limpiarNombre(val) {
+    if (!val) return "-";
+    
+    // 1. Quitamos saltos de línea y espacios extra
+    let txt = String(val).trim().replace(/[\r\n\t]/g, ' '); 
+    
+    // 2. NUEVA REGLA: Eliminamos puntos, comas, puntos y comas, y dos puntos
+    txt = txt.replace(/[.,;:]/g, '');
+    
+    // 3. Aplicamos el recorte inteligente si pasa de 50 caracteres
+    if (txt.length > 50) {
+        let truncado = txt.substring(0, 50);
+        let ultimoEspacio = truncado.lastIndexOf(" ");
+        if (ultimoEspacio > 0) {
+            truncado = truncado.substring(0, ultimoEspacio);
+        }
+        return truncado + "...";
+    }
+    
+    // Si al quitar los puntos/comas se quedó completamente vacío
+    return txt.trim() === "" ? "-" : txt;
+}
+
+// Función para eliminar la urbanización si está duplicada al inicio de la calle
+function limpiarCalleDuplicada(urb, calle) {
+    // Si alguno está vacío o tiene el guion por defecto, no hacemos nada
+    if (!urb || !calle || urb === "-" || calle === "-") return calle;
+
+    // Normalizamos a mayúsculas para que la comparación no falle por minúsculas
+    const urbNorm = urb.toUpperCase().trim();
+    const calleNorm = calle.toUpperCase().trim();
+
+    if (calleNorm.startsWith(urbNorm) && urbNorm.length > 3) {
+
+        let nuevaCalle = calle.substring(urb.length).trim();
+
+        nuevaCalle = nuevaCalle.replace(/^[.,\-;:_]\s*/, '').trim();
+
+        return nuevaCalle === "" ? "-" : nuevaCalle;
+    }
+
+    return calle;
+}
+
+// Función para voltear la fecha a DD/MM/YYYY
+function formatearFechaDDMMYYYY(fechaInput) {
+    if (!fechaInput) return "-";
+    // El input devuelve YYYY-MM-DD, lo separamos por el guion
+    const partes = fechaInput.split('-'); 
+    if (partes.length !== 3) return fechaInput; // Por si acaso
+    
+    // Lo rearmamos al revés
+    return `${partes[2]}/${partes[1]}/${partes[0]}`; 
+}
+
+// 4. GENERAR LA VISTA PREVIA Y APLICAR REGLAS DE NEGOCIO
+function actualizarPrevisualizacion() {
+    if (datosOriginalesExcel.length === 0) return;
+
+    // Capturar configuraciones
+    const subActElement = document.getElementById('subActividadTransform');
+    const tipoOrden = subActElement.value;
+    const nombreSubAct = subActElement.options[subActElement.selectedIndex].text;
+    
+    // Capturar fechas y darles el formato DD/MM/YYYY
+    const rawEmision = document.getElementById('fechaEmisionTransform').value;
+    const rawEnvio = document.getElementById('fechaEnvioTransform').value;
+    
+    const fEmision = formatearFechaDDMMYYYY(rawEmision);
+    const fEnvio = formatearFechaDDMMYYYY(rawEnvio);
+
+    // Capturar mapeo actual
+    const map = {
+        suministro: document.getElementById('map_suministro').value,
+        nombre: document.getElementById('map_nombre').value,
+        localidad: document.getElementById('map_localidad').value,
+        urbanizacion: document.getElementById('map_urbanizacion').value,
+        calle: document.getElementById('map_calle').value,
+        numero: document.getElementById('map_numero').value,
+        ciclo: document.getElementById('map_ciclo').value,
+        medidor: document.getElementById('map_medidor').value,
+        documento: document.getElementById('map_documento').value
+    };
+
+    const tbody = document.querySelector('#tablaPreview tbody');
+    tbody.innerHTML = '';
+    datosLimpiosFinales = []; // Reiniciamos el arreglo final
+
+    // Procesar fila por fila (Limitar preview a 100 filas para que no se congele el navegador)
+    const limitePreview = Math.min(datosOriginalesExcel.length, 100);
+
+    for (let i = 0; i < datosOriginalesExcel.length; i++) {
+        const filaExcel = datosOriginalesExcel[i];
+        
+        // 1. Limpiamos individualmente Urbanización y Calle
+        let urbLimpia = limpiarTexto(filaExcel[map.urbanizacion]);
+        let calleLimpia = limpiarTexto(filaExcel[map.calle]);
+
+        // 2. Aplicamos la regla de duplicidad (compara y corta si es necesario)
+        calleLimpia = limpiarCalleDuplicada(urbLimpia, calleLimpia);
+
+        // 3. Construimos la nueva fila limpia
+        const filaLimpia = {
+            'ITEM': i + 1,
+            'SUMINISTRO': limpiarSuministro(filaExcel[map.suministro]),
+            'NOMBRE': limpiarNombre(filaExcel[map.nombre]),
+            'LOCALIDAD': limpiarTexto(filaExcel[map.localidad]),
+            'URBANIZACION': urbLimpia, // Usamos la variable ya procesada
+            'CALLE': calleLimpia,      // Usamos la variable sin el duplicado
+            'NUMERO': limpiarTexto(filaExcel[map.numero]),
+            'CICLO': limpiarTexto(filaExcel[map.ciclo]),
+            'MEDIDOR': limpiarTexto(filaExcel[map.medidor]),
+            'N° DOCUMENTO': '', 
+            'FECHA EMISION': fEmision,
+            'FECHA ENVIO': fEnvio,
+            'CARGA_RD': '',
+            'ORDEN_RD': '',
+            'TIPO_ORDEN': tipoOrden
+        };
+
+        // --- LÓGICA ESPECIAL PARA N° DOCUMENTO ---
+        let numDocFinal = "";
+
+        if (nombreSubAct === 'COMUNICACIÓN TARIFA' && map.documento === '') {
+            numDocFinal = filaExcel['ITEM'] || filaExcel['item'] || (i + 1);
+        } else if (nombreSubAct.includes('RESOLUCION')) {
+            let rec = String(filaExcel['RECLAMO'] || filaExcel['reclamo'] || '').replace(/[a-zA-Z]/g, '');
+            let res = String(filaExcel['RESOLUCION'] || filaExcel['resolucion'] || '').replace(/[a-zA-Z]/g, '');
+            numDocFinal = `${rec}-${res}`;
+        } else if (map.documento && filaExcel[map.documento]) {
+            numDocFinal = String(filaExcel[map.documento]).trim();
+        } else {
+            numDocFinal = i + 1;
+        }
+
+        // NUEVA REGLA ESTRICTA: Reemplazar cualquier cosa que NO sea un dígito (\d) o un guion (-) por vacío
+        numDocFinal = String(numDocFinal).replace(/[^\d-]/g, '');
+
+        // Regla final: Nunca debe ir vacío. Si al limpiarle las letras/puntos quedó vacío, le asignamos el correlativo
+        filaLimpia['N° DOCUMENTO'] = numDocFinal === "" ? (i + 1) : numDocFinal;
+
+        // Guardamos en la memoria total
+        datosLimpiosFinales.push(filaLimpia);
+
+        // Solo dibujamos hasta el límite en el HTML para evitar lag
+        if (i < limitePreview) {
+            const tr = document.createElement('tr');
+            Object.values(filaLimpia).forEach(valor => {
+                const td = document.createElement('td');
+                td.innerText = valor;
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        }
+    }
+}
+
+// 5. ENVIAR A PYTHON PARA DESCARGAR
+async function generarZipTransformado() {
+    if (datosLimpiosFinales.length === 0) return alert("No hay datos para procesar");
+
+    const btn = document.querySelector('.btn-descarga-premium');
+    btn.innerHTML = "Generando...";
+    btn.disabled = true;
+
+    // Nombre del archivo base solicitado
+    const subActElement = document.getElementById('subActividadTransform');
+    const nombreSubAct = subActElement.options[subActElement.selectedIndex].text;
+    const fechaActual = new Date().toISOString().split('T')[0];
+    const nombreBase = `${nombreSubAct}_${fechaActual}`;
+
+    // Como ya limpiamos TODO en Javascript, solo le mandamos el JSON resultante al Backend
+    // para que lo empaquete en un ZIP (Es mucho más eficiente).
+    
+    const formData = new FormData();
+    formData.append('datos_limpios', JSON.stringify(datosLimpiosFinales));
+    formData.append('nombre_base', nombreBase);
+
+    try {
+        const response = await fetch('/descargar_transformado', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) throw new Error("Error generando el archivo");
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${nombreBase}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+    } catch (error) {
+        alert("Error: " + error.message);
+    } finally {
+        btn.innerHTML = `<svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> DESCARGAR ZIP FINAL`;
+        btn.disabled = false;
     }
 }
 
@@ -13029,4 +13651,2555 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+});
+
+
+///////// GESTION DE ALMACEN //////////
+
+function duplicarCampos(btn) {
+    const filaActual = btn.closest('tr');
+    const tabla = btn.closest('table');
+    const filasDeDatos = tabla.querySelectorAll('tbody tr:not(.alm-entry-row)');
+    
+    if (filasDeDatos.length > 0) {
+        const ultimaFilaGuardada = filasDeDatos[0]; 
+        const celdasGuardadas = ultimaFilaGuardada.cells;
+        const inputsActuales = filaActual.querySelectorAll('.alm-input');
+
+        if (tabla.closest('.alm-card').innerHTML.includes('Registro de Entradas')) {
+            inputsActuales[0].value = celdasGuardadas[0].innerText.split('/').reverse().join('-'); 
+            inputsActuales[1].value = celdasGuardadas[1].innerText.split('/').reverse().join('-');
+            inputsActuales[2].value = celdasGuardadas[2].innerText;
+            inputsActuales[3].value = celdasGuardadas[3].innerText;
+            
+            const selectProv = inputsActuales[6];
+            Array.from(selectProv.options).forEach(opt => {
+                if(opt.text === celdasGuardadas[7].innerText) selectProv.value = opt.value;
+            });
+        } else {
+            inputsActuales[0].value = celdasGuardadas[0].innerText.split('/').reverse().join('-');
+            const selectEmp = inputsActuales[4];
+            Array.from(selectEmp.options).forEach(opt => {
+                if(opt.text === celdasGuardadas[4].innerText) selectEmp.value = opt.value;
+            });
+            inputsActuales[5].value = celdasGuardadas[5].innerText; 
+        }
+    }
+}
+
+function toggleListadoProductos() {
+    const btn = document.getElementById('btn-toggle-listado');
+    const panel = document.getElementById('panel-listado-productos');
+    
+    if (panel.style.display === 'none') {
+        panel.style.display = 'table-row';
+        btn.classList.add('open');
+        document.getElementById('filtro-busqueda').focus();
+    } else {
+        panel.style.display = 'none';
+        btn.classList.remove('open');
+    }
+}
+
+function filtrarProductos() {
+    const textoBuscado = document.getElementById('filtro-busqueda').value.toUpperCase();
+    const catSeleccionada = document.getElementById('filtro-categoria-lista').value.toUpperCase();
+    const filas = document.querySelectorAll('.fila-producto-item');
+
+    filas.forEach(fila => {
+        const codigo = fila.querySelector('.codigo-item').innerText.toUpperCase();
+        const nombre = fila.querySelector('.nombre-item').innerText.toUpperCase();
+        const categoria = fila.querySelector('.categoria-item').innerText.toUpperCase();
+
+        const coincideTexto = codigo.includes(textoBuscado) || nombre.includes(textoBuscado);
+        const coincideCat = (catSeleccionada === "TODOS") || (categoria === catSeleccionada);
+
+        if (coincideTexto && coincideCat) {
+            fila.style.display = ''; 
+        } else {
+            fila.style.display = 'none'; 
+        }
+    });
+}
+
+// ==================================================
+// FUNCIONES CRUD Y MODO EDICIÓN
+// ==================================================
+
+function cargarDatosParaEditar(idProducto, idCat, codigo, nombre, unidad) {
+    
+    const btnGuardar = document.getElementById('btn-guardar-prod');
+    btnGuardar.innerHTML = '<i class="fas fa-save"></i>';
+    btnGuardar.classList.replace('alm-bg-green', 'alm-bg-accent');
+    
+    document.getElementById('btn-cancelar-edicion').style.display = 'inline-flex';
+
+    document.getElementById('id-producto-editar').value = idProducto;
+    $('#sel-cat-producto').val(idCat).trigger('change'); 
+    document.getElementById('txt-codigo-generado').value = codigo; 
+    document.getElementById('txt-nombre-prod').value = nombre;
+    document.getElementById('sel-unidad-prod').value = unidad;
+}
+
+function cancelarEdicion() {
+    
+    const btnGuardar = document.getElementById('btn-guardar-prod');
+    btnGuardar.innerHTML = '<i class="fas fa-plus"></i>';
+    btnGuardar.classList.replace('alm-bg-accent', 'alm-bg-green');
+    
+    document.getElementById('btn-cancelar-edicion').style.display = 'none';
+
+    document.getElementById('id-producto-editar').value = "";
+    $('#sel-cat-producto').val("").trigger('change');
+    document.getElementById('txt-codigo-generado').value = "";
+    document.getElementById('txt-nombre-prod').value = "";
+    document.getElementById('sel-unidad-prod').value = "UND";
+}
+
+function editarDesdeLista(idProducto, idCat, codigo, nombre, unidad) {
+    cargarDatosParaEditar(idProducto, idCat, codigo, nombre, unidad);
+    toggleListadoProductos();
+    
+    const formulario = document.getElementById('txt-nombre-prod');
+    formulario.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    const filaEdicion = formulario.closest('tr');
+    filaEdicion.style.backgroundColor = '#fef2f2'; 
+    setTimeout(() => { filaEdicion.style.backgroundColor = 'var(--active-bg)'; }, 800);
+}
+
+function guardarCategoria() {
+    const inputNombre = document.getElementById('txt-nueva-cat');
+    const nombre = inputNombre.value.toUpperCase();
+
+    fetch('/almacen/crear-categoria', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo_categoria: nombre })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            alert('Categoría creada exitosamente: ' + data.prefijo);
+            // 1. Limpiamos la caja de texto
+            inputNombre.value = '';
+            // 2. ACTUALIZAMOS LOS DATOS SIN RECARGAR LA PÁGINA
+            cargarDatosMaestros(); 
+        } else {
+            alert(data.message); 
+        }
+    });
+}
+
+function guardarProducto() {
+    const idCat = document.getElementById('sel-cat-producto').value;
+    const nombre = document.getElementById('txt-nombre-prod').value.toUpperCase();
+    const unidad = document.getElementById('sel-unidad-prod').value;
+    const idEdicion = document.getElementById('id-producto-editar').value; 
+
+    const endpoint = idEdicion ? '/almacen/editar-producto' : '/almacen/crear-producto';
+    const payload = { id_categoria: idCat, nombre_prod: nombre, unidad_medida: unidad };
+    
+    if (idEdicion) { payload.id_producto = idEdicion; }
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => {
+        if (!res.ok) { return res.json().then(err => { throw err; }); }
+        return res.json();
+    })
+    .then(data => {
+        const mensaje = idEdicion ? 'Producto actualizado correctamente.' : ('Producto guardado correctamente. Código: ' + data.codigo);
+        alert(mensaje);
+        // 1. Limpiamos los campos y salimos del modo edición
+        cancelarEdicion();
+        // 2. ACTUALIZAMOS LA TABLA SIN RECARGAR LA PÁGINA
+        cargarDatosMaestros();
+    })
+    .catch(err => {
+        alert(err.message);
+    });
+}
+
+function guardarProveedor() {
+    const idEdicion = document.getElementById('id-proveedor-editar').value;
+    const endpoint = idEdicion ? '/almacen/editar-proveedor' : '/almacen/crear-proveedor';
+
+    const payload = {
+        ruc: document.getElementById('prov-ruc').value,
+        razon_social: document.getElementById('prov-razon').value,
+        nombre_comercial: document.getElementById('prov-comercial').value,
+        celular: document.getElementById('prov-celular').value,
+        correo: document.getElementById('prov-correo').value,
+        direccion: document.getElementById('prov-dir').value
+    };
+
+    if (idEdicion) { payload.id_proveedor = idEdicion; }
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => {
+        if (!res.ok) { return res.json().then(err => { throw err; }); }
+        return res.json();
+    })
+    .then(data => {
+        const mensaje = idEdicion ? 'Proveedor actualizado correctamente.' : 'Proveedor guardado correctamente.';
+        alert(mensaje);
+        cancelarEdicionProveedor(); // Limpia campos visualmente
+        cargarDatosMaestros();      // Actualiza las tablas por detrás
+    })
+    .catch(err => {
+        alert(err.message);
+    });
+}
+
+// CARGA DE DATOS ASÍNCRONA VÍA AJAX
+function cargarDatosMaestros() {
+    fetch('/almacen/api/listar-datos')
+        .then(res => {
+            // 🛡️ ESCUDO PROTECTOR: Si el servidor falla (Error 500, 404, etc.)
+            if (!res.ok) {
+                throw new Error(`Error del servidor: ${res.status}`);
+            }
+            return res.json();
+        })
+        .then(data => {
+            if (!data.categorias) throw new Error("El servidor no envió las categorías");
+            window.productosData = data.productos;
+            window.historicoEntradas = data.entradas;
+            window.historicoSalidas = data.salidas;
+            window.empleadosData = data.empleados;
+            window.lotesData = data.lotes_disponibles;
+            
+            const selectCrear = document.getElementById('sel-cat-producto');
+            const selectFiltro = document.getElementById('filtro-categoria-lista');
+            
+            // IMPORTANTE: Limpiar los options antes de llenarlos para que no se dupliquen
+            selectCrear.innerHTML = '<option value="">Seleccione Categoría...</option>';
+            selectFiltro.innerHTML = '<option value="TODOS">Todas las Categorías</option>';
+            
+            data.categorias.forEach(cat => {
+                selectCrear.add(new Option(cat.texto_select, cat.id));
+                selectFiltro.add(new Option(cat.nombre, cat.nombre));
+            });
+
+            // --- Cargar tabla de PRODUCTOS ---
+            const tbodyProductos = document.getElementById('body-tabla-productos');
+            if(!tbodyProductos) return; 
+            
+            tbodyProductos.innerHTML = ''; 
+
+            if (data.productos.length === 0) {
+                // Cambiamos a colspan="6" porque ahora hay 6 columnas
+                tbodyProductos.innerHTML = `<tr><td colspan="6" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay productos registrados aún.</td></tr>`;
+                return;
+            }
+
+            data.productos.forEach(p => {
+                
+                const filaHTML = `
+                    <tr class="fila-producto-item">
+                        <td><span class="alm-badge alm-badge-outline codigo-item">${p.codigo}</span></td>
+                        <td class="alm-bold nombre-item" style="color: #475569;">${p.nombre}</td>
+                        <td class="categoria-item">${p.categoria_nombre}</td>
+                        <td>${p.unidad}</td>
+                        <td class="alm-text-center"> <div class="alm-action-group">
+                                <button type="button" class="alm-icon-btn" title="Editar Producto" 
+                                    onclick="editarDesdeLista('${p.id_producto}', '${p.id_categoria}', '${p.codigo}', '${p.nombre}', '${p.unidad}')">
+                                    <i class="fas fa-pencil-alt"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                tbodyProductos.insertAdjacentHTML('beforeend', filaHTML);
+            });
+            
+            $('#sel-cat-producto').trigger('change');
+
+            // --- Cargar tabla de PROVEEDORES ---
+            const tbodyProveedores = document.getElementById('body-tabla-proveedores');
+            if(tbodyProveedores) {
+                tbodyProveedores.innerHTML = '';
+                
+                if (data.proveedores.length === 0) {
+                    tbodyProveedores.innerHTML = `<tr><td colspan="7" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay proveedores registrados aún.</td></tr>`;
+                } else {
+                    data.proveedores.forEach(pr => {
+                        const filaHTML = `
+                            <tr class="fila-proveedor-item">
+                                <td class="alm-bold prov-ruc-item">${pr.ruc}</td>
+                                <td class="prov-razon-item" style="color: #475569;">${pr.razon_social}</td>
+                                <td>${pr.nombre_comercial}</td>
+                                <td>${pr.celular}</td>
+                                <td>${pr.correo}</td>
+                                <td>${pr.direccion}</td>
+                                <td class="alm-text-center">
+                                    <div class="alm-action-group">
+                                        <button type="button" class="alm-icon-btn" title="Editar Proveedor" 
+                                            onclick="editarDesdeListaProveedor('${pr.id_proveedor}', '${pr.ruc}', '${pr.razon_social}', '${pr.nombre_comercial}', '${pr.celular}', '${pr.correo}', '${pr.direccion}')">
+                                            <i class="fas fa-pencil-alt"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                        tbodyProveedores.insertAdjacentHTML('beforeend', filaHTML);
+                    });
+                }
+            }
+
+            // --- LLENAR SELECTS DEL INVENTARIO ---
+            const invSelProducto = document.getElementById('inv-sel-producto');
+            const invSelProv = document.getElementById('inv-sel-proveedor');
+            const invSelCat = document.getElementById('inv-sel-categoria');
+
+            if(invSelProducto) {
+                invSelProducto.innerHTML = '<option value="">Buscar producto...</option>';
+                data.productos.forEach(p => invSelProducto.add(new Option(p.nombre, p.id_producto)));
+            }
+
+            if(invSelProv) {
+                invSelProv.innerHTML = '<option value="">Buscar proveedor...</option>';
+                data.proveedores.forEach(pr => invSelProv.add(new Option(pr.razon_social, pr.id_proveedor)));
+            }
+
+            if(invSelCat) {
+                invSelCat.innerHTML = '<option value="">Buscar categoría...</option>';
+                data.categorias.forEach(c => invSelCat.add(new Option(c.nombre, c.id)));
+            }
+
+            // --- LLENAR LA TABLA INTERACTIVA DE INVENTARIO ---
+            const tbodyInventario = document.getElementById('body-tabla-inventario');
+            if(tbodyInventario) {
+                tbodyInventario.innerHTML = '';
+
+                let sumaPrecio = 0;
+                let sumaTotal = 0;
+                
+                if (!data.inventario_fisico || data.inventario_fisico.length === 0) {
+                    tbodyInventario.innerHTML = `<tr><td colspan="13" class="alm-text-center" style="color: #94a3b8; padding: 40px;">No hay movimientos de ingreso registrados.</td></tr>`;
+                } else {
+                    data.inventario_fisico.forEach(m => {
+                        const idMov = m.id_movimiento; 
+                        
+                        // Hacemos el cálculo matemático puro
+                        const totalMatematico = m.cantidad * m.precio_igv;
+
+                        // Sumamos a los totales globales
+                        sumaPrecio += parseFloat(m.precio_igv) || 0;
+                        sumaTotal += totalMatematico;
+
+                        const stockActual = parseFloat(m.cantidad) || 0;
+                        
+                        let atributoValue = '';
+                        let atributoDisabled = ''; 
+                        let estiloInput = 'width: 80px; text-align: center; border-color: #0ea5e9; font-weight: bold; background-color: #ffffff;'; 
+                        let textoDif = '-';
+                        let colorDif = '#94a3b8'; 
+
+                        if (m.conteo_fisico !== "") {
+                            const conteoNum = parseFloat(m.conteo_fisico);
+                            atributoValue = `value="${conteoNum}"`;
+                            
+                            atributoDisabled = 'disabled';
+                            estiloInput = 'width: 80px; text-align: center; border-color: transparent; font-weight: bold; background-color: #f1f5f9;';
+                            
+                            const dif = conteoNum - stockActual;
+                            textoDif = dif >= 0 ? `+${dif}` : dif;
+                            
+                            if (dif > 0) colorDif = '#10b981'; 
+                            else if (dif < 0) colorDif = '#ef4444'; 
+                            else colorDif = '#f59e0b'; 
+                        }
+
+                        tbodyInventario.insertAdjacentHTML('beforeend', `
+                            <tr class="fila-inv-item">
+                                <td class="alm-bold">${m.fecha_ingreso}</td>
+                                <td><span class="alm-badge alm-badge-outline inv-codigo-item">${m.codigo}</span></td>
+                                <td class="inv-nombre-item" style="color: #475569; font-weight: 600;">${m.nombre}</td>
+                                
+                                <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${m.talla}</td>
+                                
+                                <td>${m.proveedor}</td>
+                                <td>${m.categoria}</td>
+                                <td>${m.unidad}</td>
+                                <td class="alm-bold" id="stock-${idMov}">${m.cantidad}</td>
+                                
+                                <td>${formatearMoneda(m.precio_igv)}</td>
+                                <td style="color: #0369a1; font-weight: bold;">${formatearMoneda(totalMatematico)}</td>
+                                
+                                <td>
+                                    <input type="number" id="conteo-${idMov}" class="alm-input" ${atributoValue} ${atributoDisabled} placeholder="-" 
+                                        style="${estiloInput}"
+                                        onkeyup="calcularDiferenciaInline('${idMov}')" 
+                                        onchange="guardarConteoInline('${idMov}')">
+                                </td>
+                                
+                                <td><span id="dif-${idMov}" style="font-weight: bold; font-size: 1.1rem; color: ${colorDif};">${textoDif}</span></td>
+                                
+                                <td class="alm-text-center">
+                                    <div class="alm-action-group" style="min-width: 40px;">
+                                        <button type="button" id="btn-edit-${idMov}" class="alm-icon-btn" title="Editar" 
+                                            onclick="habilitarEdicionConteo('${idMov}')">
+                                            <i class="fas fa-pencil-alt"></i>
+                                        </button>
+                                        <span id="status-${idMov}" style="font-size: 1rem; color: #10b981; display: none;">
+                                            <i class="fas fa-check-circle"></i>
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
+                        `);
+                    });
+                }
+                
+                // 🚨 APLICAMOS EL FORMATO A LOS TOTALES GENERALES DEL FOOTER
+                const elSumaPrecio = document.getElementById('inv-total-precio');
+                const elSumaTotal = document.getElementById('inv-total-general');
+                
+                if(elSumaPrecio) elSumaPrecio.innerText = `S/ ${formatearMoneda(sumaPrecio)}`;
+                if(elSumaTotal) elSumaTotal.innerText = `S/ ${formatearMoneda(sumaTotal)}`;
+            }
+
+            const entSelProducto = document.getElementById('ent-sel-producto');
+            const entSelProv = document.getElementById('ent-sel-proveedor');
+            
+            if(entSelProducto) {
+                entSelProducto.innerHTML = '<option value="">Buscar producto...</option>';
+                data.productos.forEach(p => entSelProducto.add(new Option(p.nombre, p.id_producto)));
+            }
+            if(entSelProv) {
+                entSelProv.innerHTML = '<option value="">Buscar proveedor...</option>';
+                data.proveedores.forEach(pr => entSelProv.add(new Option(pr.razon_social, pr.id_proveedor)));
+            }
+
+            // PINTAR HISTORIAL DE ENTRADAS
+            const tbodyEntradas = document.getElementById('body-tabla-entradas');
+            if(tbodyEntradas && data.entradas) {
+                tbodyEntradas.innerHTML = '';
+                
+                // Aseguramos el colspan de 13 para el mensaje de vacío
+                if(data.entradas.length === 0) {
+                    tbodyEntradas.innerHTML = `<tr><td colspan="13" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay entradas registradas.</td></tr>`;
+                } else {
+                    data.entradas.forEach(e => {
+                        const precioFormateado = e.precio ? parseFloat(e.precio).toFixed(2) : '0.00';
+                        
+                        tbodyEntradas.insertAdjacentHTML('beforeend', `
+                            <tr>
+                                <td>${e.fecha_fac}</td> <td>${e.fecha_ing}</td>
+                                <td>${e.factura}</td>
+                                <td>${e.guia}</td>
+                                <td><span class="alm-badge alm-badge-outline">${e.codigo}</span></td>
+                                <td style="color: #475569; font-weight: 600;">${e.producto}</td>
+                                
+                                <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${e.talla ? e.talla : '-'}</td>
+                                
+                                <td style="font-size: 0.85rem; color: #475569;">${e.empleado_recupero ? e.empleado_recupero : '-'}</td>
+                                
+                                <td class="alm-text-green alm-bold">+${e.cantidad}</td>
+                                <td class="alm-bold">S/ ${precioFormateado}</td>
+                                <td>${e.proveedor}</td>
+                                <td>${e.obs}</td>
+                                <td class="alm-text-center">-</td>
+                            </tr>
+                        `);
+                    });
+                }
+            }
+
+            // 1. Llenar Select de Productos para Salidas
+            const salSelProducto = document.getElementById('sal-sel-producto');
+            if(salSelProducto && data.lotes_disponibles) {
+                salSelProducto.innerHTML = '<option value="">Buscar producto (Nombre - Prov - Fecha)...</option>';
+                
+                data.lotes_disponibles.forEach(lote => {
+                    // 1. Separamos la talla en dos versiones
+                    const textoTallaPlano = lote.talla && lote.talla !== '-' ? ` | TALLA: ${lote.talla}` : '';
+                    const textoTallaHtml = lote.talla && lote.talla !== '-' ? ` | <b>TALLA:</b> ${lote.talla}` : '';
+                    
+                    // 2. A. Texto PLANO (usa obligatoriamente 'textoTallaPlano')
+                    const textoPlano = `${lote.nombre}${textoTallaPlano} | PROV: ${lote.proveedor} | INGRESÓ: ${lote.fecha_ingreso} | STOCK: ${lote.stock_restante}`;
+                    
+                    // 2. B. Texto HTML (usa obligatoriamente 'textoTallaHtml')
+                    const textoHtml = `<span>${lote.nombre}${textoTallaHtml} | <b>PROV:</b> ${lote.proveedor} | <b>INGRESÓ:</b> ${lote.fecha_ingreso} | <b>STOCK:</b> ${lote.stock_restante}</span>`;
+                    
+                    // C. Crear la opción insertando la magia en el 'data-html'
+                    const option = document.createElement('option');
+                    option.value = lote.id_lote;
+                    option.text = textoPlano; 
+                    option.setAttribute('data-html', textoHtml);
+                    
+                    salSelProducto.appendChild(option);
+                });
+            }
+            // 2. Llenar Select de Empleados (Buscador por nombres)
+            const salSelEmpleado = document.getElementById('sal-sel-empleado');
+            if(salSelEmpleado && data.empleados) {
+                salSelEmpleado.innerHTML = '<option value="">Buscar empleado...</option>';
+                data.empleados.forEach(emp => {
+                    salSelEmpleado.add(new Option(emp.nombres, emp.id_empleado));
+                });
+            }
+
+            // 3. Pintar Historial de Salidas
+            const tbodySalidas = document.getElementById('body-tabla-salidas');
+            if(tbodySalidas && data.salidas) {
+                tbodySalidas.innerHTML = ''; // Limpiamos
+                
+                if(data.salidas.length === 0) {
+                    tbodySalidas.innerHTML = `<tr><td colspan="8" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay salidas registradas.</td></tr>`;
+                } else {
+                    data.salidas.forEach(s => {
+                        // MODIFICACIÓN AQUÍ: Añadimos el botón de eliminar a la columna de acción
+                        tbodySalidas.insertAdjacentHTML('beforeend', `
+                            <tr>
+                                <td>${s.fecha_salida}</td>
+                                <td class="alm-text-red alm-bold">-${s.cantidad}</td>
+                                <td><span class="alm-badge alm-badge-outline">${s.codigo}</span></td>
+                                <td style="color: #475569; font-weight: 600;">${s.producto}</td>
+                                <td>${s.empleado}</td>
+                                <td>${s.area}</td>
+                                <td>${s.obs}</td>
+                                <td class="alm-text-center">
+                                    <div class="alm-action-group">
+                                        <a href="#" class="alm-icon-btn" title="Ver Adjunto"><i class="fas fa-paperclip"></i></a>
+                                        <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${s.id_mov})">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `);
+                    });
+                }
+            }
+
+            // Llenar empleados para recupero en Entradas
+            const entSelEmpleadoRec = document.getElementById('ent-sel-empleado-recupero');
+            if(entSelEmpleadoRec && data.empleados) {
+                entSelEmpleadoRec.innerHTML = '<option value="">- No aplica -</option>';
+                data.empleados.forEach(emp => {
+                    entSelEmpleadoRec.add(new Option(emp.nombres, emp.id_empleado));
+                });
+            }
+        })
+        .catch(error => {
+            console.error("Error cargando los datos:", error);
+            const tbodyProductos = document.getElementById('body-tabla-productos');
+            if(tbodyProductos) {
+                tbodyProductos.innerHTML = `<tr><td colspan="6" class="alm-text-center" style="color: #ef4444; padding: 20px;">Error al cargar los datos.</td></tr>`;
+            }
+        });
+}
+
+// Función para formatear números a moneda (Ej: 108988.39 -> 108,988.39)
+const formatearMoneda = (numero) => {
+    return parseFloat(numero).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+};
+
+
+// ==================================================
+// LÓGICA INTERACTIVA DEL INVENTARIO FÍSICO
+// ==================================================
+function calcularDiferenciaInline(idMov) { // Cambiamos idProducto por idMov para que coincida con el HTML
+    // Buscamos los elementos usando el ID único del movimiento (lote)
+    const inputConteo = document.getElementById(`conteo-${idMov}`);
+    const spanDiferencia = document.getElementById(`dif-${idMov}`);
+    
+    // Obtenemos el stock RESTANTE del HTML (que ya viene actualizado del backend)
+    const stockActual = parseFloat(document.getElementById(`stock-${idMov}`).innerText) || 0;
+    
+    // Si la caja está vacía, reiniciamos visualmente
+    if (inputConteo.value === "") {
+        spanDiferencia.innerText = "-"; // Volvemos al estado inicial
+        spanDiferencia.style.color = '#94a3b8';
+        return;
+    }
+
+    const conteo = parseFloat(inputConteo.value) || 0;
+    const diferencia = conteo - stockActual;
+
+    // Formateamos la diferencia: si es positiva, agregamos el signo '+'
+    spanDiferencia.innerText = diferencia >= 0 ? `+${diferencia}` : diferencia;
+
+    // Colores dinámicos
+    if (diferencia > 0) {
+        spanDiferencia.style.color = '#10b981'; // Verde (Sobra)
+    } else if (diferencia < 0) {
+        spanDiferencia.style.color = '#ef4444'; // Rojo (Falta)
+    } else {
+        spanDiferencia.style.color = '#f59e0b'; // Naranja (Exacto/Cuadrado)
+    }
+}
+
+
+function guardarConteoInline(idMov) {
+    const inputConteo = document.getElementById(`conteo-${idMov}`);
+    const valor = inputConteo.value;
+
+    if (valor === "") return;
+
+    // 🚨 CORRECCIÓN AQUÍ: Los IDs deben coincidir exactamente con el HTML
+    const statusIcon = document.getElementById(`status-${idMov}`);
+    const btnEdit = document.getElementById(`btn-edit-${idMov}`);
+    
+    // Bloquear visualmente el input
+    inputConteo.disabled = true; 
+    inputConteo.style.backgroundColor = '#f1f5f9'; // Fondo gris claro
+    inputConteo.style.borderColor = 'transparent';
+    
+    // Ocultar el lápiz temporalmente
+    if (btnEdit) btnEdit.style.display = 'none';
+
+    // Petición AJAX
+    fetch('/almacen/guardar-conteo-fisico', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_producto: idMov, conteo_fisico: valor }) 
+        // Nota: Enviamos idMov bajo la llave 'id_producto' porque así lo configuramos en Python
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            // Mostrar check verde de éxito
+            if (statusIcon) statusIcon.style.display = 'inline-block';
+            
+            // Después de 2 segundos, quitar el check verde y regresar el lápiz
+            setTimeout(() => {
+                if (statusIcon) statusIcon.style.display = 'none';
+                if (btnEdit) btnEdit.style.display = 'inline-block';
+            }, 2000);
+        } else {
+            alert(data.message);
+            inputConteo.disabled = false;
+            if (btnEdit) btnEdit.style.display = 'inline-block';
+        }
+    })
+    .catch(error => {
+        console.error("Error al guardar conteo:", error);
+        inputConteo.disabled = false;
+        if (btnEdit) btnEdit.style.display = 'inline-block';
+    });
+}
+
+function habilitarEdicionConteo(idProducto) {
+    const inputConteo = document.getElementById(`conteo-${idProducto}`);
+    
+    // Desbloquear input
+    inputConteo.disabled = false;
+    inputConteo.style.backgroundColor = '#ffffff';
+    inputConteo.style.borderColor = '#0ea5e9'; // Borde azul indicando que está activo
+    
+    // Poner el cursor de escritura automáticamente adentro
+    inputConteo.focus();
+    
+    // Seleccionar todo el número que haya adentro para borrarlo rápido si escribe
+    inputConteo.select();
+}
+
+
+// ==================================================
+// FUNCIONALIDAD PARA PROVEEDORES (Desplegable y Edición)
+// ==================================================
+
+function toggleListadoProveedores() {
+    const btn = document.getElementById('btn-toggle-listado-prov');
+    const panel = document.getElementById('panel-listado-proveedores');
+    
+    if (panel.style.display === 'none') {
+        panel.style.display = 'table-row';
+        btn.classList.add('open');
+        document.getElementById('filtro-busqueda-prov').focus();
+    } else {
+        panel.style.display = 'none';
+        btn.classList.remove('open');
+    }
+}
+
+function filtrarProveedores() {
+    const textoBuscado = document.getElementById('filtro-busqueda-prov').value.toUpperCase();
+    const filas = document.querySelectorAll('.fila-proveedor-item');
+
+    filas.forEach(fila => {
+        const ruc = fila.querySelector('.prov-ruc-item').innerText.toUpperCase();
+        const razon = fila.querySelector('.prov-razon-item').innerText.toUpperCase();
+
+        if (ruc.includes(textoBuscado) || razon.includes(textoBuscado)) {
+            fila.style.display = ''; 
+        } else {
+            fila.style.display = 'none'; 
+        }
+    });
+}
+
+function cargarDatosParaEditarProveedor(id, ruc, razon, comercial, celular, correo, dir) {
+    // Modo Edición visual
+    const btnGuardar = document.getElementById('btn-guardar-prov');
+    btnGuardar.innerHTML = '<i class="fas fa-save"></i>';
+    document.getElementById('btn-cancelar-edicion-prov').style.display = 'inline-flex';
+
+    // Rellenar cajas de texto
+    document.getElementById('id-proveedor-editar').value = id;
+    document.getElementById('prov-ruc').value = ruc;
+    document.getElementById('prov-razon').value = razon;
+    document.getElementById('prov-comercial').value = comercial;
+    document.getElementById('prov-celular').value = celular;
+    document.getElementById('prov-correo').value = correo;
+    document.getElementById('prov-dir').value = dir;
+}
+
+function cancelarEdicionProveedor() {
+    // Restaurar a modo creación
+    const btnGuardar = document.getElementById('btn-guardar-prov');
+    btnGuardar.innerHTML = '<i class="fas fa-plus"></i>';
+    document.getElementById('btn-cancelar-edicion-prov').style.display = 'none';
+
+    // Limpiar campos
+    document.getElementById('id-proveedor-editar').value = "";
+    document.getElementById('prov-ruc').value = "";
+    document.getElementById('prov-razon').value = "";
+    document.getElementById('prov-comercial').value = "";
+    document.getElementById('prov-celular').value = "";
+    document.getElementById('prov-correo').value = "";
+    document.getElementById('prov-dir').value = "";
+}
+
+function editarDesdeListaProveedor(id, ruc, razon, comercial, celular, correo, dir) {
+    cargarDatosParaEditarProveedor(id, ruc, razon, comercial, celular, correo, dir);
+    toggleListadoProveedores();
+    
+    const formulario = document.getElementById('prov-ruc');
+    formulario.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    const filaEdicion = formulario.closest('tr');
+    filaEdicion.style.backgroundColor = '#fef2f2'; // Rojito de alerta
+    setTimeout(() => { filaEdicion.style.backgroundColor = '#fffbeb'; }, 800); // Vuelve al naranja tenue
+}
+
+
+
+// Variable global para guardar los datos y consultarlos rápido sin saturar la red
+window.productosData = [];
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // ==========================================
+    // 1. MANEJO DE VISTAS (Pestañas principales y subpestañas)
+    // ==========================================
+    const mainTabs = document.querySelectorAll('#almacen .alm-main-tab');
+    const views = document.querySelectorAll('#almacen .alm-view-content');
+
+    mainTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            mainTabs.forEach(t => t.classList.remove('active'));
+            views.forEach(v => { v.classList.remove('active'); v.style.display = 'none'; });
+            
+            tab.classList.add('active');
+            const targetView = document.getElementById(tab.getAttribute('data-view'));
+            targetView.style.display = 'block';
+            setTimeout(() => { targetView.classList.add('active'); }, 10);
+        });
+    });
+
+    const subTabs = document.querySelectorAll('#almacen .alm-sub-tab');
+    subTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            subTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+        });
+    });
+
+    const activeTabId = sessionStorage.getItem('activeAlmacenTab');
+    if (activeTabId) {
+        const tabToActivate = document.querySelector(`[data-view="${activeTabId}"]`);
+        if (tabToActivate) { tabToActivate.click(); }
+        sessionStorage.removeItem('activeAlmacenTab'); 
+    }
+
+    // ==========================================
+    // 2. INICIALIZAR CATÁLOGOS MAESTROS (Categorías y Productos)
+    // ==========================================
+    $('#sel-cat-producto').select2({
+        placeholder: "Buscar categoría...",
+        allowClear: true,
+        width: '100%'
+    });
+
+    $('#sel-cat-producto').on('change', function() {
+        const idCat = $(this).val();
+        const inputCodigo = document.getElementById('txt-codigo-generado');
+        const idEdicion = document.getElementById('id-producto-editar').value;
+        
+        if (!idCat) {
+            inputCodigo.value = "";
+            return;
+        }
+
+        if (idEdicion !== "") { return; }
+
+        fetch(`/almacen/siguiente-codigo/${idCat}`)
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) { inputCodigo.value = data.codigo; }
+            });
+    });
+
+    $('#ent-sel-producto, #ent-sel-proveedor, #ent-sel-empleado-recupero').select2({
+        placeholder: "Buscar...",
+        allowClear: true,
+        width: '100%'
+    });
+
+    // ==========================================
+    // 3. INICIALIZAR MÓDULO DE ENTRADAS
+    // ==========================================
+    $('#ent-sel-producto, #ent-sel-proveedor').select2({
+        placeholder: "Buscar...",
+        allowClear: true,
+        width: '100%'
+    });
+
+    const hoy = new Date().toISOString().split('T')[0];
+    document.getElementById('ent-fecha-fac').value = hoy;
+    document.getElementById('ent-fecha-ing').value = hoy;
+
+    // 🚨 CORRECCIÓN: DELEGACIÓN DE EVENTOS PARA EVITAR EL BLOQUEO ZOMBIE
+    $(document).on('change', '#ent-sel-producto', function() {
+        const idProd = $(this).val();
+        const inputTalla = document.getElementById('ent-talla');
+        
+        if (!idProd) {
+            document.getElementById('ent-codigo').value = '';
+            // Reset al estado bloqueado
+            inputTalla.disabled = true;
+            inputTalla.value = '';
+            inputTalla.placeholder = '-';
+            inputTalla.style.backgroundColor = '#cbd5e1';
+            inputTalla.style.borderColor = 'transparent';
+            return;
+        }
+        
+        const prod = window.productosData.find(p => p.id_producto == idProd);
+        if (prod) { 
+            document.getElementById('ent-codigo').value = prod.codigo; 
+            
+            // Verificamos de forma segura si la propiedad existe
+            const categoria = (prod.categoria_nombre || '').toUpperCase();
+            
+            if (categoria.includes('UNIFORME') || categoria.includes('ROPA')) {
+                // 🔓 DESBLOQUEAR
+                inputTalla.disabled = false;
+                inputTalla.placeholder = "S, M...";
+                inputTalla.style.backgroundColor = "#f5f3ff";
+                inputTalla.style.borderColor = "#8b5cf6";
+                inputTalla.focus();
+            } else {
+                // 🔒 BLOQUEAR
+                inputTalla.disabled = true;
+                inputTalla.value = '';
+                inputTalla.placeholder = '-';
+                inputTalla.style.backgroundColor = '#cbd5e1';
+                inputTalla.style.borderColor = 'transparent';
+            }
+        }
+    });
+
+    // 🚨 EL EVENTO MÁGICO DEL RECUPERO Y DEVOLUCIÓN DINEÁMICO 🚨
+    $(document).on('change', '#ent-sel-proveedor', function() {
+        const provTexto = $(this).find("option:selected").text().toUpperCase();
+        const esRecupero = provTexto.includes('RECUPERO') || provTexto.includes('DEVOLUCION');
+        
+        // 🚨 NUEVA VERIFICACIÓN: Identificamos si es específicamente una Devolución
+        const esDevolucion = provTexto.includes('DEVOLUCION');
+        
+        const inFactura = document.getElementById('ent-factura');
+        const inGuia = document.getElementById('ent-guia');
+        const inPrecio = document.getElementById('ent-precio');
+        const selEmpleado = $('#ent-sel-empleado-recupero'); 
+
+        if (esRecupero) {
+            // 🚨 CONFIGURACIÓN DINÁMICA: Asignamos prefijos y guías según el caso
+            const prefijo = esDevolucion ? 'DEV-' : 'REC-';
+            const textoGuia = esDevolucion ? 'DEVOLUCION' : 'RECUPERO';
+
+            // 🔒 BLOQUEAR COMPRAS CON DATOS AUTOGENERADOS
+            inFactura.value = prefijo + Date.now().toString().slice(-6); 
+            inFactura.disabled = true;
+            inFactura.style.backgroundColor = '#e2e8f0';
+            
+            inGuia.value = textoGuia;
+            inGuia.disabled = true;
+            inGuia.style.backgroundColor = '#e2e8f0';
+            
+            inPrecio.value = '0.00';
+            inPrecio.disabled = true;
+            inPrecio.style.backgroundColor = '#e2e8f0';
+
+            // 🔓 DESBLOQUEAR EMPLEADO
+            selEmpleado.prop('disabled', false);
+            selEmpleado.next('.select2-container').find('.select2-selection').css({
+                'background-color': '#f5f3ff',
+                'border-color': '#8b5cf6'
+            });
+            
+        } else {
+            // 🔓 DEVOLVER A LA NORMALIDAD (Compras regulares)
+            
+            // 🚨 LIMPIEZA ADAPTADA: Borramos la factura si empezó con REC- o con DEV-
+            if (inFactura.value.startsWith('REC-') || inFactura.value.startsWith('DEV-')) { 
+                inFactura.value = ''; 
+            }
+            inFactura.disabled = false;
+            inFactura.style.backgroundColor = '#ffffff';
+            
+            // Borramos la guía si contenía cualquiera de los dos textos automáticos
+            if (inGuia.value === 'RECUPERO' || inGuia.value === 'DEVOLUCION') { 
+                inGuia.value = ''; 
+            }
+            inGuia.disabled = false;
+            inGuia.style.backgroundColor = '#ffffff';
+            
+            if (inPrecio.value === '0.00') { inPrecio.value = ''; }
+            inPrecio.disabled = false;
+            inPrecio.style.backgroundColor = '#ffffff';
+
+            // 🔒 BLOQUEAR EMPLEADO
+            selEmpleado.val('').trigger('change'); 
+            selEmpleado.prop('disabled', true);
+            selEmpleado.next('.select2-container').find('.select2-selection').css({
+                'background-color': '#cbd5e1',
+                'border-color': 'transparent'
+            });
+        }
+    });
+
+    // INICIALIZAR SELECTS DE SALIDAS
+    $('#sal-sel-producto').select2({
+        placeholder: "Buscar producto (Nombre - Prov - Fecha)...",
+        allowClear: true,
+        width: '100%',
+        templateResult: function (data) {
+            if (!data.id) { return data.text; }
+            return $(data.element.getAttribute('data-html'));
+        },
+        templateSelection: function (data) {
+            if (!data.id) { return data.text; }
+            return $(data.element.getAttribute('data-html'));
+        }
+    });
+
+    $('#sal-sel-empleado').select2({
+        placeholder: "Buscar empleado...",
+        allowClear: true,
+        width: '100%'
+    });
+
+    // Poner la fecha de hoy por defecto en salidas
+    const hoySalida = new Date().toISOString().split('T')[0];
+    const inputSalFecha = document.getElementById('sal-fecha');
+    if(inputSalFecha) inputSalFecha.value = hoySalida;
+
+    // Auto-completar el código del producto al seleccionarlo en SALIDAS
+    $('#sal-sel-producto').on('change', function() {
+        const idLote = $(this).val(); // 🚨 Esto ahora es un id_lote
+        
+        if (!idLote) {
+            document.getElementById('sal-codigo').value = '';
+            return;
+        }
+        
+        // 🚨 Buscamos en lotesData, NO en productosData
+        const lote = window.lotesData.find(l => l.id_lote == idLote);
+        if (lote) { 
+            document.getElementById('sal-codigo').value = lote.codigo; 
+        }
+    });
+
+    $('#sal-sel-empleado').on('change', function() {
+        const idEmp = $(this).val();
+        const inputArea = document.getElementById('sal-area');
+        
+        // Si borra el empleado, limpiamos el área
+        if (!idEmp) {
+            inputArea.value = '';
+            return;
+        }
+        
+        // Buscar empleado en la memoria y extraer su área
+        const empleado = window.empleadosData.find(e => e.id_empleado == idEmp);
+        if (empleado) {
+            inputArea.value = empleado.area;
+        }
+    });
+
+    // ==========================================
+    // 4. EJECUTAR CONSULTA A BD AL INICIAR
+    // ==========================================
+    cargarDatosMaestros();
+    cargarHistorialKardex(1);
+});
+
+// MATEMÁTICA EN TIEMPO REAL
+function calcularInventario() {
+    const stock = parseFloat(document.getElementById('inv-stock').value) || 0;
+    const precio = parseFloat(document.getElementById('inv-precio').value) || 0;
+    const conteo = parseFloat(document.getElementById('inv-conteo').value) || 0;
+
+    const total = stock * precio;
+    const diferencia = conteo - stock;
+
+    document.getElementById('inv-total').value = total.toFixed(2);
+    
+    const inputDiferencia = document.getElementById('inv-diferencia');
+    inputDiferencia.value = diferencia;
+
+    // Colorear diferencia para feedback visual
+    if (diferencia > 0) {
+        inputDiferencia.style.color = '#10b981'; // Verde (Sobra)
+    } else if (diferencia < 0) {
+        inputDiferencia.style.color = '#ef4444'; // Rojo (Falta)
+    } else {
+        inputDiferencia.style.color = '#475569'; // Gris (Cuadrado)
+    }
+}
+
+
+// ==================================================
+// GUARDAR Y ACORDEÓN DE INVENTARIO
+// ==================================================
+
+function guardarInventario() {
+    const idProd = document.getElementById('inv-sel-producto').value;
+    const stock = document.getElementById('inv-stock').value;
+    const precio = document.getElementById('inv-precio').value;
+
+    if (!idProd) {
+        alert("Debe seleccionar un producto primero.");
+        return;
+    }
+
+    fetch('/almacen/guardar-inventario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            id_producto: idProd,
+            stock: stock,
+            precio_igv: precio
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            alert(data.message);
+            // Limpiamos la pantalla
+            $('#inv-sel-producto').val('').trigger('change');
+            document.getElementById('inv-conteo').value = '';
+            
+            sessionStorage.setItem('activeAlmacenTab', 'alm-view-inventario');
+            location.reload(); 
+        } else {
+            alert(data.message);
+        }
+    });
+}
+
+function toggleListadoInventario() {
+    const btn = document.getElementById('btn-toggle-listado-inv');
+    const panel = document.getElementById('panel-listado-inventario');
+    
+    if (panel.style.display === 'none') {
+        panel.style.display = 'table-row';
+        btn.classList.add('open');
+        document.getElementById('filtro-busqueda-inv').focus();
+    } else {
+        panel.style.display = 'none';
+        btn.classList.remove('open');
+    }
+}
+
+function filtrarInventario() {
+    const textoBuscado = document.getElementById('filtro-busqueda-inv').value.toUpperCase();
+    const filas = document.querySelectorAll('.fila-inv-item');
+
+    // 🚨 NUEVAS VARIABLES PARA LOS TOTALES DEL FILTRO
+    let sumaPrecioFiltrado = 0;
+    let sumaTotalFiltrado = 0;
+
+    filas.forEach(fila => {
+        const celdas = fila.getElementsByTagName('td');
+        
+        const fecha = celdas[0].textContent.toUpperCase();
+        const codigo = celdas[1].textContent.toUpperCase();
+        const nombre = celdas[2].textContent.toUpperCase();
+        const proveedor = celdas[4].textContent.toUpperCase();
+        const categoria = celdas[5].textContent.toUpperCase();
+
+        // Evaluamos si coincide con la búsqueda
+        if (fecha.includes(textoBuscado) || 
+            codigo.includes(textoBuscado) || 
+            nombre.includes(textoBuscado) || 
+            proveedor.includes(textoBuscado) || 
+            categoria.includes(textoBuscado)) {
+            
+            fila.style.display = ''; // Mostramos la fila
+            
+            // 🚨 SUMATORIA DINÁMICA: 
+            // Como antes le pusimos formato "1,200.00", le quitamos las comas para que JavaScript pueda sumar sin errores
+            const precioFila = parseFloat(celdas[8].textContent.replace(/,/g, '')) || 0;
+            const totalFila = parseFloat(celdas[9].textContent.replace(/,/g, '')) || 0;
+            
+            sumaPrecioFiltrado += precioFila;
+            sumaTotalFiltrado += totalFila;
+            
+        } else {
+            fila.style.display = 'none'; // Ocultamos la fila
+        }
+    });
+
+    // 🚨 ACTUALIZAMOS EL FOOTER AL TERMINAR DE FILTRAR
+    const elSumaPrecio = document.getElementById('inv-total-precio');
+    const elSumaTotal = document.getElementById('inv-total-general');
+    
+    // Usamos nuestra función formatearMoneda para que se vea igual de profesional
+    if(elSumaPrecio) elSumaPrecio.innerText = `S/ ${formatearMoneda(sumaPrecioFiltrado)}`;
+    if(elSumaTotal) elSumaTotal.innerText = `S/ ${formatearMoneda(sumaTotalFiltrado)}`;
+}
+
+
+function exportarExcelInventario() {
+    const search = document.getElementById('filtro-busqueda-inv').value;
+    const url = `/almacen/api/exportar-excel-inventario?search=${encodeURIComponent(search)}`;
+    window.open(url, '_blank');
+}
+
+// ==================================================
+// FUNCIONES DEL KARDEX DE ENTRADAS (RETENCIÓN)
+// ==================================================
+
+let listaEntradasTemporales = [];
+
+function agregarFilaTemporal() {
+    const fechaFac = document.getElementById('ent-fecha-fac').value;
+    const fechaIng = document.getElementById('ent-fecha-ing').value;
+    const factura = document.getElementById('ent-factura').value.toUpperCase();
+    const guia = document.getElementById('ent-guia').value.toUpperCase();
+    const idProv = document.getElementById('ent-sel-proveedor').value;
+    const proveedorTexto = $("#ent-sel-proveedor option:selected").text();
+
+    const esRecupero = proveedorTexto.includes('RECUPERO') || proveedorTexto.includes('DEVOLUCION');
+    const idEmpRec = document.getElementById('ent-sel-empleado-recupero').value;
+    const empRecTexto = $("#ent-sel-empleado-recupero option:selected").text();
+    
+    const idProd = document.getElementById('ent-sel-producto').value;
+    const productoTexto = $("#ent-sel-producto option:selected").text();
+    const codigoProd = document.getElementById('ent-codigo').value;
+    const cantidad = parseFloat(document.getElementById('ent-cantidad').value);
+    let precio = parseFloat(document.getElementById('ent-precio').value);
+    if (esRecupero) precio = 0.00;
+    const obs = document.getElementById('ent-obs').value;
+
+    const inputTalla = document.getElementById('ent-talla');
+    const talla = inputTalla.value.trim().toUpperCase();
+
+    // 1. Validaciones generales mínimas para cualquier tipo de ingreso
+    if (!idProv || !idProd || isNaN(cantidad) || cantidad <= 0) {
+        alert("Proveedor, Producto y Cantidad son obligatorios y deben ser válidos.");
+        return;
+    }
+
+    // 2. Si es un proceso de RECUPERO o DEVOLUCIÓN
+    if (esRecupero) {
+        if (!idEmpRec) {
+            alert("Debe seleccionar al Empleado que entrega el material recuperado/devuelto.");
+            return;
+        }
+    } 
+    // 3. Si es un INGRESO NORMAL (Compra comercial regular)
+    else {
+        if (!factura || factura.trim() === "") {
+            alert("El Nro de Factura es obligatorio para ingresos normales.");
+            return;
+        }
+        if (isNaN(precio) || precio < 0) {
+            alert("El Precio es obligatorio y debe ser un número válido para ingresos normales.");
+            return;
+        }
+
+    }
+
+    if (listaEntradasTemporales.length === 0) {
+        document.querySelectorAll('.alm-input-lock').forEach(input => {
+            input.disabled = true;
+            input.style.backgroundColor = '#e2e8f0';
+        });
+        $('#ent-sel-proveedor').prop('disabled', true);
+        
+        // 🚨 También bloqueamos al empleado para que todo el lote pertenezca a la misma persona
+        $('#ent-sel-empleado-recupero').prop('disabled', true); 
+    }
+
+    listaEntradasTemporales.push({
+        idTemporal: Date.now(), 
+        fecha_fac: fechaFac,
+        fecha_ing: fechaIng,
+        factura: factura,
+        guia: guia,
+        id_proveedor: idProv,
+        proveedor_nombre: proveedorTexto,
+        id_producto: idProd,
+        producto_nombre: productoTexto,
+        codigo: codigoProd,
+        cantidad: cantidad,
+        precio: precio,
+        talla: talla !== "" ? talla : '-',
+        id_empleado_recupero: esRecupero ? idEmpRec : null,
+        empleado_recupero_nombre: esRecupero ? empRecTexto : '-',
+        obs: obs
+    });
+
+    $('#ent-sel-producto').val('').trigger('change');
+    document.getElementById('ent-cantidad').value = '';
+    
+    if (!esRecupero) { // Solo limpiamos el precio si no es recupero
+        document.getElementById('ent-precio').value = '';
+    }
+    
+    document.getElementById('ent-obs').value = '';
+    inputTalla.value = '';
+    
+    $('#ent-sel-producto').select2('open');
+
+    renderizarTablaTemporales();
+}
+
+function renderizarTablaTemporales() {
+    const tbody = document.getElementById('body-tabla-entradas');
+    tbody.innerHTML = '';
+
+    // 1. Si el usuario ESTÁ DIGITANDO
+    if (listaEntradasTemporales.length > 0) {
+        listaEntradasTemporales.forEach(item => {
+            const fila = `
+                <tr style="background-color: #fffbeb;">
+                    <td>${item.fecha_fac}</td>
+                    <td>${item.fecha_ing}</td>
+                    <td>${item.factura}</td>
+                    <td>${item.guia}</td>
+                    <td><span class="alm-badge alm-badge-outline">${item.codigo}</span></td>
+                    <td style="color: #475569; font-weight: 600;">${item.producto_nombre}</td>
+                    
+                    <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${item.talla}</td>
+                    
+                    <td style="font-size: 0.85rem; color: #475569;">${item.empleado_recupero_nombre}</td>
+                    
+                    <td class="alm-text-green alm-bold">+${item.cantidad}</td>
+                    <td class="alm-bold">S/ ${item.precio.toFixed(2)}</td>
+                    <td>${item.proveedor_nombre}</td>
+                    <td>${item.obs}</td>
+                    <td class="alm-text-center">
+                        <button class="alm-icon-btn" style="color: #ef4444;" onclick="eliminarFilaTemporal(${item.idTemporal})" title="Eliminar fila"><i class="fas fa-trash-alt"></i></button>
+                    </td>
+                </tr>
+            `;
+            tbody.insertAdjacentHTML('beforeend', fila);
+        });
+    } 
+    // 2. Si la memoria está VACÍA (HISTÓRICO BD)
+    else {
+        if (!window.historicoEntradas || window.historicoEntradas.length === 0) {
+            // 🚨 COLSPAN AJUSTADO A 13
+            tbody.innerHTML = `<tr><td colspan="13" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay historial de entradas. Agregue productos a la lista con el botón (+).</td></tr>`;
+        } else {
+            window.historicoEntradas.forEach(e => {
+                const fila = `
+                    <tr>
+                        <td>${e.fecha_ing}</td>
+                        <td>${e.fecha_ing}</td>
+                        <td>${e.factura}</td>
+                        <td>${e.guia}</td>
+                        <td><span class="alm-badge alm-badge-outline">${e.codigo}</span></td>
+                        <td style="color: #475569; font-weight: 600;">${e.producto}</td>
+                        
+                        <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${e.talla ? e.talla : '-'}</td>
+                        
+                        <td class="alm-text-center">-</td>
+                        
+                        <td class="alm-text-green alm-bold">+${e.cantidad}</td>
+                        <td>S/ ${e.precio ? e.precio.toFixed(2) : '0.00'}</td>
+                        <td>${e.proveedor}</td>
+                        <td>${e.obs ? e.obs : '-'}</td>
+                        <td class="alm-text-center">-</td>
+                    </tr>
+                `;
+                tbody.insertAdjacentHTML('beforeend', fila);
+            });
+        }
+
+        // Desbloquear cabeceras
+        document.querySelectorAll('.alm-input-lock').forEach(input => {
+            input.disabled = false;
+            input.style.backgroundColor = '#ffffff';
+        });
+        $('#ent-sel-proveedor').prop('disabled', false);
+        
+        // 🚨 Desbloqueamos también al empleado y lo limpiamos si cancelan
+        $('#ent-sel-empleado-recupero').prop('disabled', false);
+    }
+}
+
+function eliminarFilaTemporal(idTemp) {
+    listaEntradasTemporales = listaEntradasTemporales.filter(item => item.idTemporal !== idTemp);
+    renderizarTablaTemporales();
+}
+
+function guardarEntradasLote() {
+    if (listaEntradasTemporales.length === 0) {
+        alert("No hay productos en la lista para guardar.");
+        return;
+    }
+
+    const confirmacion = confirm(`¿Está seguro de GUARDAR ESTA FACTURA con ${listaEntradasTemporales.length} producto(s)?\n\nEsto actualizará automáticamente el stock en el Inventario Físico.`);
+    if (!confirmacion) return;
+
+    const primerItem = listaEntradasTemporales[0];
+    const payload = {
+        cabecera: {
+            fecha_fac: primerItem.fecha_fac,
+            fecha_ing: primerItem.fecha_ing,
+            factura: primerItem.factura,
+            guia: primerItem.guia,
+            id_proveedor: primerItem.id_proveedor
+        },
+        detalles: listaEntradasTemporales.map(item => ({
+            id_producto: item.id_producto,
+            cantidad: item.cantidad,
+            precio: item.precio,
+            talla: item.talla,
+            id_empleado_recupero: item.id_empleado_recupero,
+            obs: item.obs
+        }))
+    };
+
+    const btnGuardar = document.getElementById('btn-guardar-lote');
+    btnGuardar.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; 
+    btnGuardar.disabled = true;
+
+    fetch('/almacen/guardar-entrada-lote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            alert("¡Factura guardada y stock actualizado exitosamente!");
+            listaEntradasTemporales = [];
+            renderizarTablaTemporales();
+            
+            document.getElementById('ent-factura').value = '';
+            document.getElementById('ent-guia').value = '';
+            $('#ent-sel-proveedor').val('').trigger('change');
+            $('#ent-sel-producto').val('').trigger('change');
+            $('#ent-sel-empleado-recupero').val('').trigger('change');
+            
+            cargarDatosMaestros();
+            cargarHistorialKardex(1); 
+        } else {
+            alert(data.message);
+        }
+    })
+    .finally(() => {
+        btnGuardar.innerHTML = '<i class="fas fa-save"></i>';
+        btnGuardar.disabled = false;
+    });
+}
+
+
+// Variable global para las salidas
+let listaSalidasTemporales = [];
+function agregarFilaTemporalSalida() {
+    const fecha = document.getElementById('sal-fecha').value;
+    const idEmp = document.getElementById('sal-sel-empleado').value;
+    const empTexto = $("#sal-sel-empleado option:selected").text();
+    const area = document.getElementById('sal-area').value;
+    
+    // 🚨 AQUÍ ESTABA EL ERROR: Declaramos idLote en lugar del antiguo idProd
+    const idLote = document.getElementById('sal-sel-producto').value;
+    const prodTexto = $("#sal-sel-producto option:selected").html();
+    const codigoProd = document.getElementById('sal-codigo').value;
+    const cantidad = parseFloat(document.getElementById('sal-cantidad').value);
+    const obs = document.getElementById('sal-obs').value;
+
+    if (!fecha || !idEmp || !idLote || isNaN(cantidad) || cantidad <= 0) {
+        alert("Faltan datos: Fecha, Empleado, Producto y Cantidad son obligatorios.");
+        return;
+    }
+
+    // VALIDACIÓN INTELIGENTE: Ahora sí idLote existe y coincide con la búsqueda
+    const loteRef = window.lotesData.find(l => l.id_lote == idLote);
+    if (loteRef && cantidad > loteRef.stock_restante) {
+        alert(`¡Alerta! Stock insuficiente. Solo quedan ${loteRef.stock_restante} unidades disponibles para este registro consolidado.`);
+        return;
+    }
+
+    // Bloquear los datos de cabecera en el primer item ingresado
+    if (listaSalidasTemporales.length === 0) {
+        document.querySelectorAll('.alm-input-lock-sal').forEach(input => {
+            input.disabled = true;
+            input.style.backgroundColor = '#e2e8f0';
+        });
+        $('#sal-sel-empleado').prop('disabled', true);
+    }
+
+    listaSalidasTemporales.push({
+        idTemporal: Date.now(),
+        fecha: fecha,
+        id_empleado: idEmp,
+        empleado_nombre: empTexto,
+        area: area,
+        id_lote: idLote, // Guardamos el ID combinado (ej: "1,4,5")
+        producto_nombre: prodTexto,
+        codigo: codigoProd,
+        cantidad: cantidad,
+        obs: obs
+    });
+
+    // Limpiar para seguir "bipeando" o digitando productos
+    $('#sal-sel-producto').val('').trigger('change');
+    document.getElementById('sal-cantidad').value = '';
+    document.getElementById('sal-obs').value = '';
+    $('#sal-sel-producto').select2('open');
+
+    renderizarTablaTemporalesSalida();
+}
+
+function renderizarTablaTemporalesSalida() {
+    const tbody = document.getElementById('body-tabla-salidas');
+    tbody.innerHTML = '';
+
+    // 1. Mostrar la lista en memoria (lo que se está digitando)
+    if (listaSalidasTemporales.length > 0) {
+        listaSalidasTemporales.forEach(item => {
+            const fila = `
+                <tr style="background-color: #fef2f2;"> <td>${item.fecha}</td>
+                    <td class="alm-text-red alm-bold">-${item.cantidad}</td>
+                    <td><span class="alm-badge alm-badge-outline">${item.codigo}</span></td>
+                    <td style="color: #475569; font-weight: 600;">${item.producto_nombre}</td>
+                    <td>${item.empleado_nombre}</td>
+                    <td>${item.area}</td>
+                    <td>${item.obs}</td>
+                    <td class="alm-text-center">
+                        <button class="alm-icon-btn" style="color: #ef4444;" onclick="eliminarFilaTemporalSalida(${item.idTemporal})" title="Eliminar fila"><i class="fas fa-trash-alt"></i></button>
+                    </td>
+                </tr>
+            `;
+            tbody.insertAdjacentHTML('beforeend', fila);
+        });
+    } 
+    // 2. Si no hay temporales, mostrar el historial de BD
+    else {
+        if (!window.historicoSalidas || window.historicoSalidas.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay salidas registradas.</td></tr>`;
+        } else {
+            window.historicoSalidas.forEach(s => {
+                const fila = `
+                    <tr>
+                        <td>${s.fecha_salida}</td>
+                        <td class="alm-text-red alm-bold">-${s.cantidad}</td>
+                        <td><span class="alm-badge alm-badge-outline">${s.codigo}</span></td>
+                        <td style="color: #475569; font-weight: 600;">${s.producto}</td>
+                        <td>${s.empleado}</td>
+                        <td>${s.area}</td>
+                        <td>${s.obs}</td>
+                        <td class="alm-text-center">
+                            <a href="#" class="alm-icon-btn" title="Ver Adjunto"><i class="fas fa-paperclip"></i></a>
+                        </td>
+                    </tr>
+                `;
+                tbody.insertAdjacentHTML('beforeend', fila);
+            });
+        }
+
+        // Desbloquear cabeceras al volver a cero
+        document.querySelectorAll('.alm-input-lock-sal').forEach(input => {
+            input.disabled = false;
+            input.style.backgroundColor = '#ffffff';
+        });
+        $('#sal-sel-empleado').prop('disabled', false);
+    }
+}
+
+function eliminarFilaTemporalSalida(idTemp) {
+    listaSalidasTemporales = listaSalidasTemporales.filter(item => item.idTemporal !== idTemp);
+    renderizarTablaTemporalesSalida();
+}
+
+function guardarSalidasLote() {
+    if (listaSalidasTemporales.length === 0) {
+        alert("No hay productos en la lista para despachar.");
+        return;
+    }
+
+    const confirmacion = confirm(`¿Está seguro de REGISTRAR LA SALIDA de ${listaSalidasTemporales.length} producto(s)?`);
+    if (!confirmacion) return;
+
+    const primerItem = listaSalidasTemporales[0];
+    const payload = {
+        cabecera: {
+            fecha: primerItem.fecha,
+            id_empleado: primerItem.id_empleado,
+            area: primerItem.area
+        },
+        detalles: listaSalidasTemporales.map(item => ({
+            id_lote: item.id_lote,
+            cantidad: item.cantidad,
+            obs: item.obs
+        }))
+    };
+
+    const btnGuardar = document.getElementById('btn-guardar-lote-salida');
+    btnGuardar.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; 
+    btnGuardar.disabled = true;
+
+    fetch('/almacen/guardar-salida-lote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            alert("¡Salida registrada y stock actualizado exitosamente!");
+            listaSalidasTemporales = [];
+            renderizarTablaTemporalesSalida();
+            
+            // Limpiar área
+            document.getElementById('sal-area').value = '';
+            $('#sal-sel-empleado').val('').trigger('change');
+            
+            cargarDatosMaestros(); 
+            cargarHistorialKardex(1);
+        } else {
+            alert(data.message);
+        }
+    })
+    .catch(err => {
+        console.error("Error:", err);
+        alert("Error de conexión al intentar guardar la salida.");
+    })
+    .finally(() => {
+        btnGuardar.innerHTML = '<i class="fas fa-save"></i>';
+        btnGuardar.disabled = false;
+    });
+}
+
+
+let historialCurrentPage = 1;
+let historialCurrentTipo = 'TODO';
+let debounceTimerHistorial;
+
+function filtrarHistorial(tipo) {
+    historialCurrentTipo = tipo;
+    
+    // Cambiar clase activa en las pestañas
+    document.querySelectorAll('.alm-header-tabs .alm-sub-tab').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`.alm-header-tabs .alm-sub-tab[data-target="${tipo}"]`).classList.add('active');
+    
+    cargarHistorialKardex(1); // Volver a la página 1 al cambiar de filtro
+}
+
+function ejecutarBusquedaHistorial() {
+    clearTimeout(debounceTimerHistorial);
+    debounceTimerHistorial = setTimeout(() => {
+        cargarHistorialKardex(1);
+    }, 400); // 400ms de retraso para no saturar el servidor mientras tipea
+}
+
+function cargarHistorialKardex(page = 1) {
+    const tbody = document.getElementById('body-tabla-historico');
+    const search = document.getElementById('filtro-hist-texto').value;
+    
+    // 1. CAPTURAMOS LAS FECHAS DEL HTML
+    const fechaInicio = document.getElementById('filtro-hist-inicio').value;
+    const fechaFin = document.getElementById('filtro-hist-fin').value;
+    
+    tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="padding: 30px;"><i class="fas fa-spinner fa-spin fa-lg"></i> Actualizando...</td></tr>`;
+
+    // 2. CONSTRUIMOS LA URL AÑADIENDO LAS FECHAS SI EXISTEN
+    let url = `/almacen/api/historico-kardex?page=${page}&limit=20&tipo=${historialCurrentTipo}&search=${encodeURIComponent(search)}`;
+    
+    if (fechaInicio) url += `&fecha_inicio=${fechaInicio}`;
+    if (fechaFin) url += `&fecha_fin=${fechaFin}`;
+    
+
+    fetch(url)
+        .then(res => res.json())
+        .then(response => {
+            if(!response.success) throw new Error(response.error);
+            
+            tbody.innerHTML = '';
+            
+            if(response.data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="color: #94a3b8; padding: 30px;">No se encontraron movimientos.</td></tr>`;
+                actualizarPaginacionUI({ total_records: 0, current_page: 1, total_pages: 1, per_page: 20 });
+                return;
+            }
+
+            // Renderizar Filas
+            response.data.forEach(m => {
+                const isEntrada = m.tipo === 'ENTRADA';
+                const badgeTipo = isEntrada ? `<span class="alm-badge alm-badge-entrada"><i class="fas fa-arrow-down"></i> ENTRADA</span>` : `<span class="alm-badge alm-badge-salida"><i class="fas fa-arrow-up"></i> SALIDA</span>`;
+                const colorCant = isEntrada ? '#16a34a' : '#ef4444';
+                const signoCant = isEntrada ? '+' : '-';
+
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr>
+                        <td class="alm-bold">${m.fecha}</td>
+                        <td class="alm-text-center">${badgeTipo}</td>
+                        <td><span class="alm-badge alm-badge-outline">${m.codigo}</span></td>
+                        <td style="color: #475569; font-weight: 600;">${m.producto}</td>
+                        <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${m.talla ? m.talla : '-'}</td>
+                        <td>${m.unidad}</td>
+                        <td>${m.categoria}</td>
+                        <td class="alm-text-center alm-bold" style="color: ${colorCant}; font-size:1.1rem;">${signoCant}${m.cantidad}</td>
+                        <td class="alm-bold">${m.stock_actual}</td>
+                        <td>${m.proveedor}</td>
+                        <td style="color: #0369a1; font-weight: 500;">${m.empleado_recupero ? m.empleado_recupero : '-'}</td>
+                        <td>${m.empleado}</td>
+                        <td>${m.area}</td>
+                        <td>${m.cargo}</td>
+                        <td>${m.documento}</td>
+                        <td>${m.fecha_factura}</td>
+                        <td>${m.guia}</td>
+                        <td>${m.obs}</td>
+                        <td class="alm-text-center"><a href="#" class="alm-icon-btn"><i class="fas fa-paperclip"></i></a></td>
+                    </tr>
+                `);
+            });
+
+            actualizarPaginacionUI(response.pagination);
+        })
+        .catch(err => {
+            console.error("Error cargando historial:", err);
+            tbody.innerHTML = `<tr><td colspan="17" class="alm-text-center" style="color: #ef4444; padding: 20px;">Error al cargar los datos.</td></tr>`;
+        });
+}
+
+function eliminarMovimientoBd(idMovimiento) {
+    const confirmar = confirm("¿Está seguro de ELIMINAR definitivamente este registro?\n\nEl stock regresará a su estado anterior. Esta acción borrará la información de la base de datos permanentemente.");
+    
+    if (!confirmar) return;
+
+    fetch('/almacen/eliminar-movimiento', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_mov: idMovimiento })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            cargarHistorialKardex(historialCurrentPage); // Recarga la tabla en la misma página
+            cargarDatosMaestros(); // Actualiza el stock global de la SPA
+        } else {
+            alert("Error: " + data.message);
+        }
+    })
+    .catch(err => {
+        console.error("Error eliminando:", err);
+        alert("Ocurrió un error de conexión al intentar eliminar el registro.");
+    });
+}
+
+function actualizarPaginacionUI(pagData) {
+    historialCurrentPage = pagData.current_page;
+    
+    // Textos informativos
+    const inicioRec = (pagData.current_page - 1) * pagData.per_page + 1;
+    const finRec = Math.min(pagData.current_page * pagData.per_page, pagData.total_records);
+    document.getElementById('hist-pag-info').innerText = pagData.total_records > 0 
+        ? `Mostrando ${inicioRec} a ${finRec} de ${pagData.total_records} registros`
+        : `Mostrando 0 registros`;
+
+    // Botones
+    const divControles = document.getElementById('hist-pag-controles');
+    divControles.innerHTML = '';
+
+    if (pagData.total_pages <= 1) return;
+
+    // Botón Anterior
+    divControles.insertAdjacentHTML('beforeend', `<button class="alm-btn-page" ${pagData.current_page === 1 ? 'disabled' : ''} onclick="cargarHistorialKardex(${pagData.current_page - 1})"><i class="fas fa-chevron-left"></i></button>`);
+
+    // Lógica simple para mostrar números (En un sistema masivo se usa "1 ... 4 5 6 ... 10", pero esto cubre la funcionalidad base)
+    let startPage = Math.max(1, pagData.current_page - 2);
+    let endPage = Math.min(pagData.total_pages, pagData.current_page + 2);
+
+    for (let i = startPage; i <= endPage; i++) {
+        const activeClass = i === pagData.current_page ? 'active' : '';
+        divControles.insertAdjacentHTML('beforeend', `<button class="alm-btn-page ${activeClass}" onclick="cargarHistorialKardex(${i})">${i}</button>`);
+    }
+
+    // Botón Siguiente
+    divControles.insertAdjacentHTML('beforeend', `<button class="alm-btn-page" ${pagData.current_page === pagData.total_pages ? 'disabled' : ''} onclick="cargarHistorialKardex(${pagData.current_page + 1})"><i class="fas fa-chevron-right"></i></button>`);
+}
+
+
+function exportarExcelKardex() {
+    // 1. Capturamos los mismos filtros que el usuario ve en pantalla
+    const search = document.getElementById('filtro-hist-texto').value;
+    const fechaInicio = document.getElementById('filtro-hist-inicio').value;
+    const fechaFin = document.getElementById('filtro-hist-fin').value;
+    const tipo = historialCurrentTipo; // Variable global que ya tienes
+    
+    // 2. Construimos la URL de descarga
+    let url = `/almacen/api/exportar-excel-kardex?tipo=${tipo}&search=${encodeURIComponent(search)}`;
+    
+    if (fechaInicio) url += `&fecha_inicio=${fechaInicio}`;
+    if (fechaFin) url += `&fecha_fin=${fechaFin}`;
+    
+    // 3. Redirigimos al usuario (esto fuerza la descarga del archivo)
+    window.open(url, '_blank');
+}
+
+/* =========================================
+       REVALIDACION DE LECTURAS
+    ========================================= */
+
+function switchTabPro(event, tabId) {
+    // Quitamos la clase 'active' de todos los botones y contenidos
+    document.querySelectorAll('.tab-btn-clean').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content-clean').forEach(tab => tab.classList.remove('active'));
+    
+    // Agregamos la clase 'active' al botón clicado y a su contenedor correspondiente
+    event.currentTarget.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const csvInput = document.getElementById('csv-upload');
+    const fileNameDisplay = document.querySelector('.file-name-clean');
+    const previewBody = document.getElementById('preview-tbody');
+    const btnSubirData = document.getElementById('btn-accion-matriz'); // Capturamos el botón de subir
+
+    // ==========================================
+    // 1. PREVISUALIZAR EL CSV AL SELECCIONARLO
+    // ==========================================
+    csvInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+
+        if (!file) {
+            fileNameDisplay.textContent = 'Ningún archivo seleccionado...';
+            fileNameDisplay.style.color = '';
+            previewBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-20"><i class="fas fa-file-csv" style="font-size: 2rem; color: #ccc; margin-bottom: 10px; display:block;"></i>La data del CSV aparecerá aquí antes de subir.</td></tr>';
+            return;
+        }
+
+        // Mostrar nombre del archivo con estilo de éxito
+        fileNameDisplay.textContent = file.name;
+        fileNameDisplay.style.color = 'var(--c-blue)';
+        fileNameDisplay.style.fontWeight = '600';
+
+        const reader = new FileReader();
+        
+        reader.onload = function(event) {
+            const text = event.target.result;
+            // Detectar delimitador: Algunos Excel guardan CSV con ';' en lugar de ','
+            const delimiter = text.indexOf(';') !== -1 ? ';' : ',';
+            
+            // Separar por saltos de línea y eliminar líneas vacías
+            const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
+            
+            if (rows.length <= 1) {
+                previewBody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-20 fw-600">El archivo CSV está vacío o no contiene registros válidos.</td></tr>';
+                return;
+            }
+
+            previewBody.innerHTML = ''; // Limpiar estado inicial
+
+            // Límite visual de 50 filas para no colgar el DOM
+            const limit = Math.min(rows.length, 51); 
+
+            // Empezamos desde i=1 para omitir la fila de cabeceras del CSV
+            for (let i = 1; i < limit; i++) {
+                // Separar celdas respetando comillas si existieran
+                const cols = rows[i].split(new RegExp(`${delimiter}(?=(?:(?:[^"]*"){2})*[^"]*$)`));
+                
+                let tr = document.createElement('tr');
+                
+                // Iterar sobre las 10 columnas requeridas (Corregido a j < 10)
+                for (let j = 0; j < 9; j++) {
+                    let td = document.createElement('td');
+                    let cellData = cols[j] ? cols[j].trim().replace(/^"|"$/g, '') : '-';
+                    td.textContent = cellData || '-';
+                    tr.appendChild(td);
+                }
+                previewBody.appendChild(tr);
+            }
+
+            // Si hay más de 50 registros, mostrar un aviso
+            if (rows.length > 51) {
+                let infoRow = document.createElement('tr');
+                infoRow.innerHTML = `<td colspan="9" class="text-center py-10 text-muted" style="background: var(--c-gray-bg); font-weight: 600;">
+                    Mostrando previsualización de 50 filas (Total de registros a subir: ${rows.length - 1})
+                </td>`;
+                previewBody.appendChild(infoRow);
+            }
+        };
+
+        reader.onerror = function() {
+            previewBody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-20 fw-600">Error al leer el archivo. Verifique el formato.</td></tr>';
+        };
+
+        // Leer el archivo como texto UTF-8
+        reader.readAsText(file, 'UTF-8');
+    });
+
+    // ==========================================
+    // 2. ENVIAR EL CSV AL BACKEND AL HACER CLIC
+    // ==========================================
+    if (btnSubirData) {
+        btnSubirData.addEventListener('click', async () => {
+            const file = csvInput.files[0];
+            
+            if (!file) {
+                alert("Por favor, seleccione un archivo CSV primero.");
+                return;
+            }
+
+            // Cambiar estado del botón para evitar múltiples clics
+            const originalText = btnSubirData.innerHTML;
+            btnSubirData.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+            btnSubirData.disabled = true;
+
+            // Preparar la data para enviar por POST (FormData)
+            const formData = new FormData();
+            formData.append('archivo_csv', file);
+
+            try {
+                const response = await fetch('/subir_matriz_csv', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // Éxito: Mostrar alerta, cerrar modal y limpiar el input
+                    alert(result.mensaje); 
+                    document.getElementById('modal-gestion').style.display = 'none';
+                    
+                    // Limpiar el estado del modal de subida
+                    csvInput.value = ''; 
+                    cargarLecturasGestion(1);
+                    fileNameDisplay.textContent = 'Ningún archivo seleccionado...';
+                    fileNameDisplay.style.color = '';
+                    previewBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-20"><i class="fas fa-file-csv" style="font-size: 2rem; color: #ccc; margin-bottom: 10px; display:block;"></i>La data del CSV aparecerá aquí antes de subir.</td></tr>';
+                    
+                } else {
+                    // Error del servidor
+                    alert("Error: " + result.error);
+                }
+            } catch (error) {
+                console.error("Error en la petición:", error);
+                alert("Ocurrió un error de conexión al intentar subir el archivo.");
+            } finally {
+                // Restaurar el botón
+                btnSubirData.innerHTML = originalText;
+                btnSubirData.disabled = false;
+            }
+        });
+    }
+});
+
+// Variable global
+let paginaActualGestion = 1;
+
+// ==========================================
+// 1. CARGAR LISTA DINÁMICA DE OPERARIOS
+// ==========================================
+async function cargarOperariosDatalist() {
+    try {
+        const response = await fetch('/obtener_operarios_matriz');
+        const data = await response.json();
+        
+        if (data.success) {
+            const datalist = document.getElementById('lista-operarios-gestion');
+            datalist.innerHTML = '<option value="TODOS"></option>'; // Opción base
+            
+            data.operarios.forEach(op => {
+                const option = document.createElement('option');
+                option.value = op;
+                datalist.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error("Error al cargar la lista de operarios:", error);
+    }
+}
+
+// ==========================================
+// 2. CARGAR TABLA CON FILTROS (MODAL DE GESTIÓN)
+// ==========================================
+async function cargarLecturasGestion(page = 1) {
+    paginaActualGestion = page;
+    const operadorInput = document.getElementById('filtro-operario-gestion').value;
+    const fechaInput = document.getElementById('filtro-fecha-gestion').value; 
+    
+    const tbody = document.getElementById('tbody-gestion-lecturas');
+    const paginationContainer = document.querySelector('.pagination-pro');
+
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-20"><i class="fas fa-spinner fa-spin text-blue"></i> Cargando datos...</td></tr>';
+
+    try {
+        // Volvemos a la URL original, SIN el parámetro de estado
+        const response = await fetch(`/obtener_lecturas?page=${page}&operador=${encodeURIComponent(operadorInput)}&fecha=${encodeURIComponent(fechaInput)}`);
+        const data = await response.json();
+
+        tbody.innerHTML = '';
+
+        if (data.lecturas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-20">No se encontraron registros para esta fecha/operario.</td></tr>';
+            paginationContainer.style.display = 'none';
+            return;
+        }
+
+        // Pintar filas sin la columna acción
+        data.lecturas.forEach(lec => {
+            let statusDot = lec.estado === 'PENDIENTE' ? 'dot-warning' : 'bg-green';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><span class="badge-code">${lec.clicodfac}</span></td>
+                <td>${lec.medcodygo}</td>
+                <td class="fw-600">${lec.lectura}</td>
+                <td>${lec.feclec}</td>
+                <td><span class="status-dot ${statusDot}"></span> ${lec.estado}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Pintar paginación
+        paginationContainer.style.display = 'flex';
+        let startRecord = ((data.current_page - 1) * data.per_page) + 1;
+        let endRecord = Math.min(data.current_page * data.per_page, data.total);
+        
+        let paginationHTML = `
+            <span class="text-sm text-muted">Mostrando <span class="fw-600 text-dark">${startRecord}</span> a <span class="fw-600 text-dark">${endRecord}</span> de <span class="fw-600 text-dark">${data.total}</span></span>
+            <div class="pagination-buttons">
+                <button class="btn-page" ${data.current_page === 1 ? 'disabled' : ''} onclick="cargarLecturasGestion(${data.current_page - 1})"><i class="fas fa-chevron-left"></i></button>
+        `;
+
+        let startPage = Math.max(1, data.current_page - 2);
+        let endPage = Math.min(data.pages, data.current_page + 2);
+
+        for (let i = startPage; i <= endPage; i++) {
+            let activeClass = i === data.current_page ? 'active' : '';
+            paginationHTML += `<button class="btn-page ${activeClass}" onclick="cargarLecturasGestion(${i})">${i}</button>`;
+        }
+
+        paginationHTML += `
+                <button class="btn-page" ${data.current_page === data.pages ? 'disabled' : ''} onclick="cargarLecturasGestion(${data.current_page + 1})"><i class="fas fa-chevron-right"></i></button>
+            </div>
+        `;
+        paginationContainer.innerHTML = paginationHTML;
+
+    } catch (error) {
+        console.error("Error al cargar lecturas:", error);
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-20">Error al consultar los datos.</td></tr>';
+    }
+}
+
+// ==========================================
+// 3. EVENTOS
+// ==========================================
+document.addEventListener("DOMContentLoaded", () => {
+    const btnBuscarGestion = document.getElementById('btn-buscar-gestion');
+    if (btnBuscarGestion) {
+        btnBuscarGestion.addEventListener('click', () => {
+            cargarLecturasGestion(1);
+        });
+    }
+
+    const tabGestionBtn = document.querySelector('button[onclick*="tab-gestion"]');
+    if (tabGestionBtn) {
+        tabGestionBtn.addEventListener('click', () => {
+            cargarOperariosDatalist(); // Cargar la lista del datalist dinámicamente
+            cargarLecturasGestion(1);  // Cargar la tabla
+        }, { once: true });
+    }
+
+    // Lógica para el botón 'X' del buscador de operarios
+    const inputOperario = document.getElementById('filtro-operario-gestion');
+    const clearOperarioBtn = document.getElementById('clear-operario-gestion');
+
+    if (inputOperario && clearOperarioBtn) {
+        // Mostrar/ocultar la 'X' según si hay texto o no
+        inputOperario.addEventListener('input', () => {
+            clearOperarioBtn.style.display = inputOperario.value.length > 0 ? 'block' : 'none';
+        });
+
+        // Limpiar el input al hacer clic en la 'X'
+        clearOperarioBtn.addEventListener('click', () => {
+            inputOperario.value = '';
+            clearOperarioBtn.style.display = 'none';
+            inputOperario.focus(); // Devuelve el cursor al input
+            // Opcional: cargarLecturasGestion(1); // Descomenta esto si quieres que al limpiar se actualice la tabla automáticamente
+        });
+    }
+});
+
+
+/* =========================================
+   NUEVO MÓDULO: VALIDACIÓN DE LECTURAS (REVISIÓN)
+   ========================================= */
+
+let paginaActualRevalidacion = 1; // Variable global para saber en qué página estamos
+
+// 👇 NUEVA FUNCIÓN QUE HACE EL FETCH Y DIBUJA LA PAGINACIÓN 👇
+async function cargarLecturasRevalidacion(page = 1) {
+    paginaActualRevalidacion = page;
+
+    const fecha = document.getElementById('fecha-lectura').value;
+    const operario = $('#operario-select').val() || ''; 
+    const estadoSelect = document.getElementById('estado-select');
+    const estado = estadoSelect ? estadoSelect.value : '';
+
+    const tbody = document.querySelector('#revalidacion .table-pro tbody');
+    const paginationContainer = document.getElementById('pagination-revalidacion'); // Contenedor de paginación
+    
+    if(!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-20"><i class="fas fa-spinner fa-spin text-blue"></i> Buscando suministros...</td></tr>';
+
+    try {
+        // LLAMAMOS A LA API (Ahora le pasamos el &page=...)
+        const response = await fetch(`/api/matriz_revision?page=${page}&fecha=${encodeURIComponent(fecha)}&operario=${encodeURIComponent(operario)}&estado=${encodeURIComponent(estado)}`);
+        const data = await response.json();
+
+        tbody.innerHTML = '';
+
+        if (!data.success || data.data.length === 0) {
+            const textoEstado = estado ? estado : "POR MODIFICAR";
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-20">No hay suministros "${textoEstado}" para esta fecha y operario.</td></tr>`;
+            if (paginationContainer) paginationContainer.style.display = 'none';
+            return;
+        }
+
+        // Dibujamos las filas con tu semáforo de colores
+        data.data.forEach(item => {
+            const tr = document.createElement('tr');
+            
+            let statusDot = '';
+            switch (item.estado.toUpperCase()) {
+                case 'PENDIENTE': 
+                    statusDot = 'dot-warning'; 
+                    break;
+                case 'POR MODIFICAR': 
+                    statusDot = 'bg-blue'; 
+                    break;
+                case 'MODIFICADO': 
+                case 'VALIDADO': 
+                    statusDot = 'bg-green'; 
+                    break;
+                case 'RECHAZADO': 
+                    statusDot = 'bg-red'; 
+                    break;
+                case 'DESCARGADO':
+                    statusDot = 'bg-purple'; 
+                    break;
+                default: 
+                    statusDot = 'bg-gray'; 
+            }
+            
+            tr.innerHTML = `
+                <td><span class="badge-code">${item.suministro}</span></td>
+                <td class="text-green fw-600">${item.lectura_nueva}</td>
+                <td class="text-muted">${item.observacion_nueva}</td>
+                <td><span class="status-dot ${statusDot}"></span> ${item.estado}</td>
+                <td class="action-cells">
+                    <button class="btn-square bg-blue btn-ver-foto" data-suministro="${item.suministro}" data-feclec="${item.feclec}" title="Ver Foto">
+                        <i class="fas fa-camera"></i>
+                    </button>
+                    <button class="btn-square bg-green btn-aceptar-mod" data-id="${item.id_matriz}" title="Validar"><i class="fas fa-check"></i></button>
+                    <button class="btn-square bg-red btn-rechazar-mod" data-id="${item.id_matriz}" title="Rechazar"><i class="fas fa-times"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // 👇 LÓGICA DE DIBUJAR LOS BOTONES DE PAGINACIÓN 👇
+        if (paginationContainer && data.total) {
+            paginationContainer.style.display = 'flex';
+            let startRecord = ((data.current_page - 1) * data.per_page) + 1;
+            let endRecord = Math.min(data.current_page * data.per_page, data.total);
+            
+            let paginationHTML = `
+                <span class="text-sm text-muted">Mostrando <span class="fw-600 text-dark">${startRecord}</span> a <span class="fw-600 text-dark">${endRecord}</span> de <span class="fw-600 text-dark">${data.total}</span></span>
+                <div class="pagination-buttons">
+                    <button class="btn-page" ${data.current_page === 1 ? 'disabled' : ''} onclick="cargarLecturasRevalidacion(${data.current_page - 1})"><i class="fas fa-chevron-left"></i></button>
+            `;
+
+            let startPage = Math.max(1, data.current_page - 2);
+            let endPage = Math.min(data.pages, data.current_page + 2);
+
+            for (let i = startPage; i <= endPage; i++) {
+                let activeClass = i === data.current_page ? 'active' : '';
+                paginationHTML += `<button class="btn-page ${activeClass}" onclick="cargarLecturasRevalidacion(${i})">${i}</button>`;
+            }
+
+            paginationHTML += `
+                    <button class="btn-page" ${data.current_page === data.pages ? 'disabled' : ''} onclick="cargarLecturasRevalidacion(${data.current_page + 1})"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            `;
+            paginationContainer.innerHTML = paginationHTML;
+        } else if (paginationContainer) {
+            paginationContainer.style.display = 'none';
+        }
+
+    } catch (error) {
+        console.error("Error al cargar la matriz de revisión:", error);
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-20">Error al consultar los datos.</td></tr>';
+    }
+}
+
+// Convertimos la función a global para que el HTML pueda ejecutarla al dar clic en los números
+window.cargarLecturasRevalidacion = cargarLecturasRevalidacion;
+
+
+document.addEventListener("DOMContentLoaded", () => {
+    // 1. Convertir el select normal en un buscador Select2
+    if (window.jQuery && $.fn.select2) {
+        $('#operario-select').select2({
+            placeholder: "Buscar operario...",
+            allowClear: true,
+            width: '100%'
+        });
+    }
+
+    // 2. Evento: Al elegir una fecha, buscar los operarios de ese día
+    $('#fecha-lectura').on('change', async function() {
+        const fecha = $(this).val(); 
+        const selectOperario = $('#operario-select');
+        
+        selectOperario.empty().append('<option value="">Buscar operario...</option>');
+
+        if (!fecha) return;
+
+        try {
+            const response = await fetch(`/api/operarios_por_fecha?fecha=${fecha}`);
+            const operarios = await response.json();
+
+            operarios.forEach(op => {
+                selectOperario.append(new Option(op, op));
+            });
+            selectOperario.trigger('change');
+        } catch (error) {
+            console.error("Error cargando operarios:", error);
+        }
+    });
+
+    // 3. Evento: Al dar clic en "Buscar"
+    const btnBuscarLecturas = document.getElementById('btn-buscar-lecturas');
+    
+    if (btnBuscarLecturas) {
+        btnBuscarLecturas.addEventListener('click', () => {
+            // Ya no hacemos el fetch aquí, solo llamamos a la función iniciando en la página 1
+            cargarLecturasRevalidacion(1);
+        });
+    }
+});
+
+/* =========================================
+   LÓGICA DEL VISOR FOTOGRÁFICO
+   ========================================= */
+
+// Variables globales para el visor
+let imagenesVisor = [];
+let indiceImagenActual = 0;
+let rotacionActual = 0;
+
+document.addEventListener("DOMContentLoaded", () => {
+    
+    const tbodyValidacion = document.querySelector('#revalidacion .table-pro tbody');
+    const photoFrame = document.querySelector('.photo-frame-pro');
+    const labelSuministro = document.getElementById('visor-suministro-codigo');
+
+    // 1. Escuchar clics en el botón de la cámara dentro de la tabla
+    if (tbodyValidacion) {
+        tbodyValidacion.addEventListener('click', async (e) => {
+            const btnCamara = e.target.closest('.btn-ver-foto');
+            if (!btnCamara) return; 
+
+            // 1. Quitamos la clase 'fila-activa' de todas las filas
+            tbodyValidacion.querySelectorAll('tr').forEach(tr => tr.classList.remove('fila-activa'));
+            // 2. Le ponemos la clase solo a la fila donde hicimos clic
+            const filaActual = btnCamara.closest('tr');
+            if (filaActual) filaActual.classList.add('fila-activa');
+
+            const suministro = btnCamara.getAttribute('data-suministro');
+            const feclec = btnCamara.getAttribute('data-feclec'); // Ej: "12/05/2026"
+            labelSuministro.textContent = suministro;
+
+            // Lógica para extraer "YYYYMM" de la fecha "DD/MM/YYYY" o "DD-MM-YYYY"
+            let prefijoBuscado = "";
+            if (feclec) {
+                const partes = feclec.split(/[-/]/); 
+                if (partes.length >= 3) {
+                    prefijoBuscado = partes[2] + partes[1]; // Junta "2026" + "05" -> "202605"
+                }
+            }
+
+            // Reiniciar estado del visor
+            imagenesVisor = [];
+            indiceImagenActual = 0;
+            rotacionActual = 0;
+
+            photoFrame.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; color: var(--c-blue); gap: 12px;">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p style="margin: 0; font-weight: 600; font-size: 0.95rem;">Buscando fotos en el servidor...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/buscar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codigo: suministro })
+                });
+                
+                const data = await response.json();
+
+                if (data.resultados && data.resultados.length > 0) {
+                    const bloqueLecturas = data.resultados.find(r => r.leyenda === "LECTURAS");
+                    
+                    if (bloqueLecturas && bloqueLecturas.subgrupos) {
+                        bloqueLecturas.subgrupos.forEach(subgrupo => {
+                            // ✅ FILTRO MÁGICO: Solo toma la carpeta si empieza con "202605"
+                            if (prefijoBuscado === "" || subgrupo.carpeta.startsWith(prefijoBuscado)) {
+                                subgrupo.imagenes.forEach(img => {
+                                    const rutaCarpeta = subgrupo.carpeta.replace(/\\/g, '/');
+                                    imagenesVisor.push(`/imagen/${rutaCarpeta}/${img}`);
+                                });
+                            }
+                        });
+                    }
+                }
+
+                if (imagenesVisor.length > 0) {
+                    renderizarImagen();
+                } else {
+                    photoFrame.innerHTML = `
+                        <div class="no-photo-placeholder">
+                            <i class="fas fa-image-slash" style="font-size: 3rem; color: #ccc;"></i>
+                            <p style="margin-top:10px; color: #888;">No hay fotos para el mes de esta lectura.</p>
+                        </div>
+                    `;
+                }
+
+            } catch (error) {
+                console.error("Error al buscar imágenes:", error);
+                photoFrame.innerHTML = `
+                    <div class="no-photo-placeholder text-danger">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem;"></i>
+                        <p>Error de conexión al buscar las fotos.</p>
+                    </div>
+                `;
+            }
+        });
+    }
+
+    // 4. Escuchar clics para los botones Validar (Verde) y Rechazar (Rojo)
+    if (tbodyValidacion) {
+        tbodyValidacion.addEventListener('click', async (e) => {
+            const btnAceptar = e.target.closest('.btn-aceptar-mod');
+            const btnRechazar = e.target.closest('.btn-rechazar-mod');
+            
+            // Si el clic no fue en ninguno de los dos botones de acción, ignorar
+            if (!btnAceptar && !btnRechazar) return;
+            
+            const btnActual = btnAceptar || btnRechazar;
+            const idMatriz = btnActual.getAttribute('data-id');
+            const nuevoEstado = btnAceptar ? 'MODIFICADO' : 'RECHAZADO';
+            const fila = btnActual.closest('tr');
+
+            // Ventana de confirmación sutil para evitar errores accidentales en oficina
+            if (!confirm(`¿Está seguro de marcar este suministro como ${nuevoEstado}?`)) return;
+
+            // Deshabilitar temporalmente los botones de la fila para evitar doble clic erróneo
+            fila.querySelectorAll('.btn-square').forEach(b => b.disabled = true);
+
+            try {
+                // Enviar la petición POST a Flask
+                const response = await fetch('/api/cambiar_estado_revision', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        id_matriz: idMatriz, 
+                        estado: nuevoEstado 
+                    })
+                });
+                
+                const result = await response.json();
+
+                if (result.success) {
+                    // Animación sutil de desvanecimiento para remover la fila
+                    if (fila) {
+                        fila.style.transition = 'all 0.4s ease';
+                        fila.style.opacity = '0';
+                        fila.style.background = nuevoEstado === 'MODIFICADO' ? '#d1fae5' : '#fee2e2'; // Destello verde o rojo
+                        
+                        setTimeout(() => {
+                            fila.remove();
+                            
+                            // Si la tabla se queda completamente vacía tras remover la fila, mostrar mensaje limpia
+                            if (tbodyValidacion.querySelectorAll('tr').length === 0) {
+                                tbodyValidacion.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-20">No quedan más registros pendientes en esta búsqueda.</td></tr>`;
+                            }
+                        }, 400);
+                    }
+                } else {
+                    alert("Error: " + result.message);
+                    fila.querySelectorAll('.btn-square').forEach(b => b.disabled = false); // Reactivar si falla
+                }
+
+            } catch (error) {
+                console.error("Error al actualizar el estado de revisión:", error);
+                alert("Ocurrió un error de conexión con el servidor.");
+                fila.querySelectorAll('.btn-square').forEach(b => b.disabled = false); // Reactivar si falla
+            }
+        });
+    }
+
+    // 2. Función para dibujar la imagen actual en el marco
+    function renderizarImagen() {
+        // Un contenedor negro con overflow hidden para que la imagen no se salga al rotar
+        photoFrame.innerHTML = `
+            <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; background-color: #0f172a; border-radius: 8px;">
+                <img id="img-visor-activa" src="${imagenesVisor[indiceImagenActual]}" 
+                     style="max-width: 100%; max-height: 100%; object-fit: contain; transform: rotate(${rotacionActual}deg); transition: transform 0.2s ease-in-out;">
+                
+                <div style="position: absolute; bottom: 12px; background: rgba(0,0,0,0.7); color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; letter-spacing: 1px;">
+                    ${indiceImagenActual + 1} / ${imagenesVisor.length}
+                </div>
+            </div>
+        `;
+    }
+
+    // 3. Controles del Visor
+    const btnPrev = document.getElementById('btn-foto-prev');
+    const btnNext = document.getElementById('btn-foto-next');
+    const btnRotar = document.getElementById('btn-foto-rotar');
+
+    if (btnPrev) {
+        btnPrev.addEventListener('click', () => {
+            if (imagenesVisor.length <= 1) return;
+            indiceImagenActual = (indiceImagenActual === 0) ? imagenesVisor.length - 1 : indiceImagenActual - 1;
+            rotacionActual = 0; // Reiniciar rotación al cambiar de foto
+            renderizarImagen();
+        });
+    }
+
+    if (btnNext) {
+        btnNext.addEventListener('click', () => {
+            if (imagenesVisor.length <= 1) return;
+            indiceImagenActual = (indiceImagenActual === imagenesVisor.length - 1) ? 0 : indiceImagenActual + 1;
+            rotacionActual = 0; // Reiniciar rotación al cambiar de foto
+            renderizarImagen();
+        });
+    }
+
+    if (btnRotar) {
+        btnRotar.addEventListener('click', () => {
+            if (imagenesVisor.length === 0) return;
+            rotacionActual += 90;
+            if (rotacionActual >= 360) rotacionActual = 0;
+            
+            const imgElement = document.getElementById('img-visor-activa');
+            if (imgElement) {
+                imgElement.style.transform = `rotate(${rotacionActual}deg)`;
+            }
+        });
+    }
+});
+
+
+/* =========================================
+   MÓDULO: AVANCE DE VALIDACIÓN DINÁMICO
+   ========================================= */
+
+document.addEventListener("DOMContentLoaded", () => {
+    const btnBuscarAvance = document.getElementById('btn-buscar-avance');
+    const contenedorBarras = document.getElementById('contenedor-barras-avance');
+    const fechaInputAvance = document.getElementById('avance-fecha');
+    const operarioInputAvance = document.getElementById('avance-operario');
+
+    // 1. Inicializar Select2 en el Modal (El dropdownParent es vital para que no quede oculto detrás del modal)
+    if (window.jQuery && $.fn.select2) {
+        $('#avance-operario').select2({
+            placeholder: "Ej. TODOS, o escriba un operario...",
+            allowClear: true,
+            dropdownParent: $('#modal-gestion') // Conecta el buscador a tu modal
+        });
+    }
+
+    // 2. Llenar la lista de operarios dinámicamente cuando la fecha cambie
+    $('#avance-fecha').on('change', async function() {
+        const fecha = $(this).val(); 
+        const selectOp = $('#avance-operario');
+        
+        // Limpiamos opciones anteriores
+        selectOp.empty().append('<option value="">Ej. TODOS, o escriba un operario...</option>');
+
+        if (!fecha) return;
+
+        try {
+            // Reutilizamos tu API existente
+            const response = await fetch(`/api/operarios_por_fecha?fecha=${fecha}`);
+            const operarios = await response.json();
+
+            operarios.forEach(op => {
+                selectOp.append(new Option(op, op));
+            });
+            
+            // Actualizar diseño de Select2
+            selectOp.trigger('change');
+        } catch (error) {
+            console.error("Error cargando operarios para avance:", error);
+        }
+    });
+
+    // 3. Establecer la fecha de hoy por defecto al abrir y disparar el llenado de operarios
+    const hoy = new Date().toISOString().split('T')[0];
+    if (fechaInputAvance) {
+        fechaInputAvance.value = hoy;
+        $('#avance-fecha').trigger('change'); // Forzamos la búsqueda de operarios de hoy
+    }
+
+    // 4. Lógica de tu botón BUSCAR
+    if (btnBuscarAvance) {
+        btnBuscarAvance.addEventListener('click', async () => {
+            const fecha = fechaInputAvance.value;
+            const operario = $('#avance-operario').val() || ''; // Capturamos el valor de Select2
+
+            // Validación estricta: La fecha es obligatoria
+            if (!fecha) {
+                alert("Por favor, seleccione una fecha. Es obligatoria para medir el avance.");
+                fechaInputAvance.focus();
+                return;
+            }
+
+            // Estado de carga
+            contenedorBarras.innerHTML = `
+                <div style="margin: auto; text-align: center; padding: 40px;">
+                    <i class="fas fa-spinner fa-spin text-blue fa-2x"></i>
+                    <p style="margin-top: 15px; font-weight: 600; color: var(--c-blue);">Calculando avance en tiempo real...</p>
+                </div>
+            `;
+
+            try {
+                // Llamamos a nuestra nueva API
+                const response = await fetch(`/api/avance_validacion?fecha=${encodeURIComponent(fecha)}&operario=${encodeURIComponent(operario)}`);
+                const data = await response.json();
+
+                contenedorBarras.innerHTML = ''; // Limpiamos
+
+                if (!data.success) {
+                    contenedorBarras.innerHTML = `<div class="text-center text-danger py-20 fw-600">${data.error}</div>`;
+                    return;
+                }
+
+                if (data.data.length === 0) {
+                    contenedorBarras.innerHTML = `
+                        <div style="margin: auto; text-align: center; padding: 40px;">
+                            <i class="fas fa-folder-open" style="font-size: 3rem; color: #cbd5e1; margin-bottom: 15px; display: block;"></i>
+                            <p style="margin: 0; font-size: 1rem; font-weight: 600; color: #64748b;">No hay registros cargados ni avance para esta fecha.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Dibujamos tarjetas con diseño premium y colores térmicos
+                data.data.forEach(item => {
+                    let porcentaje = 0;
+                    if (item.total > 0) {
+                        porcentaje = Math.round((item.procesados / item.total) * 100);
+                    }
+                    
+                    // 🌟 RECOMENDACIÓN INTEGRADA: Regla de semáforo inteligente 🌟
+                    let colorBarra = '';
+                    let colorFondoTag = '';
+                    let colorBordeTag = '';
+
+                    if (porcentaje <= 30) {
+                        // Crítico (Rojo)
+                        colorBarra = '#ef4444';
+                        colorFondoTag = '#fef2f2';
+                        colorBordeTag = '#fee2e2';
+                    } else if (porcentaje <= 70) {
+                        // En Progreso Medio (Naranja)
+                        colorBarra = '#f97316';
+                        colorFondoTag = '#fff7ed';
+                        colorBordeTag = '#ffedd5';
+                    } else if (porcentaje < 100) {
+                        // Avanzado (Azul Oficina)
+                        colorBarra = '#3b82f6';
+                        colorFondoTag = '#eff6ff';
+                        colorBordeTag = '#dbeafe';
+                    } else {
+                        // Completado al 100% (Verde Éxito)
+                        colorBarra = '#10b981';
+                        colorFondoTag = '#ecfdf5';
+                        colorBordeTag = '#d1fae5';
+                    }
+
+                    const div = document.createElement('div');
+                    // Diseño fino: Bordes más delgados, fuentes elegantes, barras estilizadas
+                    div.innerHTML = `
+                        <div style="padding: 12px 16px; border: 1px solid #f1f5f9; border-radius: 8px; background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.01); transition: transform 0.2s;">
+                            
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-weight: 600; color: #475569; font-size: 0.88rem; letter-spacing: -0.01em;">
+                                    ${item.operario}
+                                </span>
+                                
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span style="font-size: 0.8rem; font-weight: 500; color: #94a3b8;">
+                                        ${item.procesados} de ${item.total}
+                                    </span>
+                                    <span style="color: ${colorBarra}; background: ${colorFondoTag}; padding: 2px 8px; border-radius: 6px; border: 1px solid ${colorBordeTag}; font-size: 0.78rem; font-weight: 700; min-width: 38px; text-align: center;">
+                                        ${porcentaje}%
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div style="height: 5px; background: #f8fafc; border-radius: 10px; width: 100%; border: 1px solid #f1f5f9;">
+                                <div style="height: 100%; width: ${porcentaje}%; background-color: ${colorBarra}; border-radius: 10px; transition: width 0.8s cubic-bezier(0.25, 1, 0.5, 1);"></div>
+                            </div>
+                            
+                        </div>
+                    `;
+                    contenedorBarras.appendChild(div);
+                });
+
+            } catch (error) {
+                console.error("Error al cargar el avance:", error);
+                contenedorBarras.innerHTML = `
+                    <div style="margin: auto; text-align: center; padding: 40px;">
+                        <i class="fas fa-spinner fa-spin text-blue fa-2x"></i>
+                        <p style="margin-top: 15px; font-weight: 600; color: var(--c-blue);">Calculando avance en tiempo real...</p>
+                    </div>
+                `;
+            }
+        });
+    }
 });
