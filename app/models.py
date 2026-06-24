@@ -498,3 +498,134 @@ class DocumentoEmpleado(db.Model):
 
     ruta_archivo = db.Column(db.String(255))
     fecha_subida = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# ==========================================
+# 📦 MÓDULO DE INVENTARIO Y ALMACÉN
+# ==========================================
+
+class Categoria(db.Model):
+    __tablename__ = 'categorias'
+    id_categoria = db.Column(db.Integer, primary_key=True)
+    tipo_categoria = db.Column(db.String(100), nullable=False)
+    estado = db.Column(db.String(20), default='ACTIVO')
+    codigo_prefijo = db.Column(db.String(10), unique=True, nullable=True)
+
+    # Relación
+    productos = db.relationship('Producto', backref='categoria', lazy=True)
+
+
+class Producto(db.Model):
+    __tablename__ = 'productos'
+    id_producto = db.Column(db.Integer, primary_key=True)
+    id_categoria = db.Column(db.Integer, db.ForeignKey('categorias.id_categoria'), nullable=False)
+    
+    codigo_identificador = db.Column(db.String(50), unique=True, nullable=False)
+    nombre_prod = db.Column(db.String(250), nullable=False)
+    unidad_medida = db.Column(db.String(50))
+    stock = db.Column(db.Numeric(10, 2), default=0.00)
+    precio_igv = db.Column(db.Numeric(10, 2), default=0.00)
+    estado = db.Column(db.String(20), default='ACTIVO')
+
+    # Relaciones
+    movimientos = db.relationship('MovimientoDetalle', backref='producto_rel', lazy=True)
+    auditorias = db.relationship('InventarioAuditoria', backref='producto_auditado', lazy=True)
+
+
+class Proveedor(db.Model):
+    __tablename__ = 'proveedores'
+    id_proveedor = db.Column(db.Integer, primary_key=True)
+    ruc = db.Column(db.String(15), unique=True, nullable=False)
+    razon_social = db.Column(db.String(250), nullable=False)
+    nombre_comercial = db.Column(db.String(250))
+    celular = db.Column(db.String(20))
+    correo = db.Column(db.String(100))
+    direccion = db.Column(db.String(255))
+
+    # Relación
+    entradas = db.relationship('Entrada', backref='proveedor', lazy=True)
+
+
+class Entrada(db.Model):
+    __tablename__ = 'entradas'
+    id_entrada = db.Column(db.Integer, primary_key=True)
+    id_proveedor = db.Column(db.Integer, db.ForeignKey('proveedores.id_proveedor'), nullable=False)
+    id_empleado_receptor = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+    
+    fecha_ingreso = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_factura = db.Column(db.Date)
+    nro_factura = db.Column(db.String(50))
+    nro_guia = db.Column(db.String(50))
+    obs_entrada = db.Column(db.Text)
+    adjunto_entrada = db.Column(db.String(255)) # Ruta del archivo
+
+    # Relación
+    detalles = db.relationship('MovimientoDetalle', backref='entrada_rel', lazy=True, cascade="all, delete-orphan")
+
+
+class Salida(db.Model):
+    __tablename__ = 'salidas'
+    id_salida = db.Column(db.Integer, primary_key=True)
+    id_empleado_solicitante = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+    
+    fecha_salida = db.Column(db.DateTime, default=datetime.utcnow)
+    obs_salida = db.Column(db.Text)
+    adjunto_salida = db.Column(db.String(255)) # Ruta del archivo
+    empleado = db.relationship('Empleado', backref='solicitudes_salida', foreign_keys=[id_empleado_solicitante])
+    # Relación
+    detalles = db.relationship('MovimientoDetalle', backref='salida_rel', lazy=True, cascade="all, delete-orphan")
+
+
+class MovimientoDetalle(db.Model):
+    __tablename__ = 'movimientos_detalle'
+    id_movimiento = db.Column(db.Integer, primary_key=True)
+    id_producto = db.Column(db.Integer, db.ForeignKey('productos.id_producto'), nullable=False)
+    id_entrada = db.Column(db.Integer, db.ForeignKey('entradas.id_entrada'), nullable=True)
+    id_salida = db.Column(db.Integer, db.ForeignKey('salidas.id_salida'), nullable=True)
+    
+    tipo_movimiento = db.Column(db.String(20), nullable=False)
+    cantidad = db.Column(db.Numeric(10, 2), nullable=False)
+
+    precio_unitario = db.Column(db.Numeric(10, 2), nullable=True) 
+    estado = db.Column(db.String(20), default='ACTIVO')
+    stock_restante = db.Column(db.Numeric(10, 2), nullable=True)
+    talla = db.Column(db.String(20), nullable=True)
+    id_empleado_recupero = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=True)
+
+
+class InventarioAuditoria(db.Model):
+    __tablename__ = 'inventario_auditoria'
+    id_auditoria = db.Column(db.Integer, primary_key=True)
+    id_producto = db.Column(db.Integer, db.ForeignKey('productos.id_producto'), nullable=False)
+    id_empleado_auditor = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+    
+    fecha_registro_inventario = db.Column(db.DateTime, default=datetime.utcnow)
+    stock_sistema = db.Column(db.Numeric(10, 2), nullable=False)
+    conteo_fisico = db.Column(db.Numeric(10, 2), nullable=False)
+    diferencia = db.Column(db.Numeric(10, 2), nullable=False)
+    observaciones = db.Column(db.Text)
+
+class MatrizValidacion(db.Model):
+    __tablename__ = 'matriz_validacion'
+
+    id_matriz = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    
+    # Campos extraídos directamente del CSV
+    clicodfac = db.Column(db.String(50), nullable=True)  # Suministro
+    medcodygo = db.Column(db.String(50), nullable=True)  # Código de Medidor
+    lectura = db.Column(db.String(50), nullable=True)
+    feclec = db.Column(db.String(20), nullable=True)
+    horalec = db.Column(db.String(20), nullable=True)
+    obs1 = db.Column(db.String(100), nullable=True)
+    obs2 = db.Column(db.String(100), nullable=True)
+    newmed = db.Column(db.String(50), nullable=True)
+    operador = db.Column(db.String(150), nullable=True)
+
+    # Campos de gestión interna y validación (Solicitados)
+    fecha_subida = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_validacion = db.Column(db.DateTime, nullable=True)
+    estado = db.Column(db.String(50), default='PENDIENTE')
+    nueva_lect = db.Column(db.String(50), nullable=True)
+    nueva_obs = db.Column(db.String(100), nullable=True)
+    nuevo_obs2 = db.Column(db.String(100), nullable=True)
+    nuevo_med = db.Column(db.String(50), nullable=True)
