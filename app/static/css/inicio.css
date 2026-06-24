@@ -5945,182 +5945,315 @@ tr:first-child .autocomplete-results {
 }
 
 
-/* --- CONTENEDOR PRINCIPAL (Fondo gris de la página) --- */
-#fc-container-dbf {
-    font-family: sans-serif;
-    background-color: #f5f5f5; /* El fondo gris general */
-    padding: 20px;
-    border-radius: 10px;
+/* ==========================================================================
+   VARIABLES DE TEMA (Fácil de cambiar en el futuro)
+   ========================================================================== */
+:root {
+    --bg-page: #f8fafc;        /* Fondo general suave */
+    --bg-surface: #ffffff;     /* Fondo de las cajas */
+    --text-main: #1e293b;      /* Texto principal oscuro */
+    --text-muted: #64748b;     /* Texto secundario/etiquetas */
+    --primary: #2563eb;        /* Azul moderno para botones principales */
+    --primary-hover: #1d4ed8;
+    --success: #10b981;        /* Verde moderno para descarga */
+    --success-hover: #059669;
+    --border-color: #e2e8f0;   /* Bordes muy sutiles */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --transition: all 0.2s ease-in-out;
 }
 
-/* --- EL RECTÁNGULO BLANCO ÚNICO (Aquí va todo) --- */
-/* Esta clase controla la caja blanca con borde gris */
-.fila-superior {
-    /* 1. Estética del recuadro */
-    background-color: #ffffff;  /* Fondo blanco */
-    border: 2px solid #cccccc;  /* Borde gris 2px */
-    border-radius: 15px;        /* Bordes redondeados */
-    padding: 20px;              /* Espacio interno */
-
-    /* 2. Alineación de los elementos (Actividad + Campos ocultos) */
-    display: flex;              
-    align-items: flex-end;      /* Alinea todo abajo */
-    gap: 15px;                  /* Espacio entre grupos */
-    flex-wrap: wrap;            /* Para pantallas pequeñas */
-}
-
-/* --- GRUPO OCULTO (Fecha, Archivo, Botón) --- */
-
-.grupo-flex {
-    display: flex;
-    align-items: flex-end;
-    gap: 15px;
-}
-
-/* --- ESTILOS DE INPUTS Y ETIQUETAS --- */
-.grupo-dato label {
-    display: block;
-    font-weight: bold;
-    margin-bottom: 5px;
-    font-size: 16px;
-}
-
-.grupo-dato input, .grupo-dato select {
-    padding: 8px;
-    border: 1px solid #ccc;
-    border-radius: 10px;
-    height: 38px; 
+/* --- CONTENEDOR PRINCIPAL --- */
+#dbf {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-page);
+    padding: 0; /* <-- AQUI ESTABA EL ERROR: Cambiado de 2rem a 0 para quitar el espacio lateral y superior */
+    color: var(--text-main);
+    width: 100%; 
     box-sizing: border-box;
 }
 
-/* --- BOTÓN CONVERTIR (AZUL) --- */
-#btn-convertir {
-    background-color: #184875;
-    color: white;
-    font-weight: bold;
-    border: none;
-    border-radius: 10px;
-    padding: 0 25px;
-    height: 38px;
-    cursor: pointer;
-}
-#btn-convertir:hover { background-color: #0056b3; }
-
-/* --- RESULTADO Y TABLA --- */
-.caja-resultado {
-    margin-top: 20px;
-    border: 2px solid #aaa;
-    border-radius: 15px;
-    padding: 20px;
-    background: white;
+#dbf h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-top: 0; /* <-- NUEVO: Quita el espacio en blanco extra que el navegador le pone al título por arriba */
+    margin-bottom: 1.5rem;
+    color: var(--text-main);
+    letter-spacing: -0.025em;
 }
 
-.tabla-estilo { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-.tabla-estilo th, .tabla-estilo td { border: 1px solid #ddd; padding: 8px; }
+/* --- CAJAS BLANCAS (SUPERIOR Y RESULTADOS) --- */
+.fila-superior, .caja-resultado {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+    width: 100%; /* <-- AJUSTE: Fuerza a ocupar el 100% del contenedor padre */
+    box-sizing: border-box;
+}
 
-/* --- BOTÓN DESCARGAR (VERDE) --- */
-.zona-descarga {
+.fila-superior:hover, .caja-resultado:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.fila-superior {
     display: flex;
-    justify-content: flex-end;
-    margin-top: 15px;
-}
-
-#btn-descargar-1 {
-    background-color: #28a745; 
-    color: white;
-    font-weight: bold;
-    border: none;
-    border-radius: 10px; 
-    padding: 10px 30px;
-    cursor: pointer;
-}
-#btn-descargar-1:hover { background-color: #218838; }
-
-
-/* --- ESTILOS PARA PESTAÑAS (TABS) --- */
-.tabs-container {
-    display: flex;
+    align-items: flex-end;
+    gap: 1.5rem;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 15px;
-    border-bottom: 2px solid #ccc;
-    padding-bottom: 10px;
 }
 
-.tab-button {
-    padding: 10px 15px;
+/* --- GRUPOS DE DATOS E INPUTS --- */
+.grupo-flex {
+    display: flex;
+    align-items: flex-end;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    flex: 1; /* Permite que ocupe el espacio disponible */
+}
+
+.grupo-dato {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    flex: 1; /* Crecen equitativamente y llenan el ancho */
+}
+
+.grupo-dato label {
     font-weight: 600;
-    cursor: pointer;
-    border: 1px solid #ccc;
-    background-color: #a1c0dd;
-    border-radius: 5px 5px 0 0;
-    border-bottom: none;
-    opacity: 0.7;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
-.tab-button:hover {
-    background-color: #a1c0dd;
-}
-
-/* Estilo para la pestaña activa */
-.tab-button.active {
-    background-color: #184875;
-    border-color: #ccc;
-    border-bottom: 2px solid #184875; /* Truco para "unir" con la tabla */
-    margin-bottom: -2px; /* Sube el botón para tapar la línea */
-    opacity: 1;
-}
-
-
-/* --- ESTILOS ADICIONALES PARA LA TABLA DE PREVISUALIZACIÓN --- */
-
-/* 1. Habilita el scroll y define la altura (ya lo tenías, pero revisado) */
-.tabla-scroll-container {
-    overflow-x: auto;  /* Scroll Horizontal */
-    overflow-y: auto;  /* Scroll Vertical */
-    max-height: 550px; /* Altura máxima de la tabla */
+.grupo-dato input, .grupo-dato select {
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
+    color: var(--text-main);
+    background-color: var(--bg-page);
+    transition: var(--transition);
+    outline: none;
     width: 100%;
-    border: 1px solid #ddd;
 }
 
-/* 2. Hace la letra de la tabla más pequeña */
-.tabla-estilo {
-    font-size: 12px; /* <-- TAMAÑO DE LETRA MÁS PEQUEÑO */
-    border-collapse: collapse;
+.grupo-dato input:focus, .grupo-dato select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    background-color: var(--bg-surface);
+}
+
+/* --- BOTONES MODERNOS --- */
+button {
+    font-family: inherit;
+    transition: var(--transition);
+}
+
+#btn-convertir {
+    background-color: var(--primary);
+    color: white;
+    font-weight: 600;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 0.6rem 1.5rem;
+    height: 42px; 
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
     width: 100%; 
 }
 
-/* 3. Celdas de Datos (tbody) */
-.tabla-estilo td {
-    padding: 6px 8px;
-    border: 1px solid #e0e0e0;
-    text-align: left;
-    vertical-align: top;
+#btn-convertir:hover {
+    background-color: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
 }
 
-/* 4. CELDAS DE CABECERA (th) - ¡LA PARTE CLAVE! */
+#btn-convertir:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* --- PESTAÑAS (TABS) MODERNAS TIPO "PILL" --- */
+.tabs-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.tab-button {
+    padding: 0.5rem 1.2rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    border: none;
+    background-color: transparent;
+    color: var(--text-muted);
+    border-radius: var(--radius-md);
+    position: relative;
+}
+
+.tab-button:hover {
+    background-color: var(--bg-page);
+    color: var(--text-main);
+}
+
+.tab-button.active {
+    background-color: var(--primary);
+    color: white;
+    box-shadow: var(--shadow-sm);
+}
+
+/* --- TABLA DE DATOS --- */
+.caja-resultado {
+    margin-top: 1.5rem;
+}
+
+.tabla-scroll-container {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 500px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
+}
+
+.tabla-estilo {
+    width: 100%;
+    border-collapse: separate; 
+    border-spacing: 0;
+    font-size: 0.85rem;
+}
+
+.tabla-estilo th, .tabla-estilo td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    white-space: nowrap; 
+}
+
 .tabla-estilo th {
-    position: sticky;  /* <-- HACE QUE SE PEGUE */
-    top: 0;            /* <-- LA PEGA ARRIBA DEL CONTENEDOR DE SCROLL */
-    background-color: #f0f0f0; /* <-- FONDO PARA QUE NO SE VEA EL TEXTO DE ABAJO */
-    
-    /* Estilos visuales que ya tenías */
-    padding: 6px 8px;
-    border: 1px solid #e0e0e0;
-    text-align: left;
-    vertical-align: top;
-    font-weight: bold; /* Asegura que la cabecera sea negrita */
-    z-index: 10;       /* Asegura que esté por encima del contenido */
+    position: sticky;
+    top: 0;
+    background-color: var(--bg-page); 
+    color: var(--text-muted);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    z-index: 10;
+    box-shadow: 0 1px 0 var(--border-color); 
 }
 
-/* 5. Hace que la columna OBSERS (la 9na) sea ancha y el texto se parta */
+.tabla-estilo tbody tr:nth-child(even) {
+    background-color: #fafafa;
+}
+.tabla-estilo tbody tr:hover {
+    background-color: #f1f5f9;
+}
+
 .tabla-estilo th:nth-child(17),
 .tabla-estilo td:nth-child(17) {
-    min-width: 350px; /* <-- ANCHO MÍNIMO PARA OBSERS */
-    width: 45%;       /* <-- Intenta que ocupe el 45% del espacio */
-    white-space: normal; /* Permite que el texto largo se ajuste (wrap) */
+    min-width: 300px;
+    white-space: normal;
+    line-height: 1.4;
 }
 
+/* --- ZONA DE DESCARGA --- */
+.zona-descarga {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+#btn-descargar-1 {
+    background-color: var(--success);
+    color: white;
+    font-weight: 600;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 0.75rem 2rem;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+#btn-descargar-1:hover {
+    background-color: var(--success-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+/* ==========================================================================
+   MEDIA QUERIES (Responsive para móviles y tablets)
+   ========================================================================== */
+@media (max-width: 768px) {
+    #dbf { padding: 1rem; }
+    
+    .fila-superior, .grupo-flex {
+        flex-direction: column;
+        align-items: stretch; 
+    }
+    
+    .grupo-dato {
+        width: 100%;
+        min-width: 100%;
+    }
+    
+    .boton-container {
+        margin-top: 10px;
+    }
+    
+    .zona-descarga {
+        justify-content: stretch;
+    }
+    
+    #btn-descargar-1 {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* --- BOTONES MODERNOS --- */
+#btn-convertir, #btn-generar-entregable {
+    background-color: var(--primary);
+    color: white;
+    font-weight: 600;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 0.6rem 1.5rem;
+    height: 42px; 
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    width: 100%; 
+}
+
+#btn-convertir:hover, #btn-generar-entregable:hover {
+    background-color: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+#btn-convertir:disabled, #btn-generar-entregable:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
 
 /* GENERAR CARGAS */
 /* --- 1. RECTÁNGULO DE CONTROLES (Blanco con borde) --- */
@@ -6282,6 +6415,81 @@ tr:first-child .autocomplete-results {
     text-overflow: ellipsis; /* Muestra '...' si el texto es muy largo */
 }
 
+/* Estilos para alinear los filtros en una sola fila */
+#formCargasSetup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: flex-end; /* Alinea los inputs y el botón en la parte inferior */
+    background-color: #f8fafc;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 20px;
+}
+
+#formCargasSetup .input-group {
+    flex: 1; /* Hace que todos los campos ocupen exactamente el mismo ancho */
+    min-width: 160px; /* Evita que colapsen demasiado en pantallas pequeñas */
+    display: flex;
+    flex-direction: column;
+}
+
+#formCargasSetup .input-group label {
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+    color: #4a5568;
+    font-weight: 600;
+}
+
+#formCargasSetup .input-group input,
+#formCargasSetup .input-group select {
+    padding: 8px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    height: 42px; /* Altura uniforme para todos */
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+#formCargasSetup .input-group input:focus,
+#formCargasSetup .input-group select:focus {
+    outline: none;
+    border-color: #3182ce;
+    box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+}
+
+/* El Nuevo Botón Verde */
+.btn-moderno {
+    height: 42px; /* Misma altura que los inputs */
+    padding: 0 24px;
+    background: linear-gradient(135deg, #22c55e, #16a34a); /* Degradado verde */
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 2px 4px rgba(34, 197, 94, 0.2);
+    white-space: nowrap;
+    width: 100%; /* Hace que llene su espacio asignado igual que los inputs */
+}
+
+.btn-moderno:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(34, 197, 94, 0.3);
+    background: linear-gradient(135deg, #16a34a, #15803d); /* Verde más oscuro al pasar el mouse */
+}
+
+.btn-moderno:active {
+    transform: translateY(0);
+}
 
 /* GENERAR CARTAS */
 /* TUS ESTILOS PERSONALIZADOS (ID #cartas) */
@@ -6476,6 +6684,194 @@ tr:first-child .autocomplete-results {
     to { opacity: 1; transform: translateY(0); }
 }
 
+
+/* 1. EL CONTENEDOR PRINCIPAL */
+.transform-layout {
+    position: relative; /* CLAVE: Permite que la caja derecha se ancle a esta */
+    margin-top: 20px;
+    width: 100%;
+    /* Quitamos el flex y los px fijos. Su altura será dictada 100% por la caja izquierda. */
+}
+
+/* 2. LA CAJA IZQUIERDA (Manda sobre la altura real) */
+.mapping-section {
+    width: 300px; 
+    box-sizing: border-box;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 15px;
+    /* Al no tener altura forzada, medirá EXACTAMENTE lo que midan tus inputs. Cero huecos blancos. */
+}
+
+/* 3. LA CAJA DERECHA (Se adapta como un clon) */
+.preview-section {
+    position: absolute;
+    top: 0;
+    bottom: 0; /* CLAVE: Se estira milimétricamente hasta donde termine la caja izquierda */
+    left: 320px; /* 300px de la izquierda + 20px de espacio de separación */
+    right: 0;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 15px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+
+.section-subtitle {
+    margin: 0 0 10px 0;
+    color: #1e293b;
+    font-size: 1.1rem;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 8px;
+}
+
+.mapping-grid .map-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 10px;
+}
+
+.mapping-grid label {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.mapping-grid select, .mapping-grid input {
+    padding: 6px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.mapping-grid input:disabled {
+    background: #e2e8f0;
+    color: #94a3b8;
+}
+
+/* Tabla de Previsualización */
+.table-responsive-1 {
+    flex: 1; 
+    min-height: 0; 
+    overflow: auto; /* El scroll vivirá solo aquí adentro */
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    scrollbar-width: thin; 
+    scrollbar-color: #cbd5e1 #f8fafc;
+}
+
+/* Estilos para navegadores Webkit (Chrome, Edge, etc.) */
+.table-responsive::-webkit-scrollbar { width: 8px; height: 8px; }
+.table-responsive::-webkit-scrollbar-track { background: #f8fafc; border-radius: 6px; }
+.table-responsive::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 6px; }
+.table-responsive::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
+
+
+/* ========================================= */
+/* COMPORTAMIENTO MÓVIL (RESPONSIVE REAL)    */
+/* ========================================= */
+@media (max-width: 900px) {
+    .transform-layout {
+        display: flex; 
+        flex-direction: column; 
+        gap: 20px;
+    }
+    .mapping-section {
+        width: 100%; 
+    }
+    .preview-section {
+        position: relative; 
+        left: 0; 
+        bottom: auto; 
+        height: 500px; /* En celulares le damos altura fija para que no devore toda la pantalla */
+        width: 100%;
+    }
+}
+
+/* ========================================= */
+/* ESTILOS DE SCROLLBAR PARA LA TABLA PREVIEW */
+/* ========================================= */
+
+/* El ancho y alto total de la barra */
+.table-responsive::-webkit-scrollbar {
+    width: 8px;  /* Grosor de la barra vertical */
+    height: 8px; /* Grosor de la barra horizontal */
+}
+
+/* El fondo de la barra (el "carril") */
+.table-responsive::-webkit-scrollbar-track {
+    background: #f8fafc; 
+    border-radius: 6px;
+}
+
+/* La parte móvil de la barra */
+.table-responsive::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1; 
+    border-radius: 6px;
+    border: 2px solid #f8fafc; /* Le da un efecto de margen interior */
+}
+
+/* Cuando pasas el cursor por encima de la barra móvil */
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8; 
+}
+
+.modern-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.modern-table th {
+    background-color: #f1f5f9;
+    color: #334155;
+    font-weight: 600;
+    padding: 10px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.modern-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #475569;
+}
+
+/* El Botón de Descarga Premium */
+.preview-header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.btn-descarga-premium {
+    background: linear-gradient(135deg, #6366f1, #4f46e5); /* Púrpura/Indigo vibrante */
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2);
+    transition: all 0.2s;
+}
+
+.btn-descarga-premium:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(79, 70, 229, 0.3);
+}
 
 /* --- GRID DE CARGAS COMPACTO --- */
 
@@ -7567,3 +7963,1088 @@ select.form-control {
 .ranking-table td:not(:first-child) {
     text-align: center; 
 }
+
+
+/* ==========================================
+   ESTILOS AISLADOS: MÓDULO ALMACÉN
+========================================== */
+
+#almacen .alm-header-wrapper {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+#almacen .alm-main-title {
+    font-size: 1.5rem;
+    color: var(--header-bg);
+    margin: 0 0 5px 0;
+    font-weight: 700;
+}
+
+#almacen .alm-subtitle {
+    color: var(--text-muted);
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+/* Contenedores y Tarjetas */
+#almacen .alm-kardex-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+#almacen .alm-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+    overflow: hidden;
+}
+
+#almacen .alm-mt-4 { margin-top: 20px; }
+
+#almacen .alm-card-head {
+    padding: 15px 20px;
+    background: var(--sidebar-bg);
+    border-bottom: 1px solid var(--border);
+}
+
+#almacen .alm-card-head h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--header-bg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Utilidades */
+#almacen .alm-border-green { border-top: 4px solid #10b981; }
+#almacen .alm-border-red { border-top: 4px solid #ef4444; }
+#almacen .alm-icon-green { color: #10b981; }
+#almacen .alm-icon-red { color: #ef4444; }
+#almacen .alm-text-accent { color: var(--accent); }
+#almacen .alm-text-green { color: #10b981; }
+#almacen .alm-text-red { color: #ef4444; }
+#almacen .alm-text-muted { color: var(--text-muted); }
+#almacen .alm-bold { font-weight: bold; }
+#almacen .alm-text-center { text-align: center !important; }
+
+/* ==========================================
+   PESTAÑAS PRINCIPALES (Kardex / Inventario)
+========================================== */
+#almacen .alm-main-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0;
+}
+
+#almacen .alm-main-tab {
+    background: transparent;
+    border: none;
+    padding: 12px 25px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#almacen .alm-main-tab:hover {
+    color: var(--header-bg);
+    background: var(--hover-bg);
+    border-radius: 6px 6px 0 0;
+}
+
+#almacen .alm-main-tab.active {
+    color: var(--accent);
+    border-bottom: 3px solid var(--accent);
+}
+
+/* Control de Vistas */
+#almacen .alm-view-content {
+    display: none;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+#almacen .alm-view-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================
+   SUB-PESTAÑAS DEL HISTÓRICO
+========================================== */
+#almacen .alm-header-tabs {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 0;
+    flex-wrap: wrap;
+}
+
+#almacen .alm-tabs-container {
+    display: flex;
+    gap: 15px;
+}
+
+#almacen .alm-sub-tab {
+    background: transparent;
+    border: none;
+    padding: 15px 10px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+}
+
+#almacen .alm-sub-tab:hover { 
+    color: var(--header-bg); 
+}
+
+#almacen .alm-sub-tab.active {
+    color: var(--accent);
+    border-bottom: 3px solid var(--accent);
+}
+
+/* ==========================================
+   TABLAS Y DIGITACIÓN
+========================================== */
+#almacen .alm-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#almacen .alm-table {
+    width: 100%;
+    border-collapse: collapse;
+    white-space: nowrap;
+}
+
+#almacen .alm-table th, 
+#almacen .alm-table td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+}
+
+#almacen .alm-table th {
+    background-color: var(--white);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+}
+
+#almacen .alm-table tbody tr:hover {
+    background-color: var(--hover-bg);
+}
+
+/* Inputs de Digitación Directa en Tablas */
+#almacen .alm-entry-row {
+    background-color: var(--active-bg) !important;
+}
+
+#almacen .alm-input {
+    width: 100%;
+    min-width: 90px;
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: var(--header-bg);
+    outline: none;
+    transition: border-color 0.2s;
+    background: var(--white);
+    box-sizing: border-box;
+}
+
+#almacen .alm-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+#almacen .alm-input-sm {
+    width: 80px;
+    text-align: center;
+}
+
+/* Botones de acción en la fila de digitación y tablas */
+#almacen .alm-action-group {
+    display: flex;
+    align-items: center;
+    justify-content: center; /* ESTO CENTRA PERFECTAMENTE LOS BOTONES E ÍCONOS */
+    gap: 8px;
+}
+
+#almacen .alm-btn-add {
+    border: none;
+    color: white;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s;
+}
+
+#almacen .alm-btn-add:active {
+    transform: scale(0.95);
+}
+
+#almacen .alm-bg-green { background-color: #10b981; }
+#almacen .alm-bg-green:hover { background-color: #059669; }
+#almacen .alm-bg-red { background-color: #ef4444; }
+#almacen .alm-bg-red:hover { background-color: #dc2626; }
+#almacen .alm-bg-accent { background-color: var(--accent); }
+#almacen .alm-bg-accent:hover { background-color: #1d4ed8; }
+
+/* Badges y Botones de ícono */
+#almacen .alm-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: inline-block;
+}
+
+#almacen .alm-badge-outline {
+    background: var(--active-bg);
+    color: var(--accent);
+    border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+#almacen .alm-badge-red {
+    background: #fee2e2;
+    color: #ef4444;
+}
+
+#almacen .alm-icon-btn {
+    background: none !important; /* Quita el fondo gris feo */
+    border: none !important;     /* Quita el borde cuadrado */
+    padding: 0;                   /* Quita padding extra */
+    color: #94a3b8;              /* Color gris suave por defecto (slate-400) */
+    font-size: 1.1rem;            /* Tamaño del ícono */
+    cursor: pointer;
+    transition: color 0.2s, transform 0.2s; /* Transición suave al pasar el mouse */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: none !important;  /* Quita cualquier sombra */
+}
+
+/* Efecto al pasar el mouse (Hover) */
+#almacen .alm-icon-btn:hover {
+    color: var(--accent);        /* Cambia al color azul principal de tu sistema */
+    transform: scale(1.1);       /* Un pequeño sutil aumento de tamaño */
+}
+
+/* 1. Define el tamaño de la barra (Ancho para vertical, Alto para horizontal) */
+#almacen .alm-custom-scrollbar::-webkit-scrollbar {
+    width: 5px;  /* ¡AQUÍ ESTÁ LA CLAVE! Mucho más fino para el scroll vertical */
+    height: 5px; /* También fino si aparece scroll horizontal */
+}
+
+/* 2. Pista (Fondo de la barra) - La hacemos invisible para mayor limpieza */
+#almacen .alm-custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent; /* Adiós al fondo gris de la pista */
+}
+
+/* 3. El "Pulgar" (La barrita que se mueve) */
+#almacen .alm-custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1; /* Color gris suave (slate-300) */
+    border-radius: 5px;  /* Bordes totalmente redondeados */
+    transition: background 0.2s ease;
+}
+
+/* Efecto Hover sobre la barrita */
+#almacen .alm-custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8; /* Gris ligeramente más oscuro al pasar el mouse (slate-400) */
+}
+
+/* ==========================================
+   RESPONSIVE
+========================================== */
+@media (max-width: 768px) {
+    #almacen .alm-header-tabs {
+        flex-direction: column;
+        align-items: flex-start;
+        padding-top: 15px;
+    }
+    #almacen .alm-tabs-container {
+        width: 100%;
+        overflow-x: auto;
+        margin-top: 10px;
+    }
+    #almacen .alm-sub-tab {
+        white-space: nowrap;
+    }
+}
+
+/*ALMACEN*/
+/* ==========================================
+   ESTILOS DEL LISTADO DESPLEGABLE (ACORDEÓN)
+========================================== */
+#almacen .alm-btn-toggle {
+    width: 100%;
+    background-color: #f8fafc; /* Gris extra claro, casi blanco */
+    color: #475569;            /* Texto gris oscuro profesional (slate-600) */
+    border: none;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 15px;         /* ¡AQUÍ ESTÁ LA CLAVE! Mucho más delgado */
+    font-size: 0.85rem;        /* Mismo tamaño que el resto de la tabla */
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+}
+
+#almacen .alm-btn-toggle i {
+    color: #94a3b8; /* Íconos en un gris más suave */
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+/* Efecto Hover: Solo destaca cuando el usuario interactúa */
+#almacen .alm-btn-toggle:hover {
+    background-color: #f1f5f9;
+    color: var(--accent); /* Se vuelve azul sutilmente al pasar el mouse */
+}
+
+#almacen .alm-btn-toggle:hover i {
+    color: var(--accent);
+}
+
+/* Efecto cuando la lista está abierta */
+#almacen .alm-btn-toggle.open {
+    background-color: #ffffff;
+    border-bottom: 1px dashed var(--border);
+}
+
+#almacen .alm-btn-toggle.open .alm-toggle-icon {
+    transform: rotate(180deg);
+}
+
+/* Barra de filtros */
+#almacen .alm-filter-bar {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+    align-items: center;
+}
+
+/* Responsive para la barra de filtros */
+@media (max-width: 768px) {
+    #almacen .alm-filter-bar {
+        flex-direction: column;
+    }
+}
+
+/* Badges para el flujo del Histórico */
+.alm-badge-entrada {
+    background-color: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+.alm-badge-salida {
+    background-color: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+/* Evitar que las celdas se rompan en múltiples líneas estropeando la grilla */
+.alm-table td {
+    vertical-align: middle;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* Estilo para los botones de paginación */
+.alm-btn-page {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    background-color: #ffffff;
+    color: var(--text-main);
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+.alm-btn-page:hover { background-color: #f1f5f9; }
+.alm-btn-page.active {
+    background-color: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+}
+.alm-btn-page:disabled {
+    background-color: #f8fafc;
+    color: #cbd5e1;
+    cursor: not-allowed;
+}
+
+
+/* =========================================
+   REVALIDACIÓN DE LECTURAS
+   ========================================= */
+
+/* Variables de tu paleta gráfica */
+    :root {
+        --c-blue: #184875; /* Tu azul institucional */
+        --c-blue-light: #e8f0fe;
+        --c-blue-text: #1967d2;
+        --c-green: #28a745;
+        --c-red: #dc3545;
+        --c-gray-text: #6c757d;
+        --c-gray-border: #e9ecef;
+        --c-gray-bg: #f8f9fa;
+    }
+
+    /* Título Principal */
+    .page-header-pro {
+        margin-bottom: 25px;
+        /* Se eliminó el padding-left y border-left de aquí */
+    }
+    .page-header-pro h2 {
+        margin: 0 0 5px 0;
+        padding-left: 10px; /* Espacio solo para el título */
+        border-left: 4px solid var(--c-blue-text); /* La barrita azul viva solo en el H2 */ 
+        font-size: 1.5rem;
+        color: var(--header-bg);
+        font-weight: 700;
+    }
+    .page-header-pro p { 
+        margin: 0; 
+        padding-left: 14px; /* Alineamos el subtítulo con el texto de arriba (4px de borde + 10px de padding) */
+        color: var(--c-gray-text); 
+        font-size: 0.9rem; 
+    }
+
+    /* Barra de herramientas */
+    .toolbar-pro {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    .toolbar-group { display: flex; gap: 15px; align-items: flex-end; }
+    
+    .input-wrap { display: flex; flex-direction: column; gap: 5px; }
+    .input-wrap label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--c-gray-text);
+    }
+    .control-pro {
+        padding: 8px 12px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        color: #495057;
+        outline: none;
+        min-width: 200px;
+        background: white;
+    }
+    .control-pro:focus { border-color: var(--c-blue); }
+
+    /* Botones Pro */
+    .btn-pro {
+        padding: 8px 16px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid transparent;
+        transition: 0.2s;
+        margin: 0;
+    }
+    .btn-blue-outline { background: white; color: var(--c-blue); border-color: var(--c-blue); }
+    .btn-blue-outline:hover { background: var(--c-blue-light); }
+    .btn-green { background: var(--c-green); color: white; }
+    .btn-green:hover { filter: brightness(0.9); }
+
+    /* Layout Grid */
+    .revalidacion-grid-pro {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        align-items: start;
+        height: calc(100vh - 220px); /* Ajuste de altura dinámica */
+        min-height: 500px; /* Altura mínima de seguridad */
+    }
+
+    /* Tarjetas (Cards) */
+    .card-pro {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: 1px solid var(--c-gray-border);
+        overflow: hidden;
+        display: flex; /* Para empujar el contenido interno */
+        flex-direction: column; 
+        height: 100%; /* Ocupa el 100% de la celda del grid */
+    }
+    .border-top-blue { border-top: 4px solid var(--c-blue); }
+    .border-top-red { border-top: 4px solid var(--c-red); }
+    
+    .card-header-pro {
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--c-gray-border);
+        background: white;
+    }
+    .card-header-pro.flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .card-header-pro h3 {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #333;
+        font-weight: 600;
+    }
+    .card-body-pro { padding: 15px; }
+    .p-0 { padding: 0 !important; }
+    
+    /* Regla añadida para darle scroll solo al contenedor de la tabla */
+    .card-body-pro.p-0 { 
+        flex-grow: 1; 
+        overflow-y: auto; 
+    }
+
+    /* Tabla Enterprise */
+    .table-pro {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }
+    .table-pro th {
+        color: var(--c-gray-text);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        padding: 12px 15px;
+        text-align: left;
+        border-bottom: 2px solid var(--c-gray-border);
+        background: white;
+        position: sticky; /* Cabecera fija */
+        top: 0;
+        z-index: 1;
+        box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
+    }
+    .table-pro td {
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--c-gray-border);
+        vertical-align: middle;
+        color: #495057;
+    }
+    .table-pro tbody tr:hover { background-color: #f8f9fa; }
+
+    /* Elementos de la Tabla */
+    .badge-code {
+        background-color: var(--c-blue-light);
+        color: var(--c-blue-text);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: 600;
+        border: 1px solid #d2e3fc;
+    }
+    .text-green { color: var(--c-green); }
+    .text-muted { color: var(--c-gray-text); }
+    .text-dark { color: #333; }
+    .text-sm { font-size: 0.8rem; }
+    .fw-600 { font-weight: 600; }
+    
+    .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+    .dot-warning { background-color: #ffc107; }
+
+    /* Botones de Acción (Cuadraditos) */
+    .action-cells { display: flex; gap: 5px; }
+    .btn-square {
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        border-radius: 4px;
+        color: white;
+        cursor: pointer;
+        font-size: 0.8rem;
+        transition: 0.2s;
+    }
+    .bg-blue { background-color: #0d6efd; }
+    .bg-blue:hover { background-color: #0b5ed7; }
+    .bg-green { background-color: var(--c-green); }
+    .bg-green:hover { background-color: #218838; }
+    .bg-red { background-color: var(--c-red); }
+    .bg-red:hover { background-color: #c82333; }
+
+    /* Visor de Fotos */
+    .visor-body-pro { 
+        display: flex; 
+        flex-direction: column; 
+        gap: 15px; 
+        flex-grow: 1; /* Estira el contenido */
+    }
+    .photo-frame-pro {
+        /* Eliminamos el height fijo */
+        flex-grow: 1; /* Estira el marco de la foto */
+        min-height: 250px; /* Límite mínimo para la foto */
+        background-color: var(--c-gray-bg);
+        border: 1px dashed #ccc;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    .no-photo-placeholder {
+        text-align: center;
+        color: #adb5bd;
+    }
+    .no-photo-placeholder i { font-size: 3rem; margin-bottom: 10px; }
+    .no-photo-placeholder p { margin: 0; font-size: 0.9rem; }
+    
+    .photo-controls-pro {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        padding-top: 10px;
+        border-top: 1px solid var(--c-gray-border);
+    }
+    .btn-icon-text {
+        background: none;
+        border: none;
+        color: var(--c-gray-text);
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .btn-icon-text:hover { color: #333; }
+    .btn-icon-text.text-blue { color: var(--c-blue); }
+
+    /* Responsive */
+    @media (max-width: 1200px) {
+        .revalidacion-grid-pro { grid-template-columns: 1fr; }
+        /* Ya no forzamos un height: 350px fijo, el flex-grow lo soluciona */
+    }
+
+    @keyframes fadeSlideUpPro {
+        0% {
+            opacity: 0;
+            transform: translateY(15px); /* Inicia ligeramente más abajo */
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0); /* Sube a su posición original */
+        }
+    }
+
+    /* Se aplica al contenedor principal del módulo */
+    #revalidacion {
+        animation: fadeSlideUpPro 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+    }
+
+
+/* =========================================
+   MODAL: GESTIÓN DE MATRIZ (ESTILO CLEAN)
+   ========================================= */
+.modal-overlay-clean {
+    position: fixed !important; 
+    top: 0 !important; 
+    left: 0 !important; 
+    width: 100vw !important; 
+    height: 100vh !important;
+    background: rgba(0,0,0,0.4) !important; /* Cubre todo */
+    z-index: 999999 !important; /* Por encima de tu menú lateral */
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+}
+
+.modal-dialog-clean {
+        background: white;
+        width: 1200px; /* <-- CAMBIADO: Antes era 750px. Ahora abarcará casi todo el ancho disponible */
+        max-width: 95%;
+        border-radius: 12px;
+        box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        display: flex; flex-direction: column;
+        max-height: 90vh;
+        position: relative;
+        animation: fadeSlideUpPro 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+.btn-close-clean {
+    position: absolute; 
+    top: 20px; 
+    right: 20px;
+    background: none; 
+    border: none; 
+    font-size: 1.2rem;
+    color: #999; 
+    cursor: pointer; 
+    transition: 0.2s;
+}
+.btn-close-clean:hover { color: #333; }
+
+/* Cabecera estilo Nuevo Empleado */
+.modal-header-clean {
+    padding: 25px 30px 15px 30px;
+}
+.modal-header-clean h3 {
+    margin: 0;
+    padding-left: 10px;
+    border-left: 3px solid var(--c-blue);
+    font-size: 1.1rem;
+    color: #333;
+    font-weight: 700;
+}
+
+/* Pestañas */
+.modal-tabs-clean {
+    display: flex;
+    padding: 0 30px;
+    border-bottom: 1px solid var(--c-gray-border);
+    gap: 20px;
+}
+.tab-btn-clean {
+    padding: 10px 5px; 
+    background: none; 
+    border: none;
+    font-size: 0.9rem; 
+    font-weight: 600; 
+    color: #777;
+    cursor: pointer; 
+    position: relative; 
+}
+.tab-btn-clean:hover { color: var(--c-blue); }
+.tab-btn-clean.active { color: var(--c-blue); }
+.tab-btn-clean.active::after {
+    content: ''; 
+    position: absolute; 
+    bottom: -1px; 
+    left: 0;
+    width: 100%; 
+    height: 2px; 
+    background: var(--c-blue);
+}
+
+/* Forzar ocultar/mostrar pestañas para que no se amontonen */
+.tab-content-clean { display: none; }
+.tab-content-clean.active { display: block; }
+
+/* Cuerpo */
+.modal-body-clean {
+    padding: 25px 30px;
+    overflow-y: auto;
+    flex-grow: 1;
+}
+
+/* Elementos Internos */
+.upload-section-clean {
+    display: flex; 
+    align-items: center; 
+    gap: 15px;
+    margin-bottom: 20px;
+}
+.btn-clean-outline {
+    padding: 8px 16px; 
+    border: 1px solid #ccc; 
+    background: white;
+    border-radius: 6px; 
+    font-size: 0.85rem; 
+    font-weight: 600;
+    color: #555; 
+    cursor: pointer; 
+    display: inline-block;
+}
+.btn-clean-outline:hover { border-color: var(--c-blue); color: var(--c-blue); }
+.file-name-clean { font-size: 0.85rem; color: #888; }
+
+.table-scroll-clean {
+        max-height: 450px; /* <-- CAMBIADO: Antes era 200px. Ahora la tabla será mucho más alta */
+        min-height: 250px; /* <-- AÑADIDO: Para que mantenga un buen tamaño incluso si está vacía */
+        overflow-y: auto;
+        border: 1px solid var(--c-gray-border); 
+        border-radius: 6px;
+    }
+
+.form-group-clean label {
+    font-size: 0.8rem; 
+    font-weight: 600; 
+    color: #555; 
+    display: block; 
+    margin-bottom: 5px;
+}
+
+/* Barras de avance */
+.progress-item-clean { margin-bottom: 15px; }
+.progress-bar-bg-clean {
+    height: 6px; 
+    background: #eee; 
+    border-radius: 3px; 
+    overflow: hidden;
+}
+.progress-bar-fill-clean { height: 100%; transition: width 0.4s ease; }
+
+/* Footer */
+.modal-footer-clean {
+    padding: 20px 30px;
+    border-top: 1px solid var(--c-gray-border);
+    display: flex; justify-content: flex-end; gap: 10px;
+    background: white;
+    border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;
+}
+.btn-clean-ghost {
+    padding: 10px 20px; border: 1px solid #ccc; background: white;
+    border-radius: 6px; font-size: 0.85rem; font-weight: 600;
+    color: #555; cursor: pointer;
+}
+.btn-clean-primary {
+    padding: 10px 20px; border: none; background: var(--c-blue);
+    border-radius: 6px; font-size: 0.85rem; font-weight: 600;
+    color: white; cursor: pointer;
+}
+.btn-clean-primary:hover { background: #11365a; }
+
+/* Permite que la tabla de previsualización haga scroll horizontal sin romper el diseño */
+.table-preview th, 
+.table-preview td {
+    white-space: nowrap;
+    padding: 10px 15px;
+}
+
+/* =========================================
+       PAGINACIÓN ENTERPRISE
+       ========================================= */
+    .pagination-pro {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-top: 1px solid var(--c-gray-border);
+        padding-top: 15px;
+    }
+    .pagination-buttons {
+        display: flex;
+        gap: 5px;
+    }
+    .btn-page {
+        padding: 5px 12px;
+        border: 1px solid var(--c-gray-border);
+        background: white;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--c-gray-text);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-page:hover:not(:disabled) {
+        background: var(--c-gray-bg);
+        border-color: #ccc;
+        color: #333;
+    }
+    .btn-page.active {
+        background: var(--c-blue);
+        color: white;
+        border-color: var(--c-blue);
+    }
+    .btn-page:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+/* Ícono para limpiar input */
+    .clear-input-icon {
+        position: absolute;
+        right: 30px; 
+        top: 50%;
+        transform: translateY(-50%);
+        color: #bbb;
+        cursor: pointer;
+        font-size: 0.9rem;
+        display: none; 
+        transition: 0.2s;
+        z-index: 10; 
+    }
+    .clear-input-icon:hover {
+        color: var(--c-red);
+    }
+
+#revalidacion .select2-container--default .select2-selection--single {
+        height: 38px; /* Altura estándar, ajústala si tu control-pro es más alto */
+        border: 1px solid #d1d5db; /* Color del borde para que haga match */
+        border-radius: 6px; /* Bordes redondeados */
+        display: flex;
+        align-items: center;
+        background-color: #fff;
+    }
+    #revalidacion .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+        color: #374151; /* Color de la fuente */
+        padding-left: 12px;
+        font-size: 14px;
+    }
+    #revalidacion .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 100%;
+        right: 8px;
+    }
+    #revalidacion .select2-container:focus, #revalidacion .select2-selection:focus {
+        outline: none;
+        border-color: #3b82f6; /* Color azul al hacer clic */
+    }
+
+    /* ========================================================= */
+    /* FIX PARA EL VISOR DE FOTOS: Evita que la imagen tape los controles */
+    /* ========================================================= */
+    
+    .visor-body-pro {
+        display: flex;
+        flex-direction: column;
+        height: 650px; /* Altura fija para la tarjeta. Puedes ajustarla a tu gusto */
+    }
+
+    .photo-frame-pro {
+        flex: 1; /* Toma todo el espacio sobrante arriba */
+        min-height: 0; /* TRUCO VITAL: Impide que una imagen grande expanda el div a la fuerza */
+        width: 100%;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .photo-controls-pro {
+        flex-shrink: 0; /* Prohíbe que el navegador encoja o desaparezca esta zona */
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        padding-top: 15px;
+        padding-bottom: 5px;
+    }
+
+    .table-pro tbody tr.fila-activa {
+        background-color: #f0f8ff !important; /* Azul hielo muy sutil */
+        box-shadow: inset 4px 0 0 0 #3b82f6; /* Borde azul a la izquierda */
+        transition: all 0.3s ease; /* Transición suave al pintar */
+    }
+
+/* ========================================================= */
+    /* SCROLLBAR MINIMALISTA                                     */
+    /* ========================================================= */
+    
+    /* Clase específica para el contenedor que va a scrollear */
+    .scroll-minimalista {
+        /*max-height: 650px; /* Ajusta esta altura para que coincida con tu visor de fotos */
+        overflow-y: auto;
+        padding-right: 2px; /* Pequeño margen para que la barra no pegue al borde */
+        
+        /* Para Firefox */
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+    }
+
+    /* Para Chrome, Edge, Safari */
+    .scroll-minimalista::-webkit-scrollbar {
+        width: 6px; /* Ancho muy sutil */
+        height: 6px;
+    }
+
+    .scroll-minimalista::-webkit-scrollbar-track {
+        background: transparent; /* Fondo transparente */
+        border-radius: 10px;
+    }
+
+    .scroll-minimalista::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1; /* Color gris claro sutil */
+        border-radius: 10px; /* Bordes redondeados */
+    }
+
+    .scroll-minimalista::-webkit-scrollbar-thumb:hover {
+        background-color: #94a3b8; /* Un gris un poco más oscuro al pasar el mouse */
+    }
+
+
+    /* 1. Obligamos a que ambas columnas se estiren a la misma altura máxima */
+    .revalidacion-grid-pro {
+        align-items: stretch !important; 
+    }
+
+    /* 2. Hacemos que ambas tarjetas sean flexibles y ocupen el 100% de esa altura */
+    #revalidacion .card-pro {
+        display: flex;
+        flex-direction: column;
+        height: 100%; 
+    }
+
+    /* 3. La zona de la tabla rellena todo el hueco interior y activa su scroll */
+    #revalidacion .border-top-blue .card-body-pro {
+        flex: 1;
+        min-height: 0; 
+        overflow-y: auto;
+    }
+
+    /* 4. TRUCO CLAVE: Empujamos la paginación al fondo absoluto de la tarjeta */
+    #pagination-revalidacion {
+        margin-top: 0 !important; /* <-- ESTO QUITA EL ESPACIO EN BLANCO */
+        border-top: 1px solid #e5e7eb; 
+        background-color: #f8fafc; 
+        border-radius: 0 0 8px 8px; 
+    }
+
+
+/* ========================================================= */
+    /* FIX: ALTURA PERFECTA PARA SELECT2 EN AVANCE               */
+    /* ========================================================= */
+    
+    #tab-avance .select2-container--default .select2-selection--single {
+        height: 40px !important; /* Obliga al select a medir exactamente lo mismo que el botón */
+        border: 1px solid #d1d5db !important; 
+        border-radius: 6px !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+
+    #tab-avance .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal !important;
+        color: #334155 !important;
+        font-size: 0.9rem !important;
+    }
+
+    #tab-avance .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px !important; /* Centra la flechita verticalmente */
+    }
