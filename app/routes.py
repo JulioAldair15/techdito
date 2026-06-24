@@ -274,8 +274,15 @@ def login():
 
             # Obtener nombre del empleado mediante la relación backref 'empleado'
             if usuario.empleado:
-                nombre_display = f"{usuario.empleado.nombres} {usuario.empleado.apellidos}".strip()
-                session['nombre_completo'] = nombre_display
+                # Si es None, asignamos una cadena vacía "" para evitar que se imprima la palabra "None"
+                nombres = usuario.empleado.nombres or ""
+                apellidos = usuario.empleado.apellidos or ""
+                
+                # Juntamos ambos y eliminamos espacios extra al inicio/final o en medio
+                nombre_display = f"{nombres} {apellidos}".strip()
+                
+                # Por seguridad: si por alguna razón ambos estaban vacíos, guardamos el nombre de usuario
+                session['nombre_completo'] = nombre_display if nombre_display else usuario.user
             else:
                 session['nombre_completo'] = usuario.user
 
@@ -7071,35 +7078,42 @@ def procesar_asignacion():
         file = request.files['archivo']
         f_cal_input = request.form.get('fecha_calendario', '')
         f_exe_input = request.form.get('fecha_ejecucion', '')
-        mapping = json.loads(request.form['mapping']) 
+        # 1. CAPTURAR EL NUEVO PARÁMETRO (Por defecto 'CONTINUOS' por seguridad)
+        sub_actividad = request.form.get('sub_actividad', 'CONTINUOS') 
+        mapping = json.loads(request.form.get('mapping', '{}'))
 
-        # 1. LEER EXCEL (dtype=str para no perder ceros en clicodfax o cargard)
+        # LEER EXCEL (dtype=str para no perder ceros en clicodfax o cargard)
         df = pd.read_excel(file, dtype=str)
         
         # Normalizar cabeceras a minúsculas inmediatamente
         df.columns = df.columns.str.lower().str.strip()
 
-        # --- 2. LÓGICA DE RE-PARTICIÓN (528 REGISTROS) ---
-        if 'fciclo' in df.columns and 'cargard' in df.columns:
-            # Asegurar que cargard sea numérico para poder sumar
-            df['cargard'] = pd.to_numeric(df['cargard'], errors='coerce').fillna(0).astype(int)
-            
-            nuevo_limite = 528
-            df_reestructurado = pd.DataFrame()
-            ciclos = df['fciclo'].unique()
+        # --- 2. LÓGICA CONDICIONAL SEGÚN SUB-ACTIVIDAD ---
+        if sub_actividad == 'CONTINUOS':
+            # LÓGICA DE RE-PARTICIÓN (528 REGISTROS)
+            if 'fciclo' in df.columns and 'cargard' in df.columns:
+                # Asegurar que cargard sea numérico para poder sumar
+                df['cargard'] = pd.to_numeric(df['cargard'], errors='coerce').fillna(0).astype(int)
+                
+                nuevo_limite = 528
+                df_reestructurado = pd.DataFrame()
+                ciclos = df['fciclo'].unique()
 
-            for ciclo in ciclos:
-                df_ciclo = df[df['fciclo'] == ciclo].copy().reset_index(drop=True)
+                for ciclo in ciclos:
+                    df_ciclo = df[df['fciclo'] == ciclo].copy().reset_index(drop=True)
+                    
+                    if not df_ciclo.empty:
+                        # Tomamos la carga inicial del ciclo para mantener la correlación
+                        carga_inicial = df_ciclo['cargard'].iloc[0]
+                        # Aplicamos la nueva distribución
+                        df_ciclo['cargard'] = df_ciclo.index.map(lambda x: carga_inicial + (x // nuevo_limite))
+                    
+                    df_reestructurado = pd.concat([df_reestructurado, df_ciclo], ignore_index=True)
                 
-                if not df_ciclo.empty:
-                    # Tomamos la carga inicial del ciclo para mantener la correlación
-                    carga_inicial = df_ciclo['cargard'].iloc[0]
-                    # Aplicamos la nueva distribución: cada 528 registros incrementa el ID de carga
-                    df_ciclo['cargard'] = df_ciclo.index.map(lambda x: carga_inicial + (x // nuevo_limite))
-                
-                df_reestructurado = pd.concat([df_reestructurado, df_ciclo], ignore_index=True)
-            
-            df = df_reestructurado
+                df = df_reestructurado
+
+        # Si es 'DISPERSOS', el código ignora el bloque if anterior y el DataFrame 
+        # mantiene sus cargas originales intactas.
 
         # --- 3. PROCESAR FECHAS Y ASIGNACIÓN ---
         def formatear_fecha(fecha_str):
@@ -7111,8 +7125,7 @@ def procesar_asignacion():
         df['fecha_cal'] = formatear_fecha(f_cal_input)
         df['fecha_Ejecucion'] = formatear_fecha(f_exe_input)
 
-        # Convertir 'cargard' a string para que coincida con las llaves del JSON mapping
-        df['cargard'] = df['cargard'].astype(str)
+        df['cargard'] = df['cargard'].astype(str).str.replace(r'\.0$', '', regex=True)
         df['operario'] = df['cargard'].map(mapping).fillna("")
 
         # --- 4. ORDENAR COLUMNAS Y EXPORTAR ---
@@ -7159,6 +7172,67 @@ def to_time(t):
         except ValueError:
             return None
     return None
+
+
+@app.route('/descargar_transformado', methods=['POST'])
+def descargar_transformado():
+    try:
+        # 1. Obtener los datos enviados desde el frontend (FormData)
+        datos_json = request.form.get('datos_limpios')
+        nombre_base = request.form.get('nombre_base', 'Datos_Transformados')
+
+        if not datos_json:
+            return {"error": "No se recibieron datos"}, 400
+
+        # Convertir el texto JSON a una lista de diccionarios en Python
+        datos = json.loads(datos_json)
+
+        # 2. Convertir directamente a DataFrame de Pandas
+        df = pd.DataFrame(datos)
+
+        # Garantizar el orden exacto de las columnas que solicitaste
+        columnas_esperadas = [
+            'ITEM', 'SUMINISTRO', 'NOMBRE', 'LOCALIDAD', 'URBANIZACION',
+            'CALLE', 'NUMERO', 'CICLO', 'MEDIDOR', 'N° DOCUMENTO',
+            'FECHA EMISION', 'FECHA ENVIO', 'CARGA_RD', 'ORDEN_RD', 'TIPO_ORDEN'
+        ]
+        
+        # Filtramos y ordenamos el DataFrame
+        # (Si por algún motivo llega una columna extra se descarta, y si falta se crea vacía)
+        for col in columnas_esperadas:
+            if col not in df.columns:
+                df[col] = ""
+                
+        df = df[columnas_esperadas]
+
+        # 3. Generar archivos en memoria (Excel y CSV)
+        output_excel = io.BytesIO()
+        with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False)
+        
+        output_csv = io.BytesIO()
+        # utf-8-sig asegura que los acentos y las ñ (como en N° o URBANIZACIÓN) se vean bien en Excel
+        df.to_csv(output_csv, index=False, sep=';', encoding='utf-8-sig') 
+
+        # 4. Crear el archivo ZIP en memoria
+        mem_zip = io.BytesIO()
+        with zipfile.ZipFile(mem_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            # Insertamos ambos archivos generados con el nombre de la sub-actividad y fecha
+            zf.writestr(f"{nombre_base}.xlsx", output_excel.getvalue())
+            zf.writestr(f"{nombre_base}.csv", output_csv.getvalue())
+        
+        mem_zip.seek(0)
+
+        # 5. Enviar el archivo ZIP descargable al cliente
+        return send_file(
+            mem_zip, 
+            mimetype='application/zip', 
+            as_attachment=True, 
+            download_name=f'{nombre_base}.zip'
+        )
+
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 ###### GESTIÓN DE EMPLEADOS #####
 @app.route('/api/empleados/listar', methods=['GET'])
@@ -8129,5 +8203,1478 @@ def listar_empleados_select():
         })
 
     return jsonify(data)
+
+
+# ==========================================
+# 🛠️ GESTIÓN DE ALMACEN
+# ==========================================
+def generar_prefijo_categoria(nombre_cat):
+    """Genera prefijo de 3 letras ignorando conectores y manejando colisiones de forma dinámica"""
+    texto = nombre_cat.upper().strip()
+    # Eliminar conectores comunes de strings
+    texto_limpio = re.sub(r'\b(DE|DEL|EL|LA|LOS|LAS|Y|EN|PARA|CON|POR)\b', '', texto)
+    palabras = texto_limpio.split()
+    
+    if len(palabras) >= 2:
+        prefijo = palabras[0][0] + palabras[1][:2] # Primera letra de la 1° palabra + dos de la 2°
+    elif len(palabras) == 1:
+        prefijo = palabras[0][:3] # Primeras 3 letras
+    else:
+        prefijo = "CAT"
+        
+    prefijo = prefijo.ljust(3, 'X')[:3] # Forzar longitud exacta de 3 caracteres
+    
+    # Resolver colisiones en la BD (ej. MEDIDORES vs MEDICINA)
+    base_prefijo = prefijo[:2]
+    int_caracter = 65 # Código ASCII para 'A'
+    while Categoria.query.filter_by(codigo_prefijo=prefijo).first():
+        prefijo = base_prefijo + chr(int_caracter)
+        int_caracter += 1
+        if int_caracter > 90: # Romper bucle si se excede la Z
+            prefijo = base_prefijo + str(int_caracter)
+            break
+    return prefijo
+
+
+# ==========================================
+# 🚀 RUTAS API ENDPOINTS
+# ==========================================
+@app.route('/almacen/crear-categoria', methods=['POST'])
+def crear_categoria():
+    data = request.get_json()
+    nombre = data.get('tipo_categoria', '').strip().upper()
+    
+    if not nombre:
+        return jsonify({"success": False, "message": "El nombre de categoría es requerido"}), 400
+        
+    # VALIDACIÓN: Verificar si la categoría ya existe en la BD
+    cat_existente = Categoria.query.filter_by(tipo_categoria=nombre).first()
+    if cat_existente:
+        return jsonify({
+            "success": False, 
+            "message": f"¡Alerta! La categoría '{nombre}' ya existe con el prefijo {cat_existente.codigo_prefijo}."
+        }), 400
+        
+    prefijo = generar_prefijo_categoria(nombre)
+    nueva_cat = Categoria(tipo_categoria=nombre, codigo_prefijo=prefijo)
+    db.session.add(nueva_cat)
+    db.session.commit()
+    
+    return jsonify({
+        "success": True, 
+        "prefijo": prefijo,
+        "categoria": {
+            "id": nueva_cat.id_categoria,
+            "texto": f"{nombre} ({prefijo})"
+        }
+    })
+
+
+# NUEVO ENDPOINT: Para autogenerar el código identificador en vivo
+@app.route('/almacen/siguiente-codigo/<int:id_cat>', methods=['GET'])
+def obtener_siguiente_codigo(id_cat):
+    categoria = Categoria.query.get(id_cat)
+    if not categoria:
+        return jsonify({"success": False}), 404
+        
+    total_productos = Producto.query.filter_by(id_categoria=id_cat).count()
+    codigo_final = f"{categoria.codigo_prefijo}-{str(total_productos + 1).zfill(4)}"
+    
+    return jsonify({"success": True, "codigo": codigo_final})
+
+
+@app.route('/almacen/crear-producto', methods=['POST'])
+def crear_producto():
+    data = request.get_json()
+    nombre = data.get('nombre_prod', '').strip()
+    id_cat = data.get('id_categoria')
+    unidad = data.get('unidad_medida')
+    precio = float(data.get('precio_igv') or 0.00)
+
+    # Validación global de nombres repetidos
+    prod_existente = Producto.query.filter_by(nombre_prod=nombre).first()
+    if prod_existente:
+        cat_duplicada = Categoria.query.get(prod_existente.id_categoria)
+        return jsonify({
+            "success": False, 
+            "message": f"¡Alerta! El nombre '{nombre}' ya fue creado en la categoría '{cat_duplicada.tipo_categoria}'."
+        }), 400
+
+    categoria = Categoria.query.get(id_cat)
+    total_productos = Producto.query.filter_by(id_categoria=id_cat).count()
+    codigo_final = f"{categoria.codigo_prefijo}-{str(total_productos + 1).zfill(4)}"
+
+    nuevo_prod = Producto(id_categoria=id_cat, codigo_identificador=codigo_final, nombre_prod=nombre, unidad_medida=unidad, precio_igv=precio)
+    db.session.add(nuevo_prod)
+    db.session.commit()
+    return jsonify({"success": True, "codigo": codigo_final})
+
+
+@app.route('/almacen/editar-producto', methods=['POST'])
+def editar_producto():
+    data = request.get_json()
+    id_prod = data.get('id_producto')
+    id_cat = data.get('id_categoria')
+    nombre = data.get('nombre_prod', '').strip().upper() # Forzado a mayúsculas
+    unidad = data.get('unidad_medida')
+    precio = float(data.get('precio_igv') or 0.00)
+
+    if not all([id_prod, id_cat, nombre, unidad]):
+        return jsonify({"success": False, "message": "Faltan datos obligatorios."}), 400
+
+    producto = Producto.query.get(id_prod)
+    if not producto:
+        return jsonify({"success": False, "message": "Producto no encontrado en la base de datos."}), 404
+
+    # Validar que el nuevo nombre no exista en OTRO producto diferente al que estamos editando
+    prod_existente = Producto.query.filter(Producto.nombre_prod == nombre, Producto.id_producto != id_prod).first()
+    if prod_existente:
+        cat_duplicada = Categoria.query.get(prod_existente.id_categoria)
+        return jsonify({
+            "success": False, 
+            "message": f"¡Alerta! El nombre '{nombre}' ya le pertenece a otro producto en la categoría '{cat_duplicada.tipo_categoria}'."
+        }), 400
+
+    # Actualizamos los campos (El código identificador NO se toca)
+    producto.id_categoria = id_cat
+    producto.nombre_prod = nombre
+    producto.unidad_medida = unidad
+    producto.precio_igv = precio
+    
+    db.session.commit()
+    
+    return jsonify({"success": True})
+
+@app.route('/almacen/api/listar-datos', methods=['GET'])
+def api_listar_datos():
+    try:
+        categorias = Categoria.query.order_by(Categoria.tipo_categoria.asc()).all()
+        productos = Producto.query.order_by(Producto.nombre_prod.asc()).all()
+        proveedores = Proveedor.query.order_by(Proveedor.razon_social.asc()).all()
+        empleados = Empleado.query.filter_by(estado='ACTIVO').order_by(Empleado.nombres.asc()).all()
+        ultimas_salidas = MovimientoDetalle.query.filter_by(tipo_movimiento='SALIDA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(30).all()
+
+        lista_productos = []
+        for p in productos:
+            # Buscar el último movimiento
+            ultimo_mov = MovimientoDetalle.query.filter_by(id_producto=p.id_producto, tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).first()
+            
+            # Siempre intentamos obtener el nombre del proveedor si existe movimiento
+            nombre_prov = "-"
+            if ultimo_mov and ultimo_mov.entrada_rel and ultimo_mov.entrada_rel.proveedor:
+                nombre_prov = ultimo_mov.entrada_rel.proveedor.razon_social
+            
+            # Forzamos que sea True para que SIEMPRE aparezca en la lista
+            en_inventario = True 
+
+            lista_productos.append({
+                "id_producto": p.id_producto,
+                "id_categoria": p.id_categoria,
+                "codigo": p.codigo_identificador,
+                "nombre": p.nombre_prod,
+                "unidad": p.unidad_medida,
+                "precio_igv": float(p.precio_igv or 0.00),
+                "stock": float(p.stock or 0.00),
+                "categoria_nombre": p.categoria.tipo_categoria,
+                "ultimo_proveedor": nombre_prov,
+                "en_inventario": en_inventario 
+            })
+
+        # ==========================================
+        # NUEVA LISTA PARA EL INVENTARIO SIN SUMAR (POR LOTES)
+        # ==========================================
+        movimientos = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).all()
+        
+        lista_inventario = []
+        for m in movimientos:
+            # 🚨 NUEVO: Buscamos el último conteo físico registrado para este lote específico
+            ultimo_conteo = InventarioAuditoria.query.filter(
+                InventarioAuditoria.observaciones.like(f"%Lote ID: {m.id_movimiento}%")
+            ).order_by(InventarioAuditoria.id_auditoria.desc()).first()
+            
+            # Si hay conteo, lo pasamos como float. Si no, lo mandamos vacío.
+            conteo_val = float(ultimo_conteo.conteo_fisico) if ultimo_conteo else ""
+
+            lista_inventario.append({
+                "id_movimiento": m.id_movimiento,
+                "codigo": m.producto_rel.codigo_identificador,
+                "nombre": m.producto_rel.nombre_prod,
+                "talla": m.talla if m.talla else "-",
+                "categoria": m.producto_rel.categoria.tipo_categoria,
+                "unidad": m.producto_rel.unidad_medida,
+                "precio_igv": float(m.precio_unitario or m.producto_rel.precio_igv or 0.00),
+                "cantidad": float(m.stock_restante or 0),
+                "fecha_ingreso": m.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_ingreso else "-",
+                "proveedor": m.entrada_rel.proveedor.razon_social if (m.entrada_rel and m.entrada_rel.proveedor) else "-",
+                "conteo_fisico": conteo_val
+            })
+
+        # ==========================================
+        # LISTA HISTÓRICA DE ENTRADAS
+        # ==========================================
+        ultimas_entradas = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(30).all()
+
+        # ==========================================
+        # 🚨 NUEVO: LOTES DISPONIBLES (CON STOCK) PARA EL SELECT DE SALIDAS 🚨
+        # ==========================================
+        lotes_vivos = MovimientoDetalle.query.filter(
+            MovimientoDetalle.tipo_movimiento == 'ENTRADA',
+            MovimientoDetalle.stock_restante > 0,
+            MovimientoDetalle.estado == 'ACTIVO'
+        ).order_by(MovimientoDetalle.id_movimiento.asc()).all()
+
+        lista_lotes_salida = []
+        for lote in lotes_vivos:
+            prov_nombre = lote.entrada_rel.proveedor.razon_social if lote.entrada_rel and lote.entrada_rel.proveedor else "-"
+            fecha_ing = lote.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if lote.entrada_rel and lote.entrada_rel.fecha_ingreso else "-"
+            
+            lista_lotes_salida.append({
+                "id_lote": lote.id_movimiento, 
+                "id_producto": lote.id_producto,
+                "codigo": lote.producto_rel.codigo_identificador,
+                "nombre": lote.producto_rel.nombre_prod,
+                
+                # 🚨 ENVIAMOS LA TALLA AL FRONTEND PARA EL SELECT
+                "talla": lote.talla if lote.talla else "-", 
+                
+                "proveedor": prov_nombre,
+                "fecha_ingreso": fecha_ing,
+                "stock_restante": float(lote.stock_restante or 0),
+                "precio": float(lote.precio_unitario or lote.producto_rel.precio_igv or 0.00)
+            })
+
+        # ==========================================
+        # ESTRUCTURA FINAL DE RESPUESTA
+        # ==========================================
+        data = {
+            "categorias": [{ "id": c.id_categoria, "texto_select": f"{c.tipo_categoria} ({c.codigo_prefijo})", "nombre": c.tipo_categoria } for c in categorias],
+            "productos": lista_productos,
+            "proveedores": [{ "id_proveedor": pr.id_proveedor, "ruc": pr.ruc, "razon_social": pr.razon_social, "nombre_comercial": pr.nombre_comercial or "", "celular": pr.celular or "", "correo": pr.correo or "", "direccion": pr.direccion or "" } for pr in proveedores],
+            "inventario_fisico": lista_inventario, 
+            
+            "entradas": [{ 
+                "fecha_fac": e.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if e.entrada_rel.fecha_factura else "-",
+                "fecha_ing": e.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if e.entrada_rel.fecha_ingreso else "-",
+                "factura": e.entrada_rel.nro_factura,
+                "guia": e.entrada_rel.nro_guia or "-",
+                "codigo": e.producto_rel.codigo_identificador,
+                "producto": e.producto_rel.nombre_prod,
+                "talla": e.talla if e.talla else "-",
+                "empleado_recupero": Empleado.query.get(e.id_empleado_recupero).nombres if e.id_empleado_recupero else "-",
+                "cantidad": float(e.cantidad),
+                "precio": float(e.precio_unitario or e.producto_rel.precio_igv or 0),
+                "proveedor": e.entrada_rel.proveedor.razon_social if e.entrada_rel.proveedor else "-",
+                "obs": e.entrada_rel.obs_entrada or "-"
+            } for e in ultimas_entradas],
+
+            "empleados": [{
+                "id_empleado": emp.id_empleado, 
+                "nombres": emp.nombres or "SIN NOMBRE",
+                "area": emp.area or ""   
+            } for emp in empleados],
+
+            "salidas": [{
+                "id_mov": s.id_movimiento,
+                "fecha_salida": s.salida_rel.fecha_salida.strftime('%d-%m-%Y') if s.salida_rel and s.salida_rel.fecha_salida else "-",
+                "cantidad": float(s.cantidad),
+                "codigo": s.producto_rel.codigo_identificador,
+                "producto": s.producto_rel.nombre_prod,
+                
+                # 🚨 ENVIAMOS LA TALLA TAMBIÉN AL HISTORIAL DE SALIDAS
+                "talla": s.talla if s.talla else "-",
+                
+                "empleado": s.salida_rel.empleado.nombres if s.salida_rel and s.salida_rel.empleado else "-",
+                "area": s.salida_rel.empleado.area if s.salida_rel and s.salida_rel.empleado else "-", 
+                "obs": s.salida_rel.obs_salida or "-"
+            } for s in ultimas_salidas],
+
+            "lotes_disponibles": lista_lotes_salida
+        }
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/almacen/crear-proveedor', methods=['POST'])
+def crear_proveedor():
+    data = request.get_json()
+    
+    # Validar duplicado por RUC
+    ruc_prov = data.get('ruc')
+    if Proveedor.query.filter_by(ruc=ruc_prov).first():
+        return jsonify({"success": False, "message": f"El proveedor con RUC {ruc_prov} ya está registrado."}), 400
+        
+    nuevo_prov = Proveedor(
+        ruc=ruc_prov,
+        razon_social=data.get('razon_social').strip().upper(),
+        nombre_comercial=data.get('nombre_comercial').strip().upper() if data.get('nombre_comercial') else None,
+        celular=data.get('celular'),
+        correo=data.get('correo'),
+        direccion=data.get('direccion')
+    )
+    db.session.add(nuevo_prov)
+    db.session.commit()
+    
+    return jsonify({"success": True})
+
+@app.route('/almacen/editar-proveedor', methods=['POST'])
+def editar_proveedor():
+    data = request.get_json()
+    id_prov = data.get('id_proveedor')
+    ruc = data.get('ruc')
+    razon_social = data.get('razon_social').strip().upper()
+
+    if not all([id_prov, ruc, razon_social]):
+        return jsonify({"success": False, "message": "Faltan datos obligatorios (RUC o Razón Social)."}), 400
+
+    # Validar que no se duplique el RUC con OTRO proveedor distinto
+    prov_existente = Proveedor.query.filter(Proveedor.ruc == ruc, Proveedor.id_proveedor != id_prov).first()
+    if prov_existente:
+        return jsonify({"success": False, "message": f"¡Alerta! El RUC '{ruc}' ya pertenece a otro proveedor."}), 400
+
+    proveedor = Proveedor.query.get(id_prov)
+    if not proveedor:
+        return jsonify({"success": False, "message": "Proveedor no encontrado."}), 404
+
+    proveedor.ruc = ruc
+    proveedor.razon_social = razon_social
+    proveedor.nombre_comercial = data.get('nombre_comercial').strip().upper() if data.get('nombre_comercial') else None
+    proveedor.celular = data.get('celular')
+    proveedor.correo = data.get('correo')
+    proveedor.direccion = data.get('direccion')
+    
+    db.session.commit()
+    
+    return jsonify({"success": True})
+
+
+@app.route('/almacen/guardar-inventario', methods=['POST'])
+def guardar_inventario():
+    data = request.get_json()
+    id_prod = data.get('id_producto')
+    
+    if not id_prod:
+        return jsonify({"success": False, "message": "Debe seleccionar un producto."}), 400
+        
+    producto = Producto.query.get(id_prod)
+    if not producto:
+        return jsonify({"success": False, "message": "Producto no encontrado."}), 404
+
+    # Convertimos a float, si viene vacío lo dejamos en 0.00
+    try:
+        nuevo_stock = float(data.get('stock') or 0)
+        nuevo_precio = float(data.get('precio_igv') or 0)
+    except ValueError:
+        return jsonify({"success": False, "message": "Valores de stock o precio inválidos."}), 400
+
+    producto.stock = nuevo_stock
+    producto.precio_igv = nuevo_precio
+    
+    # Opcional: Aquí podrías registrar también en tu tabla InventarioAuditoria si envían conteo_fisico
+    
+    db.session.commit()
+    
+    return jsonify({"success": True, "message": "Inventario actualizado correctamente."})
+
+
+@app.route('/almacen/guardar-conteo-fisico', methods=['POST'])
+def guardar_conteo_fisico():
+    data = request.get_json()
+    # El JS envía el 'idMov' bajo el key 'id_producto'
+    id_mov = data.get('id_producto') 
+    conteo = data.get('conteo_fisico')
+    
+    if not id_mov or conteo is None:
+        return jsonify({"success": False, "message": "Datos incompletos."}), 400
+        
+    # 🚨 LA CORRECCIÓN CLAVE: Buscamos en MovimientoDetalle, NO en Producto
+    movimiento = MovimientoDetalle.query.get(id_mov)
+    if not movimiento:
+        return jsonify({"success": False, "message": "Lote no encontrado."}), 404
+
+    try:
+        conteo_float = float(conteo)
+        # Comparamos contra el stock de ESTE lote específico
+        stock_actual = float(movimiento.stock_restante or 0)
+        diferencia = conteo_float - stock_actual
+        
+        # Guardamos la auditoría
+        nueva_auditoria = InventarioAuditoria(
+            id_producto=movimiento.id_producto, # Ahora sí sacamos el ID del producto real
+            id_empleado_auditor=1, # Ojo: Asegúrate de poner tu session['user_id'] si tienes login
+            stock_sistema=stock_actual,
+            conteo_fisico=conteo_float,
+            diferencia=diferencia,
+            observaciones=f"Conteo físico desde tabla interactiva (Lote ID: {id_mov})"
+        )
+        db.session.add(nueva_auditoria)
+        db.session.commit()
+        
+        return jsonify({"success": True})
+        
+    except ValueError:
+        return jsonify({"success": False, "message": "El conteo debe ser un número válido."}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+        
+
+@app.route('/almacen/guardar-entrada-lote', methods=['POST'])
+def guardar_entrada_lote():
+    data = request.get_json()
+    
+    print("\n\n====== 🚨 INICIO DEBUG GUARDAR LOTE 🚨 ======")
+    print(f"JSON COMPLETO RECIBIDO: {data}")
+    
+    cabecera = data.get('cabecera')
+    detalles = data.get('detalles')
+    
+    if not cabecera or not detalles or len(detalles) == 0:
+        return jsonify({"success": False, "message": "No hay productos para guardar."}), 400
+
+    try:
+        f_fac = datetime.strptime(cabecera['fecha_fac'], '%Y-%m-%d').date() if cabecera.get('fecha_fac') else None
+        f_ing = datetime.strptime(cabecera['fecha_ing'], '%Y-%m-%d') if cabecera.get('fecha_ing') else datetime.utcnow()
+        nro_factura = cabecera.get('factura', '').strip().upper()
+        id_prov = cabecera.get('id_proveedor')
+
+        # 1. Buscamos si la cabecera (Factura) ya existe, sino la creamos
+        entrada = Entrada.query.filter_by(nro_factura=nro_factura, id_proveedor=id_prov).first()
+        if not entrada:
+            entrada = Entrada(
+                id_proveedor=id_prov,
+                id_empleado_receptor=1, # Reemplaza con tu variable de sesión
+                fecha_ingreso=f_ing,
+                fecha_factura=f_fac,
+                nro_factura=nro_factura,
+                nro_guia=cabecera.get('guia', '').strip().upper(),
+                obs_entrada="" 
+            )
+            db.session.add(entrada)
+            db.session.flush() # Obtenemos el ID generado
+
+        # 2. Recorremos el lote de productos
+        for item in detalles:
+            print(f"\n--- PROCESANDO PRODUCTO ID: {item.get('id_producto')} ---")
+            
+            cant_float = float(item['cantidad'])
+            precio_float = float(item['precio'])
+            
+            # 🚨 CAPTURANDO Y VERIFICANDO LA TALLA
+            talla_cruda = item.get('talla')
+            print(f"1. Talla cruda que llegó de JavaScript: '{talla_cruda}' (Tipo: {type(talla_cruda)})")
+            
+            talla_val = talla_cruda
+            if talla_val == '-' or not talla_val:
+                talla_val = None  
+                print("2. Decisión: La talla se guardará como NULL (Vació o Guion)")
+            else:
+                talla_val = str(talla_val).strip().upper()
+                print(f"2. Decisión: La talla válida a guardar será: '{talla_val}'")
+            
+            id_emp_rec = item.get('id_empleado_recupero')
+            if not id_emp_rec or id_emp_rec == '':
+                id_emp_rec = None
+            
+            # Guardamos el detalle del movimiento
+            movimiento = MovimientoDetalle(
+                id_entrada=entrada.id_entrada,
+                id_producto=item['id_producto'],
+                tipo_movimiento='ENTRADA',
+                cantidad=cant_float,
+                precio_unitario=precio_float, 
+                stock_restante=cant_float,    
+                estado='ACTIVO',
+                talla=talla_val,
+                id_empleado_recupero=id_emp_rec
+            )
+            db.session.add(movimiento)
+            
+            print(f"3. Objeto MovimientoDetalle preparado en memoria. Talla asignada: {movimiento.talla}")
+
+            producto = Producto.query.get(item['id_producto'])
+            if producto:
+                producto.stock = float(producto.stock or 0) + cant_float
+
+        db.session.commit()
+        print("====== ✅ FIN DEBUG: GUARDADO EXITOSO EN MYSQL ✅ ======\n")
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        db.session.rollback() 
+        print(f"====== ❌ FIN DEBUG: ERROR AL GUARDAR ❌ ======")
+        print(f"MOTIVO DEL ERROR: {str(e)}\n")
+        return jsonify({"success": False, "message": f"Error al procesar: {str(e)}"}), 500
+    
+
+@app.route('/almacen/guardar-salida-lote', methods=['POST'])
+def guardar_salida_lote():
+    data = request.get_json()
+    cabecera = data.get('cabecera')
+    detalles = data.get('detalles')
+    
+    if not cabecera or not detalles or len(detalles) == 0:
+        return jsonify({"success": False, "message": "No hay productos para despachar."}), 400
+
+    try:
+        fecha_str = cabecera.get('fecha')
+        fecha_salida = datetime.strptime(fecha_str, '%Y-%m-%d') if fecha_str else datetime.utcnow()
+        id_emp = cabecera.get('id_empleado')
+
+        # 1. Validar Stock del Lote Específico
+        for item in detalles:
+            # Aquí 'item['id_lote']' ES EL ID DEL LOTE ESPECÍFICO (La fila del Kardex de entrada)
+            lote_seleccionado = MovimientoDetalle.query.get(int(item['id_lote']))
+            cant_req = float(item['cantidad'])
+            
+            if not lote_seleccionado or cant_req > float(lote_seleccionado.stock_restante or 0):
+                return jsonify({
+                    "success": False, 
+                    "message": f"Stock insuficiente en el lote seleccionado. Solo quedan {lote_seleccionado.stock_restante} unidades."
+                }), 400
+
+        # 2. Guardar Cabecera
+        nueva_salida = Salida(
+            id_empleado_solicitante=id_emp,
+            fecha_salida=fecha_salida,
+            obs_salida=cabecera.get('area', '') 
+        )
+        db.session.add(nueva_salida)
+        db.session.flush() 
+
+        # 3. Descontar del Lote Específico y del Producto Global
+        for item in detalles:
+            cant_a_restar = float(item['cantidad'])
+            lote_especifico = MovimientoDetalle.query.get(int(item['id_lote']))
+            producto = Producto.query.get(lote_especifico.id_producto)
+            
+            # Registrar movimiento
+            movimiento = MovimientoDetalle(
+                id_salida=nueva_salida.id_salida,
+                id_producto=lote_especifico.id_producto,
+                tipo_movimiento='SALIDA',
+                cantidad=cant_a_restar,
+                precio_unitario=lote_especifico.precio_unitario, # Mantiene el costo de esa entrada
+                estado='ACTIVO',
+                
+                # 🚨 LA MAGIA: Heredamos la talla del lote de donde estamos sacando la mercadería
+                talla=lote_especifico.talla 
+            )
+            db.session.add(movimiento)
+
+            # Descontar del lote específico (El que el usuario eligió)
+            lote_especifico.stock_restante = float(lote_especifico.stock_restante) - cant_a_restar
+            
+            # Descontar del inventario global
+            if producto:
+                producto.stock = float(producto.stock or 0) - cant_a_restar
+
+        db.session.commit()
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": f"Error interno: {str(e)}"}), 500
+
+
+@app.route('/almacen/api/historico-kardex', methods=['GET'])
+def api_historico_kardex():
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('limit', 20, type=int)
+        tipo = request.args.get('tipo', 'TODO', type=str)
+        search = request.args.get('search', '', type=str)
+        
+        # 1. CAPTURAR LAS FECHAS
+        fecha_inicio = request.args.get('fecha_inicio', '', type=str)
+        fecha_fin = request.args.get('fecha_fin', '', type=str)
+        
+        # 2. INICIAR CONSULTA CON JOINS Y ALIAS
+        EmpleadoSolicitante = aliased(Empleado)
+        EmpleadoRetorno = aliased(Empleado)
+
+        query = MovimientoDetalle.query.join(Producto)
+        query = query.outerjoin(Categoria, Producto.id_categoria == Categoria.id_categoria)
+        query = query.outerjoin(Entrada, MovimientoDetalle.id_entrada == Entrada.id_entrada)
+        query = query.outerjoin(Proveedor, Entrada.id_proveedor == Proveedor.id_proveedor)
+        query = query.outerjoin(Salida, MovimientoDetalle.id_salida == Salida.id_salida)
+        
+        # 🚨 UNIMOS LA TABLA EMPLEADO DOS VECES (Una para salida, otra para retorno)
+        query = query.outerjoin(EmpleadoSolicitante, Salida.id_empleado_solicitante == EmpleadoSolicitante.id_empleado)
+        query = query.outerjoin(EmpleadoRetorno, MovimientoDetalle.id_empleado_recupero == EmpleadoRetorno.id_empleado)
+
+        # 3. FILTROS EXISTENTES
+        if tipo != 'TODO':
+            query = query.filter(MovimientoDetalle.tipo_movimiento == tipo)
+            
+        if search:
+            palabras = search.split()
+            for palabra in palabras:
+                search_term = f"%{palabra}%"
+                query = query.filter(or_(
+                    Producto.codigo_identificador.ilike(search_term),
+                    Producto.nombre_prod.ilike(search_term),
+                    Categoria.tipo_categoria.ilike(search_term),
+                    Proveedor.razon_social.ilike(search_term),
+                    
+                    # 🚨 BUSCAMOS EN EL EMPLEADO SOLICITANTE (Salidas)
+                    EmpleadoSolicitante.nombres.ilike(search_term),
+                    EmpleadoSolicitante.area.ilike(search_term),
+                    
+                    # 🚨 Y TAMBIÉN BUSCAMOS EN EL EMPLEADO DE RETORNO (Entradas)
+                    EmpleadoRetorno.nombres.ilike(search_term)
+                ))
+
+        # 4. APLICAR FILTRO DE FECHAS (Cubriendo ambos tipos de movimiento)
+        if fecha_inicio:
+            # Añadimos 00:00:00 para asegurar que tome todo el día desde la madrugada
+            query = query.filter(or_(
+                Entrada.fecha_ingreso >= f"{fecha_inicio} 00:00:00",
+                Salida.fecha_salida >= f"{fecha_inicio} 00:00:00"
+            ))
+            
+        if fecha_fin:
+            # Añadimos 23:59:59 para incluir hasta el último segundo del día seleccionado
+            query = query.filter(or_(
+                Entrada.fecha_ingreso <= f"{fecha_fin} 23:59:59",
+                Salida.fecha_salida <= f"{fecha_fin} 23:59:59"
+            ))
+
+        # 5. ORDENAR Y PAGINAR
+        movimientos_paginados = query.order_by(MovimientoDetalle.id_movimiento.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        
+        lista_historial = []
+        for m in movimientos_paginados.items:
+            es_entrada = m.tipo_movimiento == 'ENTRADA'
+            
+            # 🚨 INICIAMOS LA VARIABLE TALLA
+            talla_mostrar = m.talla 
+            
+            # Lógica para cruzar datos según si es Entrada o Salida
+            if es_entrada:
+                fecha = m.entrada_rel.fecha_ingreso
+                f_fac = m.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if m.entrada_rel.fecha_factura else "-"
+                doc_ref = m.entrada_rel.nro_factura or "-"
+                guia = m.entrada_rel.nro_guia or "-"
+                prov = m.entrada_rel.proveedor.razon_social if m.entrada_rel.proveedor else "-"
+                obs = m.entrada_rel.obs_entrada
+                
+                # 🚨 CAPTURAMOS EL EMPLEADO DE RECUPERO SI EXISTE
+                emp_retorno = Empleado.query.get(m.id_empleado_recupero).nombres if m.id_empleado_recupero else "-"
+                
+            else:
+                fecha = m.salida_rel.fecha_salida
+                # Rastreamos la última entrada de este producto para "prestarle" la factura y guía a esta salida
+                ultima_entrada = MovimientoDetalle.query.filter_by(id_producto=m.id_producto, tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).first()
+                
+                # 🚨 HEREDAMOS LA TALLA SI LA SALIDA NO LA TIENE GRABADA
+                if not talla_mostrar and ultima_entrada and ultima_entrada.talla:
+                     talla_mostrar = ultima_entrada.talla
+                
+                f_fac = ultima_entrada.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if (ultima_entrada and ultima_entrada.entrada_rel.fecha_factura) else "-"
+                doc_ref = ultima_entrada.entrada_rel.nro_factura if ultima_entrada else "-"
+                guia = ultima_entrada.entrada_rel.nro_guia if ultima_entrada else "-"
+                prov = "-"
+                
+                # 🚨 LAS SALIDAS NORMALES NO TIENEN EMPLEADO DE RECUPERO
+                emp_retorno = "-" 
+                
+                obs = m.salida_rel.obs_salida
+
+            # Datos del Empleado Solicitante (El que se lleva la salida)
+            emp = m.salida_rel.empleado.nombres if (not es_entrada and m.salida_rel.empleado) else "-"
+            area = m.salida_rel.empleado.area if (not es_entrada and m.salida_rel.empleado) else "-"
+            cargo = m.salida_rel.empleado.cargo if (not es_entrada and m.salida_rel.empleado) else "-"
+
+            lista_historial.append({
+                "id_mov": m.id_movimiento,
+                "fecha": fecha.strftime('%d-%m-%Y') if fecha else "-",
+                "tipo": m.tipo_movimiento,
+                "codigo": m.producto_rel.codigo_identificador,
+                "producto": m.producto_rel.nombre_prod,
+                "talla": talla_mostrar if talla_mostrar else "-", # 🚨 USAMOS TALLA MOSTRAR
+                "unidad": m.producto_rel.unidad_medida or "-",
+                "categoria": m.producto_rel.categoria.tipo_categoria,
+                "cantidad": float(m.cantidad),
+                "stock_actual": float(m.producto_rel.stock), 
+                "proveedor": prov,
+                
+                "empleado_recupero": emp_retorno, # 🚨 ENVIAMOS EL EMPLEADO DE RECUPERO AL FRONTEND
+                
+                "empleado": emp,
+                "area": area,
+                "cargo": cargo,
+                "documento": doc_ref,
+                "fecha_factura": f_fac,
+                "guia": guia,
+                "obs": obs or "-"
+            })
+
+        # 6. Devolver el JSON con metadata de paginación
+        return jsonify({
+            "success": True,
+            "data": lista_historial,
+            "pagination": {
+                "total_records": movimientos_paginados.total,
+                "current_page": movimientos_paginados.page,
+                "total_pages": movimientos_paginados.pages,
+                "per_page": movimientos_paginados.per_page
+            }
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/almacen/eliminar-movimiento', methods=['POST'])
+def eliminar_movimiento():
+    data = request.get_json()
+    id_mov = data.get('id_mov')
+    
+    movimiento = MovimientoDetalle.query.get(id_mov)
+    if not movimiento:
+        return jsonify({"success": False, "message": "Movimiento no encontrado."}), 404
+        
+    producto = Producto.query.get(movimiento.id_producto)
+    
+    try:
+        cant_float = float(movimiento.cantidad)
+        
+        # 1. REVERTIMOS EL STOCK
+        if movimiento.tipo_movimiento == 'SALIDA':
+            # Si borramos una salida, los productos regresan al estante (+)
+            producto.stock = float(producto.stock or 0) + cant_float
+            
+        elif movimiento.tipo_movimiento == 'ENTRADA':
+            # Si borramos una entrada, los productos se quitan del estante (-)
+            if float(producto.stock or 0) < cant_float:
+                return jsonify({
+                    "success": False, 
+                    "message": f"No se puede eliminar. El stock actual de {producto.nombre_prod} es {producto.stock}, insuficiente para restar {cant_float}."
+                }), 400
+            producto.stock = float(producto.stock or 0) - cant_float
+
+        # 2. ELIMINAMOS EL REGISTRO DE LA BASE DE DATOS
+        db.session.delete(movimiento)
+        db.session.commit()
+        
+        return jsonify({"success": True, "message": "Registro eliminado y stock recalculado correctamente."})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route('/almacen/api/exportar-excel-kardex', methods=['GET'])
+def exportar_excel_kardex():
+    tipo = request.args.get('tipo', 'TODO', type=str)
+    search = request.args.get('search', '', type=str)
+    fecha_inicio = request.args.get('fecha_inicio', '', type=str)
+    fecha_fin = request.args.get('fecha_fin', '', type=str)
+
+    # 1. REPLICAR LA CONSULTA EXACTA DE LOS FILTROS
+    EmpleadoSolicitante = aliased(Empleado)
+    EmpleadoRetorno = aliased(Empleado)
+
+    query = MovimientoDetalle.query.join(Producto)
+    query = query.outerjoin(Categoria, Producto.id_categoria == Categoria.id_categoria)
+    query = query.outerjoin(Entrada, MovimientoDetalle.id_entrada == Entrada.id_entrada)
+    query = query.outerjoin(Proveedor, Entrada.id_proveedor == Proveedor.id_proveedor)
+    query = query.outerjoin(Salida, MovimientoDetalle.id_salida == Salida.id_salida)
+        
+    query = query.outerjoin(EmpleadoSolicitante, Salida.id_empleado_solicitante == EmpleadoSolicitante.id_empleado)
+    query = query.outerjoin(EmpleadoRetorno, MovimientoDetalle.id_empleado_recupero == EmpleadoRetorno.id_empleado)
+
+    if tipo != 'TODO':
+            query = query.filter(MovimientoDetalle.tipo_movimiento == tipo)
+                
+    if search:
+        palabras = search.split()
+        for palabra in palabras:
+            search_term = f"%{palabra}%"
+            query = query.filter(or_(
+                    Producto.codigo_identificador.ilike(search_term),
+                    Producto.nombre_prod.ilike(search_term),
+                    Categoria.tipo_categoria.ilike(search_term),
+                    Proveedor.razon_social.ilike(search_term),
+                    
+                    # BUSCAMOS EN EL EMPLEADO SOLICITANTE (Salidas)
+                    EmpleadoSolicitante.nombres.ilike(search_term),
+                    EmpleadoSolicitante.area.ilike(search_term),
+                    
+                    # Y TAMBIÉN BUSCAMOS EN EL EMPLEADO DE RETORNO (Entradas)
+                    EmpleadoRetorno.nombres.ilike(search_term)
+                ))
+                
+        if fecha_inicio and fecha_inicio.strip() != "":
+            query = query.filter(or_(
+                Entrada.fecha_ingreso >= f"{fecha_inicio} 00:00:00",
+                Salida.fecha_salida >= f"{fecha_inicio} 00:00:00"
+            ))
+            
+        if fecha_fin and fecha_fin.strip() != "":
+            query = query.filter(or_(
+                Entrada.fecha_ingreso <= f"{fecha_fin} 23:59:59",
+                Salida.fecha_salida <= f"{fecha_fin} 23:59:59"
+            ))
+
+    # Obtenemos TODOS los registros filtrados (sin .paginate())
+    movimientos = query.order_by(MovimientoDetalle.id_movimiento.desc()).all()
+
+    # 2. CREAR EL EXCEL Y ESTILOS
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Histórico de Movimientos"
+
+    # Definir Estilos
+    header_fill = PatternFill(start_color="0EA5E9", end_color="0EA5E9", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    align_center = Alignment(horizontal="center", vertical="center")
+    align_left = Alignment(horizontal="left", vertical="center")
+    border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+    # Escribir Cabeceras (🚨 Añadimos Empleado de Retorno)
+    headers = [
+        "Fecha", "Tipo", "Cód. Producto", "Nombre Producto", "Talla", "Unidad", "Categoría", 
+        "Cantidad", "Stock Final", "Proveedor (Compras)", "Empleado (Retorno)", "Empleado Solicitante", 
+        "Área", "Cargo", "Doc. Referencia", "Fecha Factura", "Guía", "Observación"
+    ]
+    
+    ws.append(headers)
+    for col_num, cell in enumerate(ws[1], 1):
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = align_center
+        cell.border = border_thin
+
+    # 3. LLENAR LOS DATOS
+    for m in movimientos:
+        es_entrada = m.tipo_movimiento == 'ENTRADA'
+        talla_val = m.talla 
+        
+        if es_entrada:
+            fecha = m.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_ingreso else "-"
+            prov = m.entrada_rel.proveedor.razon_social if m.entrada_rel and m.entrada_rel.proveedor else "-"
+            doc = m.entrada_rel.nro_factura or "-"
+            f_fac = m.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_factura else "-"
+            guia = m.entrada_rel.nro_guia or "-"
+            obs = m.entrada_rel.obs_entrada or "-"
+            
+            # 🚨 Rescatamos el empleado de recupero si lo hay
+            emp_retorno = Empleado.query.get(m.id_empleado_recupero).nombres if m.id_empleado_recupero else "-"
+            
+            emp, area, cargo = "-", "-", "-"
+            cantidad_str = f"+{m.cantidad}"
+            cant_color = "16A34A" # Verde
+        else:
+            fecha = m.salida_rel.fecha_salida.strftime('%d-%m-%Y') if m.salida_rel and m.salida_rel.fecha_salida else "-"
+            
+            # 🚨 HEREDAMOS TALLA Y DOCS DE LA ÚLTIMA ENTRADA (Igual que en la ruta JSON)
+            ultima_entrada = MovimientoDetalle.query.filter_by(id_producto=m.id_producto, tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).first()
+            if not talla_val and ultima_entrada and ultima_entrada.talla:
+                talla_val = ultima_entrada.talla
+                
+            f_fac = ultima_entrada.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if (ultima_entrada and ultima_entrada.entrada_rel.fecha_factura) else "-"
+            doc = ultima_entrada.entrada_rel.nro_factura if ultima_entrada else "-"
+            guia = ultima_entrada.entrada_rel.nro_guia if ultima_entrada else "-"
+            
+            emp = m.salida_rel.empleado.nombres if m.salida_rel and m.salida_rel.empleado else "-"
+            area = m.salida_rel.empleado.area if m.salida_rel and m.salida_rel.empleado else "-"
+            cargo = m.salida_rel.empleado.cargo if m.salida_rel and m.salida_rel.empleado else "-"
+            obs = m.salida_rel.obs_salida or "-"
+            
+            prov = "-"
+            emp_retorno = "-" # Las salidas no tienen empleado de retorno
+            
+            cantidad_str = f"-{m.cantidad}"
+            cant_color = "EF4444" # Rojo
+            
+        talla_mostrar = talla_val if talla_val else "-"
+            
+        # 🚨 INCORPORAMOS 'emp_retorno' EN LA POSICIÓN CORRECTA
+        row_data = [
+            fecha, m.tipo_movimiento, m.producto_rel.codigo_identificador, 
+            m.producto_rel.nombre_prod, talla_mostrar, m.producto_rel.unidad_medida, 
+            m.producto_rel.categoria.tipo_categoria, cantidad_str, float(m.producto_rel.stock),
+            prov, emp_retorno, emp, area, cargo, doc, f_fac, guia, obs
+        ]
+        
+        ws.append(row_data)
+        
+        # Estilos por fila (bordes y colores dinámicos)
+        current_row = ws[ws.max_row]
+        for idx, cell in enumerate(current_row):
+            cell.border = border_thin
+            # 🚨 Índices actualizados (3:Nombre, 9:Prov, 10:EmpRetorno, 11:Emp, 17:Obs)
+            cell.alignment = align_left if idx in [3, 9, 10, 11, 17] else align_center 
+            
+            # Pintar la celda de Cantidad de Verde o Rojo (🚨 Ahora es el índice 7)
+            if idx == 7: 
+                cell.font = Font(color=cant_color, bold=True)
+
+    # 4. AUTOAJUSTAR ANCHO DE COLUMNAS (🚨 Se añade 'R' y se mueven las letras)
+    column_widths = {
+        'A': 12, 'B': 12, 'C': 15, 'D': 40, 'E': 10, 'F': 10, 'G': 18, 
+        'H': 12, 'I': 12, 'J': 35, 'K': 35, 'L': 35, 'M': 20, 
+        'N': 20, 'O': 18, 'P': 15, 'Q': 18, 'R': 40
+    }
+    for col, width in column_widths.items():
+        ws.column_dimensions[col].width = width
+
+    # 5. PREPARAR DESCARGA
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    return send_file(
+        output, 
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+        as_attachment=True, 
+        download_name="Reporte_Kardex.xlsx"
+    )
+
+
+@app.route('/almacen/api/exportar-excel-inventario', methods=['GET'])
+def exportar_excel_inventario():
+    search = request.args.get('search', '', type=str).upper()
+
+    # Traemos todos los lotes de entrada
+    movimientos = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).all()
+
+    # Configurar Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Inventario Físico"
+
+    header_fill = PatternFill(start_color="0EA5E9", end_color="0EA5E9", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    align_center = Alignment(horizontal="center", vertical="center")
+    align_left = Alignment(horizontal="left", vertical="center")
+    border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+    # Cabeceras (🚨 12 columnas en total ahora)
+    headers = [
+        "Fecha Ingreso", "Cód. Identificador", "Nombre Producto", "Talla", "Proveedor", 
+        "Categoría", "Unidad", "Stock", "Precio (S/)", "Total (S/)", 
+        "Conteo Físico", "Diferencia"
+    ]
+    ws.append(headers)
+    
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = align_center
+        cell.border = border_thin
+
+    suma_precio = 0
+    suma_total = 0
+
+    # Llenar datos
+    for m in movimientos:
+        fecha = m.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_ingreso else "-"
+        codigo = m.producto_rel.codigo_identificador or "-"
+        nombre = m.producto_rel.nombre_prod or "-"
+        
+        # 🚨 EXTRAEMOS LA TALLA AQUÍ
+        talla_val = m.talla if m.talla else "-"
+        
+        proveedor = m.entrada_rel.proveedor.razon_social if m.entrada_rel and m.entrada_rel.proveedor else "-"
+        categoria = m.producto_rel.categoria.tipo_categoria or "-"
+        unidad = m.producto_rel.unidad_medida or "-"
+        
+        stock = float(m.stock_restante or 0)
+        precio = float(m.precio_unitario or m.producto_rel.precio_igv or 0)
+        total = stock * precio
+
+        # Buscar el último conteo físico
+        ultimo_conteo = InventarioAuditoria.query.filter(
+            InventarioAuditoria.observaciones.like(f"%Lote ID: {m.id_movimiento}%")
+        ).order_by(InventarioAuditoria.id_auditoria.desc()).first()
+        
+        conteo_val = float(ultimo_conteo.conteo_fisico) if ultimo_conteo else ""
+        diferencia = (conteo_val - stock) if conteo_val != "" else ""
+
+        # 🚨 FILTRO OMNIDIRECCIONAL: Añadimos 'talla_val' para que puedan buscar por talla antes de exportar
+        if search:
+            fila_texto = f"{fecha} {codigo} {nombre} {talla_val} {proveedor} {categoria}".upper()
+            if search not in fila_texto:
+                continue 
+
+        # Sumatorias
+        suma_precio += precio
+        suma_total += total
+        
+        # Formato de la diferencia visual
+        dif_str = ""
+        dif_color = "475569" # Gris
+        if diferencia != "":
+            dif_str = f"+{diferencia}" if diferencia >= 0 else str(diferencia)
+            if diferencia > 0: dif_color = "10B981" # Verde
+            elif diferencia < 0: dif_color = "EF4444" # Rojo
+
+        # 🚨 AGREGAMOS LA TALLA EN EL ARRAY (Es el índice 3)
+        row_data = [fecha, codigo, nombre, talla_val, proveedor, categoria, unidad, stock, precio, total, conteo_val, dif_str]
+        ws.append(row_data)
+
+        # Aplicar estilos a la fila recién agregada
+        current_row = ws[ws.max_row]
+        for idx, cell in enumerate(current_row):
+            cell.border = border_thin
+            
+            # 🚨 Los índices se movieron. 2 es Nombre, 4 es Proveedor
+            cell.alignment = align_left if idx in [2, 4] else align_center 
+            
+            # 🚨 Precio y Total ahora son índices 8 y 9
+            if idx in [8, 9]: 
+                cell.number_format = '"S/" #,##0.00'
+                
+            # 🚨 Diferencia ahora es índice 11
+            if idx == 11 and dif_str != "":
+                cell.font = Font(color=dif_color, bold=True)
+
+    # Agregar fila de Totales Generales al final (🚨 Ahora son 12 casilleros, se movieron los totales a la derecha)
+    ws.append(["", "", "", "", "", "", "", "TOTALES:", suma_precio, suma_total, "", ""])
+    last_row = ws[ws.max_row]
+    
+    # Índice 7 es la palabra "TOTALES:"
+    last_row[7].font = Font(bold=True) 
+    last_row[7].alignment = Alignment(horizontal="right")
+    
+    # Índices 8 y 9 son los números de los totales
+    for idx in [8, 9]:
+        last_row[idx].font = Font(color="0369A1", bold=True)
+        last_row[idx].number_format = '"S/" #,##0.00'
+        last_row[idx].border = border_thin
+        last_row[idx].alignment = align_center
+
+    # Autoajuste de columnas (🚨 Agregada la letra L y ajustados todos los anchos)
+    column_widths = {
+        'A': 15, 'B': 15, 'C': 40, 'D': 10, 'E': 35, 'F': 20, 
+        'G': 10, 'H': 10, 'I': 15, 'J': 15, 'K': 15, 'L': 15
+    }
+    for col, width in column_widths.items():
+        ws.column_dimensions[col].width = width
+
+    # Preparar archivo para descarga
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    return send_file(
+        output, 
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+        as_attachment=True, 
+        download_name="Reporte_Inventario_Fisico.xlsx"
+    )
+
+
+##### MODULO DE REVALIDACION DE LECTURAS #####
+@app.route('/subir_matriz_csv', methods=['POST'])
+def subir_matriz_csv():
+    print("\n[DEBUG] === INICIANDO SUBIDA DE MATRIZ CSV ===")
+    
+    # 1. Validar que el archivo venga en la petición
+    if 'archivo_csv' not in request.files:
+        print("[DEBUG] Error: No se encontró 'archivo_csv' en request.files")
+        return jsonify({'error': 'No se encontró el archivo en la petición.'}), 400
+    
+    file = request.files['archivo_csv']
+    print(f"[DEBUG] Archivo recibido: {file.filename}")
+    
+    if file.filename == '':
+        print("[DEBUG] Error: El nombre del archivo está vacío.")
+        return jsonify({'error': 'No seleccionó ningún archivo.'}), 400
+        
+    if not file.filename.lower().endswith('.csv'):
+        print("[DEBUG] Error: Extensión no válida.")
+        return jsonify({'error': 'El formato debe ser .csv estrictamente.'}), 400
+
+    try:
+        # 2. Leer y decodificar el archivo en memoria
+        print("[DEBUG] Leyendo y decodificando archivo...")
+        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        
+        # 3. Detectar delimitador
+        first_line = stream.readline()
+        delimiter = ';' if ';' in first_line else ','
+        print(f"[DEBUG] Delimitador detectado: '{delimiter}'")
+        
+        stream.seek(0) # Volver el cursor al inicio del archivo
+        
+        reader = csv.reader(stream, delimiter=delimiter)
+        header = next(reader, None) # Saltar la primera fila (Cabeceras)
+        print(f"[DEBUG] Cabeceras extraídas: {header}")
+        
+        registros_insertados = 0
+        filas_ignoradas = 0
+        
+        def clean_val(val):
+            return val.strip() if val and val.strip() else None
+
+        print("[DEBUG] Iniciando procesamiento de filas...")
+        
+        # 4. Iterar sobre las filas e instanciar el modelo
+        for indice, row in enumerate(reader, start=2): # start=2 porque la fila 1 es la cabecera
+            
+            # ¡CORRECCIÓN CLAVE AQUÍ! Ahora evalúa si tiene menos de 9 columnas
+            if not row or len(row) < 9:
+                print(f"[DEBUG - IGNORADA Fila {indice}] Longitud: {len(row) if row else 0} | Contenido: {row}")
+                filas_ignoradas += 1
+                continue
+                
+            try:
+                nueva_matriz = MatrizValidacion(
+                    clicodfac=clean_val(row[0]),
+                    medcodygo=clean_val(row[1]),
+                    lectura=clean_val(row[2]),
+                    feclec=clean_val(row[3]),
+                    horalec=clean_val(row[4]),
+                    obs1=clean_val(row[5]),
+                    obs2=clean_val(row[6]),
+                    newmed=clean_val(row[7]),
+                    operador=clean_val(row[8]),
+                    estado='PENDIENTE',
+                    fecha_subida=datetime.utcnow() - timedelta(hours=5)
+                )
+                db.session.add(nueva_matriz)
+                registros_insertados += 1
+                
+            except Exception as row_err:
+                print(f"[DEBUG - ERROR Fila {indice}] Falló al preparar registro. Error: {row_err}")
+                
+        # 5. Confirmar transacción en la base de datos
+        print(f"[DEBUG] Resumen iteración -> Insertados: {registros_insertados} | Ignoradas: {filas_ignoradas}")
+        db.session.commit()
+        print("[DEBUG] Commit ejecutado exitosamente en la base de datos.")
+        print("[DEBUG] === FIN DE SUBIDA ===\n")
+        
+        return jsonify({
+            'success': True, 
+            'mensaje': f'Se guardaron {registros_insertados} registros correctamente en la base de datos.'
+        }), 200
+
+    except Exception as e:
+        db.session.rollback() # Revertir cambios si algo falla
+        print(f"[ERROR DB] Error general al procesar CSV de Matriz: {e}")
+        return jsonify({'error': f'Ocurrió un error interno: {str(e)}'}), 500
+
+
+@app.route('/obtener_operarios_matriz', methods=['GET'])
+def obtener_operarios_matriz():
+    try:
+        # Consultar todos los nombres de operadores únicos que no sean nulos
+        operarios_db = db.session.query(MatrizValidacion.operador).filter(MatrizValidacion.operador != None).distinct().all()
+        # Convertir la lista de tuplas en una lista simple de strings limpios
+        lista_operarios = sorted([op[0].strip() for op in operarios_db if op[0].strip()])
+        return jsonify({'success': True, 'operarios': lista_operarios})
+    except Exception as e:
+        print(f"[ERROR] No se pudieron obtener los operarios: {e}")
+        return jsonify({'success': False, 'operarios': []})
+
+
+@app.route('/obtener_lecturas', methods=['GET'])
+def obtener_lecturas():
+    page = request.args.get('page', 1, type=int)
+    operador_filtro = request.args.get('operador', '').strip()
+    fecha_filtro = request.args.get('fecha', '').strip() # Viene en formato YYYY-MM-DD
+    per_page = 10
+
+    query = MatrizValidacion.query
+
+    # 1. Aplicar filtro de operario
+    if operador_filtro and operador_filtro.upper() != 'TODOS':
+        query = query.filter(MatrizValidacion.operador.ilike(f'%{operador_filtro}%'))
+
+    # 2. Aplicar filtro de fecha
+    if fecha_filtro:
+        try:
+            # El input type="date" envía YYYY-MM-DD, pero en el CSV/BD está como DD/MM/YYYY
+            fecha_obj = datetime.strptime(fecha_filtro, '%Y-%m-%d')
+            fecha_formateada = fecha_obj.strftime('%d/%m/%Y')
+            # Buscamos coincidencias exactas con la fecha del CSV
+            query = query.filter(MatrizValidacion.feclec == fecha_formateada)
+        except ValueError:
+            pass # Si la fecha viene en un formato extraño, la ignoramos
+
+    query = query.order_by(MatrizValidacion.id_matriz.desc())
+    paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    lecturas = []
+    for item in paginated.items:
+        lecturas.append({
+            'id': item.id_matriz,
+            'clicodfac': item.clicodfac or '-',
+            'medcodygo': item.medcodygo or '-',
+            'lectura': item.lectura or '-',
+            'feclec': item.feclec or '-',
+            'estado': item.estado or 'PENDIENTE'
+        })
+
+    return jsonify({
+        'lecturas': lecturas,
+        'total': paginated.total,
+        'pages': paginated.pages,
+        'current_page': page,
+        'per_page': per_page
+    })
+
+
+@app.route('/api/descargar_matriz/<int:user_id>', methods=['GET'])
+def descargar_matriz(user_id):
+    try:
+        # 1. Buscar al Usuario que inició sesión en la app
+        usuario = Usuario.query.get(user_id)
+        if not usuario:
+            return jsonify({'success': False, 'message': 'Usuario no encontrado.'}), 404
+
+        # 2. Buscar al Empleado vinculado a esa cuenta
+        empleado = Empleado.query.get(usuario.id_empleado)
+        if not empleado:
+            return jsonify({'success': False, 'message': 'Empleado no asignado a este usuario.'}), 404
+
+        # 3. Tomar el nombre exacto del empleado
+        nombre_busqueda = empleado.nombres.strip() 
+
+        # 4. Filtrar la matriz (CSV) por el nombre del operador y estado PENDIENTE
+        asignaciones = MatrizValidacion.query.filter(
+            MatrizValidacion.operador.ilike(f"%{nombre_busqueda}%"),
+            MatrizValidacion.estado == 'PENDIENTE'
+        ).all()
+
+        # --- AQUÍ REALIZAS EL CAMBIO DE ESTADO ---
+        if asignaciones:
+            for registro in asignaciones:
+                registro.estado = 'DESCARGADO'  # Cambiamos el estado en memoria
+            
+            # Guardamos los cambios en la base de datos definitivamente
+            db.session.commit() 
+            print(f"[DEBUG] Se han actualizado {len(asignaciones)} registros a 'DESCARGADO'.")
+        # ------------------------------------------
+
+        # 5. Formatear los datos para el JSON
+        data = [{
+            'id_matriz': a.id_matriz,
+            'clicodfac': a.clicodfac or '-',
+            'medcodygo': a.medcodygo or '-',
+            'lectura': a.lectura or '-',
+            'feclec': a.feclec or '-',
+            'estado': a.estado, # Ahora este valor vendrá como 'DESCARGADO'
+            'obs1': a.obs1 or '',
+            'newmed': a.newmed or ''
+        } for a in asignaciones]
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'message': f'Se descargaron y marcaron como descargados {len(data)} registros.'
+        }), 200
+
+    except Exception as e:
+        db.session.rollback() # Si algo falla, revertimos el cambio de estado
+        print(f"[ERROR BACKEND] Error descargando matriz: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/actualizar_revalidacion', methods=['POST'])
+def actualizar_revalidacion():
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'message': 'No se recibieron datos válidos.'}), 400
+
+        # 1. Extraer los datos enviados desde la app móvil (Retrofit)
+        id_matriz = data.get('idMatriz')
+        estado = data.get('estado')
+        nueva_lect = data.get('nuevaLec')
+        nueva_obs = data.get('nuevaObs')
+        nuevo_med = data.get('nuevoMed')
+        fecha_validacion = data.get('fechaHoraCalculada')
+
+        if not id_matriz or not estado:
+            return jsonify({'success': False, 'message': 'Faltan parámetros obligatorios (idMatriz o estado).'}), 400
+
+        # 2. Buscar el registro exacto en la base de datos usando SQLAlchemy
+        registro = MatrizValidacion.query.get(id_matriz)
+        
+        if not registro:
+            return jsonify({'success': False, 'message': f'El registro {id_matriz} no existe.'}), 404
+
+        # 3. Lógica limpia para convertir strings vacíos ("") en NULL (None en Python)
+        # Esto asegura que si el técnico no modificó nada, se guarde como NULL en MySQL/SQL Server
+        registro.estado = estado.upper()
+        registro.nueva_lect = nueva_lect.strip() if nueva_lect and nueva_lect.strip() != "" else None
+        registro.nueva_obs = nueva_obs.strip() if nueva_obs and nueva_obs.strip() != "" else None
+        registro.nuevo_med = nuevo_med.strip() if nuevo_med and nuevo_med.strip() != "" else None
+        registro.fecha_validacion = fecha_validacion.strip() if fecha_validacion and fecha_validacion.strip() != "" else None
+
+        # 4. Guardar los cambios definitivamente
+        db.session.commit()
+        print(f"[DEBUG] Suministro {id_matriz} actualizado correctamente a estado: {estado.upper()}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Registro actualizado exitosamente a {estado.upper()}.'
+        }), 200
+
+    except Exception as e:
+        # 5. Si algo falla, revertimos el cambio para proteger la base de datos (igual que en tu código)
+        db.session.rollback()
+        print(f"[ERROR BACKEND] Error actualizando revalidación: {e}")
+        return jsonify({'success': False, 'message': f'Error interno: {str(e)}'}), 500
+
+
+@app.route('/api/operarios_por_fecha', methods=['GET'])
+def get_operarios_por_fecha():
+    fecha_html = request.args.get('fecha') # Viene como '2026-06-11'
+    
+    if not fecha_html:
+        return jsonify([])
+
+    try:
+        # 1. Convertimos la fecha de 'YYYY-MM-DD' a 'DD/MM/YYYY' (el formato de tu CSV)
+        fecha_obj = datetime.strptime(fecha_html, '%Y-%m-%d')
+        fecha_db = fecha_obj.strftime('%d/%m/%Y') 
+        
+        # 2. Buscamos usando la fecha ya formateada
+        operarios = db.session.query(MatrizValidacion.operador)\
+            .filter(MatrizValidacion.feclec == fecha_db)\
+            .distinct().all()
+
+        # Convertir a lista de strings
+        lista_operarios = [op[0] for op in operarios if op[0]]
+        
+        return jsonify(lista_operarios), 200
+
+    except Exception as e:
+        print(f"Error parseando fecha: {e}")
+        return jsonify([])
+
+
+@app.route('/api/matriz_revision', methods=['GET'])
+def get_matriz_revision():
+    fecha_html = request.args.get('fecha')
+    operario = request.args.get('operario')
+    estado_filtro = request.args.get('estado')
+    page = request.args.get('page', 1, type=int) # Recibimos la página actual
+    per_page = 15 # Cantidad de registros por página
+
+    # Lógica de estado
+    estado_busqueda = estado_filtro if estado_filtro else 'POR MODIFICAR'
+
+    query = MatrizValidacion.query.filter(MatrizValidacion.estado == estado_busqueda)
+
+    if fecha_html:
+        try:
+            fecha_obj = datetime.strptime(fecha_html, '%Y-%m-%d')
+            fecha_db = fecha_obj.strftime('%d/%m/%Y')
+            query = query.filter(MatrizValidacion.feclec == fecha_db)
+        except Exception as e:
+            print(f"Error parseando fecha: {e}")
+    
+    if operario:
+        query = query.filter(MatrizValidacion.operador == operario)
+
+    # Ordenar y PAGINAR
+    query = query.order_by(MatrizValidacion.id_matriz.desc())
+    paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    data = [{
+        'id_matriz': r.id_matriz,
+        'suministro': r.clicodfac or '-',
+        'lectura_nueva': r.nueva_lect or r.lectura or '-', 
+        'observacion_nueva': r.nueva_obs or r.obs1 or 'SIN OBSERVACIÓN',
+        'estado': r.estado,
+        'feclec': r.feclec or ''
+    } for r in paginated.items] # Extraemos solo los items de la página actual
+
+    return jsonify({
+        'success': True, 
+        'data': data,
+        'total': paginated.total,
+        'pages': paginated.pages,
+        'current_page': page,
+        'per_page': per_page
+    }), 200
+
+
+@app.route('/api/cambiar_estado_revision', methods=['POST'])
+def cambiar_estado_revision():
+    try:
+        data = request.get_json()
+        id_matriz = data.get('id_matriz')
+        nuevo_estado = data.get('estado') # Recibirá 'MODIFICADO' o 'RECHAZADO'
+
+        if not id_matriz or not nuevo_estado:
+            return jsonify({'success': False, 'message': 'Faltan parámetros obligatorios.'}), 400
+
+        # Buscar el registro exacto en la tabla matriz_validacion
+        registro = MatrizValidacion.query.get(id_matriz)
+        if not registro:
+            return jsonify({'success': False, 'message': 'El registro no existe en la base de datos.'}), 404
+
+        # Actualizar el estado
+        registro.estado = nuevo_estado.upper()
+        
+        # Guardar definitivamente en la BD
+        db.session.commit()
+        print(f"[DEBUG] Registro {id_matriz} actualizado exitosamente a: {nuevo_estado.upper()}")
+
+        return jsonify({
+            'success': True, 
+            'message': f'Suministro actualizado correctamente a {nuevo_estado.upper()}.'
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Error al cambiar estado en revisión: {e}")
+        return jsonify({'success': False, 'message': f'Error interno: {str(e)}'}), 500
+
+
+@app.route('/api/avance_validacion', methods=['GET'])
+def get_avance_validacion():
+    fecha_html = request.args.get('fecha')
+    operario_filtro = request.args.get('operario', '').strip()
+
+    if not fecha_html:
+        return jsonify({'success': False, 'error': 'La fecha es obligatoria para calcular el avance.'}), 400
+
+    try:
+        # Transformar YYYY-MM-DD a DD/MM/YYYY para tu base de datos
+        fecha_obj = datetime.strptime(fecha_html, '%Y-%m-%d')
+        fecha_db = fecha_obj.strftime('%d/%m/%Y')
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Formato de fecha inválido.'}), 400
+
+    # Magia de SQLAlchemy: Contar total y contar solo los validados/modificados
+    query = db.session.query(
+        MatrizValidacion.operador,
+        func.count(MatrizValidacion.id_matriz).label('total'),
+        func.sum(
+            case(
+                (MatrizValidacion.estado.in_(['VALIDADO', 'MODIFICADO']), 1), 
+                else_=0
+            )
+        ).label('procesados')
+    ).filter(MatrizValidacion.feclec == fecha_db)
+
+    # Si escribió un operario, filtramos. Si no, trae todos los del día.
+    if operario_filtro and operario_filtro.upper() != 'TODOS':
+        query = query.filter(MatrizValidacion.operador.ilike(f'%{operario_filtro}%'))
+
+    # Agrupamos por el nombre del operario para sacar el resumen de cada uno
+    query = query.group_by(MatrizValidacion.operador).order_by(MatrizValidacion.operador)
+
+    resultados = query.all()
+
+    datos_avance = []
+    for row in resultados:
+        datos_avance.append({
+            'operario': row.operador or 'SIN ASIGNAR',
+            'total': row.total or 0,
+            'procesados': row.procesados or 0
+        })
+
+    return jsonify({'success': True, 'data': datos_avance})
 
 
