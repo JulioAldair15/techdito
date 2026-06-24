@@ -1,9 +1,9 @@
 import os
 from flask import Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, MatrizValidacion
 from flask_bcrypt import check_password_hash 
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import func
+from sqlalchemy import func, case
 from app import app, db
 from datetime import datetime, timedelta, date
 from sqlalchemy import extract, or_, text
@@ -62,6 +62,11 @@ import decimal
 import dbf
 from xhtml2pdf import pisa
 from openpyxl.utils import get_column_letter
+import zxingcpp
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from sqlalchemy.orm import aliased
+import csv
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
