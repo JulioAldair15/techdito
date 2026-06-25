@@ -15888,7 +15888,10 @@ document.addEventListener("DOMContentLoaded", () => {
                             if (prefijoBuscado === "" || subgrupo.carpeta.startsWith(prefijoBuscado)) {
                                 subgrupo.imagenes.forEach(img => {
                                     const rutaCarpeta = subgrupo.carpeta.replace(/\\/g, '/');
-                                    imagenesVisor.push(`/imagen/${rutaCarpeta}/${img}`);
+                                    
+                                    // ✅ CORREGIDO: Ruta absoluta apuntando al servidor de almacenamiento real
+                                    const BASE_IMAGE_URL = "http://200.233.44.171/app_oraclesedalib/public/storage/images/lecturas";
+                                    imagenesVisor.push(`${BASE_IMAGE_URL}/${rutaCarpeta}/${img}`);
                                 });
                             }
                         });
