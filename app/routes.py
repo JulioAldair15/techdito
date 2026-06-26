@@ -9587,6 +9587,7 @@ def get_matriz_revision():
     data = [{
         'id_matriz': r.id_matriz,
         'suministro': r.clicodfac or '-',
+        'newmed': r.newmed or '-',
         'lectura_nueva': r.nueva_lect or r.lectura or '-', 
         'observacion_nueva': r.nueva_obs or r.obs1 or 'SIN OBSERVACIÓN',
         'estado': r.estado,
