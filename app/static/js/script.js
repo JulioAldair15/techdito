@@ -12213,8 +12213,8 @@ function limpiarSuministro(val) {
 
 function limpiarTexto(val) {
     if (!val) return "-";
-    // Quitamos espacios extra y saltos de línea
-    let txt = String(val).trim().replace(/[\r\n\t]/g, ' '); 
+    // Convertimos a mayúsculas, quitamos espacios extra y saltos de línea
+    let txt = String(val).toUpperCase().trim().replace(/[\r\n\t]/g, ' '); 
     
     // Si es mayor a 50 caracteres, lo recortamos inteligentemente
     if (txt.length > 50) {
@@ -12233,8 +12233,8 @@ function limpiarTexto(val) {
 function limpiarNombre(val) {
     if (!val) return "-";
     
-    // 1. Quitamos saltos de línea y espacios extra
-    let txt = String(val).trim().replace(/[\r\n\t]/g, ' '); 
+    // 1. Convertimos a mayúsculas, quitamos saltos de línea y espacios extra
+    let txt = String(val).toUpperCase().trim().replace(/[\r\n\t]/g, ' '); 
     
     // 2. NUEVA REGLA: Eliminamos puntos, comas, puntos y comas, y dos puntos
     txt = txt.replace(/[.,;:]/g, '');
@@ -12255,23 +12255,57 @@ function limpiarNombre(val) {
 
 // Función para eliminar la urbanización si está duplicada al inicio de la calle
 function limpiarCalleDuplicada(urb, calle) {
-    // Si alguno está vacío o tiene el guion por defecto, no hacemos nada
-    if (!urb || !calle || urb === "-" || calle === "-") return calle;
+    // Si alguno está vacío o tiene el guion por defecto, devolvemos la calle (en mayúsculas si existe)
+    if (!urb || !calle || urb === "-" || calle === "-") {
+        return calle && calle !== "-" ? String(calle).toUpperCase() : calle;
+    }
 
-    // Normalizamos a mayúsculas para que la comparación no falle por minúsculas
+    // Normalizamos a mayúsculas (y las usaremos para el resultado final)
     const urbNorm = urb.toUpperCase().trim();
     const calleNorm = calle.toUpperCase().trim();
 
     if (calleNorm.startsWith(urbNorm) && urbNorm.length > 3) {
-
-        let nuevaCalle = calle.substring(urb.length).trim();
+        // Cortamos usando la versión que ya está en mayúsculas (calleNorm)
+        let nuevaCalle = calleNorm.substring(urbNorm.length).trim();
 
         nuevaCalle = nuevaCalle.replace(/^[.,\-;:_]\s*/, '').trim();
 
         return nuevaCalle === "" ? "-" : nuevaCalle;
     }
 
-    return calle;
+    // Retornamos la versión en mayúsculas directamente
+    return calleNorm;
+}
+
+// Función exclusiva para limpiar el CICLO (Solo números, por defecto 1)
+function limpiarCiclo(val) {
+    // Si la celda viene completamente vacía o nula desde el Excel
+    if (val === undefined || val === null || String(val).trim() === "") {
+        return "1";
+    }
+    
+    // Elimina cualquier carácter que no sea un dígito (borra guiones, letras, espacios)
+    const num = String(val).replace(/\D/g, ''); 
+    
+    // Si después de la limpieza el resultado quedó vacío, se coloca un "1"
+    return num === "" ? "1" : num;
+}
+
+// Función exclusiva para limpiar el NÚMERO (Máximo 8 caracteres)
+function limpiarNumero(val) {
+    if (!val) return "-";
+    
+    // 1. Quitamos saltos de línea y espacios extra
+    let txt = String(val).trim().replace(/[\r\n\t]/g, ' '); 
+    
+    // 2. Si el texto tiene más de 8 caracteres, lo cortamos
+    if (txt.length > 8) {
+        // Cortamos exactamente a los 8 caracteres y quitamos espacios que queden en los bordes
+        txt = txt.substring(0, 8).trim();
+    }
+    
+    // 3. Si después de todo se quedó vacío, devolvemos el guion por defecto
+    return txt === "" ? "-" : txt;
 }
 
 // Función para voltear la fecha a DD/MM/YYYY
@@ -12339,8 +12373,8 @@ function actualizarPrevisualizacion() {
             'LOCALIDAD': limpiarTexto(filaExcel[map.localidad]),
             'URBANIZACION': urbLimpia, // Usamos la variable ya procesada
             'CALLE': calleLimpia,      // Usamos la variable sin el duplicado
-            'NUMERO': limpiarTexto(filaExcel[map.numero]),
-            'CICLO': limpiarTexto(filaExcel[map.ciclo]),
+            'NUMERO': limpiarNumero(filaExcel[map.numero]),
+            'CICLO': limpiarCiclo(filaExcel[map.ciclo]),
             'MEDIDOR': limpiarTexto(filaExcel[map.medidor]),
             'N° DOCUMENTO': '', 
             'FECHA EMISION': fEmision,
@@ -15724,6 +15758,7 @@ async function cargarLecturasRevalidacion(page = 1) {
                 <td><span class="badge-code">${item.suministro}</span></td>
                 <td class="text-green fw-600">${item.lectura_nueva}</td>
                 <td class="text-muted">${item.observacion_nueva}</td>
+                <td class="text-muted">${item.newmed}</td>
                 <td><span class="status-dot ${statusDot}"></span> ${item.estado}</td>
                 <td class="action-cells">
                     <button class="btn-square bg-blue btn-ver-foto" data-suministro="${item.suministro}" data-feclec="${item.feclec}" title="Ver Foto">
