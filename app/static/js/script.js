@@ -16241,3 +16241,163 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+
+document.addEventListener("DOMContentLoaded", () => {
+    
+    const inputFecha = document.getElementById('reporte-fecha');
+    const selectOperarios = $('#reporte-operarios');
+    const btnPrevisualizar = document.getElementById('btn-previsualizar-reporte');
+    const btnDescargar = document.getElementById('btn-descargar-excel');
+
+    // Inicializar Select2
+    if (selectOperarios.length > 0) {
+        selectOperarios.select2({
+            placeholder: "Seleccione fecha primero...",
+            allowClear: true,
+            width: '100%',
+            dropdownParent: $('#modal-gestion') 
+        });
+    }
+
+    // ==========================================
+    // MAGIA: Llenar operarios al cambiar la fecha
+    // ==========================================
+    if (inputFecha) {
+        inputFecha.addEventListener('change', async () => {
+            const fecha = inputFecha.value;
+            
+            console.log("🗓️ 1. Se seleccionó la fecha en el input:", fecha); // DEBUG
+            
+            selectOperarios.empty();
+            selectOperarios.append(new Option("TODOS", "TODOS", true, true));
+
+            if (!fecha) return; 
+
+            try {
+                console.log(`🌐 2. Consultando al servidor: /api/operarios_por_fecha?fecha=${fecha}`); // DEBUG
+                
+                const response = await fetch(`/api/operarios_por_fecha?fecha=${fecha}`);
+                const listaOperarios = await response.json();
+
+                console.log("✅ 3. El servidor respondió con esta lista:", listaOperarios); // DEBUG
+
+                if (listaOperarios.length > 0) {
+                    listaOperarios.forEach(op => {
+                        selectOperarios.append(new Option(op, op, false, false));
+                    });
+                } else {
+                    console.warn("⚠️ 4. La lista llegó vacía. Asegúrate de que existan registros en la base de datos para esa fecha exacta.");
+                }
+                
+                selectOperarios.trigger('change'); 
+
+            } catch (error) {
+                console.error("❌ Error al cargar operarios:", error);
+            }
+        });
+    }
+
+    // ==========================================
+    // PREVISUALIZAR
+    // ==========================================
+    if (btnPrevisualizar) {
+        btnPrevisualizar.addEventListener('click', async () => {
+            const fecha = document.getElementById('reporte-fecha').value;
+            let operarios = selectOperarios.val() || [];
+            if (operarios.includes("TODOS")) operarios = ["TODOS"];
+            const estado = document.getElementById('reporte-estado').value;
+            
+            const tbody = document.getElementById('tbody-reportes');
+
+            if (!fecha) {
+                alert("Por favor, seleccione una Fecha de Lectura primero.");
+                return;
+            }
+
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center py-20"><i class="fas fa-spinner fa-spin text-muted"></i> Cargando data...</td></tr>`;
+
+            try {
+                // ENVIAMOS LA FECHA TAMBIÉN AL BACKEND
+                const response = await fetch('/api/reportes/previsualizar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fecha, operarios, estado })
+                });
+                
+                const result = await response.json();
+
+                if (result.success && result.data.length > 0) {
+                    document.getElementById('reporte-contador').textContent = `PREVISUALIZACIÓN DE REPORTE (${result.total} registros)`;
+                    
+                    tbody.innerHTML = result.data.map(r => `
+                        <tr>
+                            <td><strong>${r.clicodfac}</strong></td>
+                            <td>${r.medcodygo}</td>
+                            <td>${r.lectura}</td>
+                            <td>${r.feclec}</td>
+                            <td>${r.operador}</td>
+                            <td><span class="badge" style="background:#e2e8f0; color:#334155; padding: 4px 8px; border-radius: 4px; font-size:10px; font-weight:bold;">${r.estado}</span></td>
+                            <td style="color:#10b981; font-weight:bold;">${r.nueva_lect}</td>
+                            <td style="color:#ef4444; font-weight:bold;">${r.nuevo_med}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-20">No se encontraron registros.</td></tr>`;
+                    document.getElementById('reporte-contador').textContent = `PREVISUALIZACIÓN DE REPORTE (0 registros)`;
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        });
+    }
+
+    // ==========================================
+    // DESCARGAR EXCEL
+    // ==========================================
+    if (btnDescargar) {
+        btnDescargar.addEventListener('click', async () => {
+            const fecha = document.getElementById('reporte-fecha').value;
+            let operarios = selectOperarios.val() || [];
+            if (operarios.includes("TODOS")) operarios = ["TODOS"];
+            const estado = document.getElementById('reporte-estado').value;
+
+            if (!fecha) {
+                alert("Por favor, seleccione una Fecha de Lectura primero.");
+                return;
+            }
+
+            const originalHTML = btnDescargar.innerHTML;
+            btnDescargar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
+            btnDescargar.disabled = true;
+
+            try {
+                // ENVIAMOS LA FECHA TAMBIÉN AL BACKEND EXCEL
+                const response = await fetch('/api/reportes/descargar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fecha, operarios, estado })
+                });
+
+                if (!response.ok) throw new Error("Error en la descarga");
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Reporte_${fecha}.xlsx`; // Nombre con la fecha exacta
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+
+            } catch (error) {
+                alert("Ocurrió un error al intentar generar el archivo Excel.");
+            } finally {
+                btnDescargar.innerHTML = originalHTML;
+                btnDescargar.disabled = false;
+            }
+        });
+    }
+});
