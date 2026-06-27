@@ -67,6 +67,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from sqlalchemy.orm import aliased
 import csv
+from thefuzz import fuzz
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
@@ -9427,55 +9428,73 @@ def obtener_lecturas():
 @app.route('/api/descargar_matriz/<int:user_id>', methods=['GET'])
 def descargar_matriz(user_id):
     try:
-        # 1. Buscar al Usuario que inició sesión en la app
+        # 1. Buscar al Usuario y Empleado
         usuario = Usuario.query.get(user_id)
         if not usuario:
             return jsonify({'success': False, 'message': 'Usuario no encontrado.'}), 404
 
-        # 2. Buscar al Empleado vinculado a esa cuenta
         empleado = Empleado.query.get(usuario.id_empleado)
         if not empleado:
             return jsonify({'success': False, 'message': 'Empleado no asignado a este usuario.'}), 404
 
-        # 3. Tomar el nombre exacto del empleado
-        nombre_busqueda = empleado.nombres.strip() 
+        # 2. Limpiar el nombre del empleado de la BD
+        nombre_db = empleado.nombres.strip().upper()
 
-        # 4. Filtrar la matriz (CSV) por el nombre del operador y estado PENDIENTE
-        asignaciones = MatrizValidacion.query.filter(
-            MatrizValidacion.operador.ilike(f"%{nombre_busqueda}%"),
-            MatrizValidacion.estado == 'PENDIENTE'
-        ).all()
+        # 3. Traer TODAS las órdenes que estén PENDIENTES
+        # (En lugar de filtrar en SQL, filtramos en Python con Inteligencia)
+        todas_pendientes = MatrizValidacion.query.filter_by(estado='PENDIENTE').all()
+        
+        asignaciones_usuario = []
 
-        # --- AQUÍ REALIZAS EL CAMBIO DE ESTADO ---
-        if asignaciones:
-            for registro in asignaciones:
-                registro.estado = 'DESCARGADO'  # Cambiamos el estado en memoria
+        # 4. MOTOR DE BÚSQUEDA DIFUSA (FUZZY MATCHING)
+        for registro in todas_pendientes:
+            nombre_csv = (registro.operador or "").strip().upper()
             
-            # Guardamos los cambios en la base de datos definitivamente
-            db.session.commit() 
-            print(f"[DEBUG] Se han actualizado {len(asignaciones)} registros a 'DESCARGADO'.")
-        # ------------------------------------------
+            # Si la columna en el CSV vino vacía, la ignoramos
+            if not nombre_csv:
+                continue
 
-        # 5. Formatear los datos para el JSON
+            # Calcula el porcentaje de coincidencia (0 a 100)
+            # token_set_ratio ignora palabras extra, desordenadas y tolera typos
+            similitud = fuzz.token_set_ratio(nombre_db, nombre_csv)
+
+            # Umbral de confianza: 75% suele ser el punto dulce ideal
+            if similitud >= 75:
+                # Opcional: Imprimir en consola para ver cómo funciona el algoritmo
+                print(f"[FUZZY MATCH] BD: '{nombre_db}' | CSV: '{nombre_csv}' | Similitud: {similitud}% -> APROBADO")
+                asignaciones_usuario.append(registro)
+
+        # 5. Si no encontró ninguna, avisamos
+        if not asignaciones_usuario:
+            return jsonify({'success': False, 'message': 'No se encontraron órdenes pendientes para este operador.'}), 404
+
+        # 6. Cambiar estado a las órdenes que hicieron Match
+        for registro in asignaciones_usuario:
+            registro.estado = 'DESCARGADO'
+            
+        db.session.commit()
+        print(f"[DEBUG] Se han actualizado {len(asignaciones_usuario)} registros a 'DESCARGADO'.")
+
+        # 7. Formatear los datos para el JSON
         data = [{
             'id_matriz': a.id_matriz,
             'clicodfac': a.clicodfac or '-',
             'medcodygo': a.medcodygo or '-',
             'lectura': a.lectura or '-',
             'feclec': a.feclec or '-',
-            'estado': a.estado, # Ahora este valor vendrá como 'DESCARGADO'
+            'estado': a.estado,
             'obs1': a.obs1 or '',
             'newmed': a.newmed or ''
-        } for a in asignaciones]
+        } for a in asignaciones_usuario]
 
         return jsonify({
             'success': True,
             'data': data,
-            'message': f'Se descargaron y marcaron como descargados {len(data)} registros.'
+            'message': f'Se descargaron {len(data)} registros (Fuzzy Match aplicado).'
         }), 200
 
     except Exception as e:
-        db.session.rollback() # Si algo falla, revertimos el cambio de estado
+        db.session.rollback()
         print(f"[ERROR BACKEND] Error descargando matriz: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
