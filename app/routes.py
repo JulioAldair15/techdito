@@ -9703,3 +9703,135 @@ def get_avance_validacion():
     return jsonify({'success': True, 'data': datos_avance})
 
 
+
+# ==========================================
+# 1. RUTA PARA PREVISUALIZAR EN LA WEB
+# ==========================================
+@app.route('/api/reportes/previsualizar', methods=['POST'])
+def previsualizar_reporte():
+    data = request.json
+    operarios = data.get('operarios', [])
+    estado = data.get('estado', 'TODOS')
+
+    query = MatrizValidacion.query
+
+    # Filtros
+    if operarios and "TODOS" not in operarios:
+        query = query.filter(MatrizValidacion.operador.in_(operarios))
+    if estado and estado != "TODOS":
+        query = query.filter(MatrizValidacion.estado == estado)
+
+    # Limitamos a 50 para no colgar la web en la previsualización
+    resultados = query.limit(50).all() 
+
+    datos = [{
+        "clicodfac": r.clicodfac or "-",
+        "medcodygo": r.medcodygo or "-",
+        "lectura": r.lectura or "-",
+        "feclec": r.feclec or "-",
+        "operador": r.operador or "-",
+        "estado": r.estado or "-",
+        "nueva_lect": r.nueva_lect or "-",
+        "nuevo_med": r.nuevo_med or "-"
+    } for r in resultados]
+
+    # Contamos el total real sin el límite
+    total_registros = query.count()
+
+    return jsonify({"success": True, "data": datos, "total": total_registros})
+
+# ==========================================
+# 2. RUTA PARA GENERAR EL EXCEL PROFESIONAL
+# ==========================================
+@app.route('/api/reportes/descargar', methods=['POST'])
+def descargar_excel():
+    data = request.json
+    fecha_html = data.get('fecha') # Viene como 'YYYY-MM-DD'
+    operarios = data.get('operarios', [])
+    estado = data.get('estado', 'TODOS')
+
+    query = MatrizValidacion.query
+
+    # 1. Filtro de Fecha (Reutilizando tu lógica de conversión)
+    if fecha_html:
+        fecha_obj = datetime.strptime(fecha_html, '%Y-%m-%d')
+        fecha_db = fecha_obj.strftime('%d/%m/%Y')
+        query = query.filter(MatrizValidacion.feclec == fecha_db)
+
+    # 2. Filtro de Operarios
+    if operarios and "TODOS" not in operarios:
+        query = query.filter(MatrizValidacion.operador.in_(operarios))
+        
+    # 3. Filtro de Estado
+    if estado and estado != "TODOS":
+        query = query.filter(MatrizValidacion.estado == estado)
+
+    resultados = query.all()
+
+    # Mapeo exacto solicitado
+    df_data = []
+    for r in resultados:
+        df_data.append({
+            "SUMINISTRO": r.clicodfac,
+            "MEDIDOR": r.medcodygo,
+            "FECHA LECTURA": r.feclec,
+            "LECTURA DIGITADA": r.lectura,
+            "OBS1 DIGITADA": r.obs1,
+            "MEDIDOR DIGITADO": r.newmed,
+            "LECTURISTA": r.operador,
+            "FECHA REVALI": r.fecha_validacion.strftime('%Y-%m-%d %H:%M') if r.fecha_validacion else "",
+            "ESTADO": r.estado,
+            "NUEVA LECTURA": r.nueva_lect,
+            "NUEVA OBS1": r.nueva_obs,
+            "NUEVO MEDIDOR": r.nuevo_med
+        })
+
+    # Crear DataFrame de Pandas
+    df = pd.DataFrame(df_data)
+
+    # Generar Excel en Memoria
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Data_Validacion')
+        worksheet = writer.sheets['Data_Validacion']
+
+        # Estilos corporativos (Cabecera Azul Oscuro, Letras Blancas)
+        header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+        # Aplicar estilos a la cabecera
+        for col_num, cell in enumerate(worksheet[1], 1):
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = thin_border
+
+        # Aplicar bordes a las filas y autoajustar el tamaño de las columnas mágicamente
+        for column in worksheet.columns:
+            max_length = 0
+            col_letter = get_column_letter(column[0].column)
+            
+            for cell in column:
+                cell.border = thin_border # Borde para toda la tabla
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            
+            # Ajuste de ancho con un poco de padding
+            adjusted_width = (max_length + 3)
+            worksheet.column_dimensions[col_letter].width = adjusted_width
+
+    output.seek(0)
+    
+    # Retornar el archivo virtual como descarga
+    return send_file(
+        output, 
+        download_name="Reporte_Operativo_Techdito.xlsx", 
+        as_attachment=True, 
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
