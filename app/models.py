@@ -541,6 +541,7 @@ class Proveedor(db.Model):
     celular = db.Column(db.String(20))
     correo = db.Column(db.String(100))
     direccion = db.Column(db.String(255))
+    estado = db.Column(db.String(20), default='ACTIVO')
 
     # Relación
     entradas = db.relationship('Entrada', backref='proveedor', lazy=True)
@@ -582,13 +583,15 @@ class MovimientoDetalle(db.Model):
     id_producto = db.Column(db.Integer, db.ForeignKey('productos.id_producto'), nullable=False)
     id_entrada = db.Column(db.Integer, db.ForeignKey('entradas.id_entrada'), nullable=True)
     id_salida = db.Column(db.Integer, db.ForeignKey('salidas.id_salida'), nullable=True)
-    
+    id_lote_origen = db.Column(db.Integer, db.ForeignKey('movimientos_detalle.id_movimiento'), nullable=True)
+
     tipo_movimiento = db.Column(db.String(20), nullable=False)
     cantidad = db.Column(db.Numeric(10, 2), nullable=False)
 
     precio_unitario = db.Column(db.Numeric(10, 2), nullable=True) 
     estado = db.Column(db.String(20), default='ACTIVO')
     stock_restante = db.Column(db.Numeric(10, 2), nullable=True)
+    stock_historico = db.Column(db.Numeric(10, 2), nullable=True)
     talla = db.Column(db.String(20), nullable=True)
     id_empleado_recupero = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=True)
 
@@ -629,3 +632,9 @@ class MatrizValidacion(db.Model):
     nueva_obs = db.Column(db.String(100), nullable=True)
     nuevo_obs2 = db.Column(db.String(100), nullable=True)
     nuevo_med = db.Column(db.String(50), nullable=True)
+
+
+class UnidadMedida(db.Model):
+    __tablename__ = 'unidad_medida'
+    id_unidad = db.Column(db.Integer, primary_key=True)
+    nombre_unidad = db.Column(db.String(50), unique=True, nullable=False)
