@@ -194,7 +194,7 @@
                 <li><a href="#" data-section="cartas"><i class="fas fa-envelope-open-text"></i> <span>Recibos</span></a></li>
                 {% endif %}
 
-                {% if user_name in [
+                {% if user_name not in [
                     'sup_catastro',
                     'sup_inspecciones',
                     'sup_lecturas',
