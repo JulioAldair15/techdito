@@ -2793,7 +2793,10 @@
     
                                         <thead style="position: sticky; top: 0; z-index: 20; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
                                             <tr>
-                                                <th style="width: 110px; text-align: center;">Fecha Factura</th>
+                                                <th onclick="ordenarPorFechaFactura()" style="cursor: pointer; user-select: none; transition: color 0.2s;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'" title="Clic para ordenar">
+                                                    Fecha Factura
+                                                    <i id="icono-sort-fecha" class="fas fa-sort" style="color: #94a3b8; font-size: 0.85em; margin-left: 4px; transition: transform 0.2s;"></i>
+                                                </th>
                                                 <th style="width: 110px; text-align: center;">Fecha Ingreso</th>
                                                 <th style="width: 110px;">Nro Factura</th>
                                                 <th style="width: 110px;">Nro Guía</th>
@@ -2877,7 +2880,10 @@
                                         
                                         <thead style="position: sticky; top: 0; z-index: 20; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
                                             <tr>
-                                                <th>Fecha Salida</th>
+                                                <th onclick="ordenarPorFechaSalida()" style="cursor: pointer; user-select: none; transition: color 0.2s;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'" title="Clic para ordenar">
+                                                    Fecha de Salida
+                                                    <i id="icono-sort-salida" class="fas fa-sort" style="color: #94a3b8; font-size: 0.85em; margin-left: 4px; transition: transform 0.2s;"></i>
+                                                </th>
                                                 <th>Cantidad</th>
                                                 <th>Código</th>
                                                 <th>Nombre Producto</th>
@@ -2973,23 +2979,25 @@
                                 <table class="alm-table" style="width: 100%; min-width: 2200px; border-collapse: collapse; margin: 0; white-space: nowrap;">
                                     <thead style="position: sticky; top: 0; z-index: 20; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
                                         <tr>
-                                            <th>Fecha y Hora</th>
-                                            <th class="alm-text-center">Tipo</th>
-                                            <th>Cód. Producto</th>
-                                            <th style="min-width: 250px;">Nombre Producto</th>
-                                            <th style="width: 60px; text-align: center;">Talla</th>
-                                            <th>Unidad</th> <th>Categoría</th>
-                                            <th class="alm-text-center">Cant. Movimiento</th>
-                                            <th>Stock Final</th>
-                                            <th style="min-width: 200px;">Proveedor / Entidad</th>
-                                            <th style="min-width: 200px;">Empleado (Retorno)</th>
-                                            <th style="min-width: 200px;">Empleado Solicitante</th>
-                                            <th>Área destino</th>
-                                            <th>Cargo</th> <th>Doc. Referencia</th>
-                                            <th>Fecha Factura</th> <th>Guía Remisión</th>
-                                            <th style="min-width: 200px;">Observación</th>
-                                            <th class="alm-text-center">Adjunto</th>
-                                        </tr>
+                                            <th onclick="ordenarTablaKardex(0, 'fecha')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Fecha y Hora <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(1, 'texto')" class="alm-text-center" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Tipo <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(2, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Cód. Producto <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(3, 'texto')" style="min-width: 250px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Nombre Producto <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(4, 'texto')" style="width: 60px; text-align: center; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Talla <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(5, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Unidad <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(6, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Categoría <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(7, 'numero')" class="alm-text-center" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Cant. Movimiento <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(8, 'numero')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Stock Final <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(9, 'texto')" style="min-width: 200px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Proveedor / Entidad <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(10, 'texto')" style="min-width: 200px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Empleado (Retorno) <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(11, 'texto')" style="min-width: 200px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Empleado Solicitante <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(12, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Área destino <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(13, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Cargo <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(14, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Doc. Referencia <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(15, 'fecha')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Fecha Factura <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(16, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Guía Remisión <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(17, 'texto')" style="min-width: 200px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Observación <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th class="alm-text-center">Adjunto</th> </tr>
                                     </thead>
                                     
                                     <tbody id="body-tabla-historico">
@@ -3034,22 +3042,20 @@
                             
                             <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 65vh;">
                                 <table class="alm-table">
-                                    <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                    <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background-color: #ffffff;">
                                         <tr>
-                                            <th>Fecha Ingreso</th>
-                                            <th>Cód. Identificador</th>
-                                            <th style="min-width: 200px;">Nombre Producto</th>
-                                            
-                                            <th style="width: 60px; text-align: center;">Talla</th>
-                                            
-                                            <th>Proveedor</th>
-                                            <th>Categoría</th>
-                                            <th>Unidad</th>
-                                            <th>Stock</th>
-                                            <th>Precio (S/)</th>
-                                            <th>Total (S/)</th>
-                                            <th style="width: 120px;">Conteo Físico</th>
-                                            <th>Diferencia</th>
+                                            <th onclick="ordenarTablaInventario(0, 'fecha')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Fecha Ingreso <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(1, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Cód. Identificador <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(2, 'texto')" style="min-width: 200px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Nombre Producto <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(3, 'texto')" style="width: 60px; text-align: center; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Talla <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(4, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Proveedor <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(5, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Categoría <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(6, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Unidad <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(7, 'numero')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Stock <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(8, 'numero')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Precio (S/) <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(9, 'numero')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Total (S/) <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(10, 'input-numero')" style="width: 120px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Conteo Físico <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaInventario(11, 'numero')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Diferencia <i class="fas fa-sort inv-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
                                             <th class="alm-text-center">Acción</th>
                                         </tr>
                                     </thead>
@@ -3125,16 +3131,22 @@
                                                 </td>
                                                 <td><input type="text" id="txt-codigo-generado" class="alm-input" placeholder="Automático" disabled style="background-color: #f1f5f9; font-weight: bold; color: var(--accent);"></td>
                                                 <td><input type="text" id="txt-nombre-prod" class="alm-input" placeholder="Nombre único del producto..." style="text-transform: uppercase;"></td>
-                                                <td>
-                                                    <select id="sel-unidad-prod" class="alm-input">
-                                                        <option value="BIDÓN">BIDÓN</option>
-                                                        <option value="CAJA">CAJA</option>
-                                                        <option value="GALÓN">GALÓN</option>
-                                                        <option value="METRO">METRO</option>
-                                                        <option value="ML">ML</option>
-                                                        <option value="PAR">PAR</option>
-                                                        <option value="UND">UND</option>
-                                                    </select>
+                                                <td style="min-width: 160px;">
+                                                    <div style="display: flex; align-items: stretch; gap: 4px; height: 100%;">
+                                                        <select id="sel-unidad-prod" class="alm-input" style="flex-grow: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; margin: 0;">
+                                                            <option value="BIDÓN">BIDÓN</option>
+                                                            <option value="CAJA">CAJA</option>
+                                                            <option value="GALÓN">GALÓN</option>
+                                                            <option value="METRO">METRO</option>
+                                                            <option value="ML">ML</option>
+                                                            <option value="PAR">PAR</option>
+                                                            <option value="UND">UND</option>
+                                                        </select>
+                                                        
+                                                        <button type="button" class="alm-bg-blue" onclick="agregarNuevaUnidad()" title="Agregar nueva unidad" style="padding: 0 12px; border: none; border-top-right-radius: 4px; border-bottom-right-radius: 4px; cursor: pointer; color: white; display: flex; align-items: center; justify-content: center; background-color: #0ea5e9;">
+                                                            <i class="fas fa-plus"></i>
+                                                        </button>
+                                                    </div>
                                                 </td>
                                                 <td class="alm-text-center">
                                                     <div class="alm-action-group">
@@ -3241,10 +3253,19 @@
                                             <tr id="panel-listado-proveedores" style="display: none;">
                                                 <td colspan="7" style="padding: 15px 20px; background-color: #f8fafc; border-bottom: 2px solid var(--border);">
                                                     
-                                                    <div class="alm-filter-bar">
-                                                        <div class="alm-input-group" style="flex: 1;">
-                                                            <input type="text" id="filtro-busqueda-prov" class="alm-input" placeholder="🔍 Buscar por RUC o Razón Social..." onkeyup="filtrarProveedores()">
+                                                    <div class="alm-filter-bar" style="display: flex; align-items: center; justify-content: space-between; gap: 15px; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+    
+                                                        <div style="flex-grow: 1; position: relative;">
+                                                            <input type="text" id="filtro-busqueda-prov" class="alm-input" placeholder="🔍 Buscar por RUC o Razón Social..." onkeyup="filtrarProveedores()" style="width: 100%; margin: 0; box-shadow: none;">
                                                         </div>
+
+                                                        <div style="flex-shrink: 0;">
+                                                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #475569; font-weight: 600; font-size: 0.9rem; background: #ffffff; padding: 8px 14px; border-radius: 6px; border: 1px solid #cbd5e1; box-shadow: 0 1px 2px rgba(0,0,0,0.05); user-select: none; transition: border-color 0.2s;">
+                                                                <input type="checkbox" id="chk-mostrar-inactivos" onchange="filtrarProveedores()" style="width: 16px; height: 16px; cursor: pointer; margin: 0; accent-color: #0ea5e9;">
+                                                                Mostrar Inactivos
+                                                            </label>
+                                                        </div>
+
                                                     </div>
 
                                                     <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 350px; border: 1px solid var(--border); border-radius: 6px; background: var(--white);">
