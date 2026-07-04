@@ -288,7 +288,7 @@
                 </div>
                 <div class="quick-cards">
                     <!-- Tarjeta Asistencias: Misma validación del sidebar -->
-                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara' , 'prueba' ]%}
+                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara' , 'prueba', 'kcabos', 'tfernandez' ]%}
                     <div class="card" onclick="showSection('asistencias')">
                         <i class="fas fa-calendar-check"></i>
                         <span>Asistencias</span>
@@ -296,7 +296,7 @@
                     {% endif %}
 
                     <!-- Tarjeta Reportes: Misma validación del sidebar -->
-                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara' , 'prueba' ]%}
+                    {% if user_name not in ['administrativo_medicion','digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'administrativo_luis', 'administrativo_nancy', 'validacion_lecturas', 'catastro', 'administrativo_angel', 'administrativo_xiomara' , 'prueba', 'kcabos', 'tfernandez' ]%}
                     <div class="card" onclick="showSection('administrativo')">
                         <i class="fas fa-file-invoice-dollar"></i>
                         <span>Ver Reportes</span>
@@ -304,14 +304,34 @@
                     {% endif %}
 
                     <!-- Tarjeta Gestión Personal: Misma validación del sidebar -->
-                    {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_angel', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba' ] %}
+                    {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_angel', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_xiomara', 'sup_recaudacion_2', 'prueba', 'kcabos', 'tfernandez' ] %}
                     <div class="card" onclick="showSection('empleados')">
                         <i class="fas fa-users-cog"></i>
                         <span>Gestión Personal</span>
                     </div>
                     {% endif %}
                     
-                    {% if user_name not in ['administrativo_medicion','administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_angel', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                    {% if user_name not in [
+                        'sup_catastro',
+                        'sup_inspecciones',
+                        'sup_lecturas',
+                        'sup_recaudacion',
+                        'sup_distribucion',
+                        'sup_persuasivas',
+                        'sup_norte',
+                        'administrativo_yta',
+                        'administrativo_izquierdo',
+                        'digitacion_catastro',
+                        'administrativo_luis',
+                        'administrativo_ana',
+                        'sup_medicion',
+                        'administrativo_nancy',
+                        'administrativo_susan_@!"',
+                        'validacion_lecturas',
+                        'admin',
+                        'catastro',
+                        'administrativo_angel'
+                    ] %}
                     <div class="card" onclick="showSection('almacen')">
                         <i class="fas fa-truck-loading"></i>
                         <span>Gestión de Almacén</span>
