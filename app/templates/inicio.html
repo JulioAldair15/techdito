@@ -194,9 +194,30 @@
                 <li><a href="#" data-section="cartas"><i class="fas fa-envelope-open-text"></i> <span>Recibos</span></a></li>
                 {% endif %}
 
-                {% if user_name not in ['administrativo_medicion', 'administrativo_elias', 'administrativo_luis', 'digitacion_catastro', 'administrativo_izquierdo', 'administrativo_mario', 'administrativo_ana', 'administrativo_susan', 'validacion_lecturas', 'administrativo_nancy', 'catastro', 'sup_catastro', 'sup_inspecciones', 'sup_recaudacion', 'sup_distribucion', 'sup_medicion', 'sup_persuasivas', 'sup_norte', 'sup_lectura', 'administrativo_angel' , 'administrativo_xiomara', 'sup_recaudacion_2'] %}
+                {% if user_name in [
+                    'sup_catastro',
+                    'sup_inspecciones',
+                    'sup_lecturas',
+                    'sup_recaudacion',
+                    'sup_distribucion',
+                    'sup_persuasivas',
+                    'sup_norte',
+                    'administrativo_yta',
+                    'administrativo_izquierdo',
+                    'digitacion_catastro',
+                    'administrativo_luis',
+                    'administrativo_ana',
+                    'sup_medicion',
+                    'administrativo_nancy',
+                    'administrativo_susan_@!"',
+                    'validacion_lecturas',
+                    'admin',
+                    'catastro',
+                    'administrativo_angel'
+                ] %}
                 <li><a href="#" data-section="almacen"><i class="fas fa-truck-loading"></i> <span>Almacén</span></a></li>
                 {% endif %}
+                
                 
                 <li><a href="#" data-section="revalidacion"><i class="fas fa-check-double"></i> <span>Revalidación</span></a></li>
 
