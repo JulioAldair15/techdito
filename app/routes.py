@@ -8570,6 +8570,7 @@ def api_listar_datos():
         }
         return jsonify(data)
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
