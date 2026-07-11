@@ -1,6 +1,6 @@
 import os
 from flask import Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta
 from flask_bcrypt import check_password_hash 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func, case
@@ -68,6 +68,11 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from sqlalchemy.orm import aliased
 import csv
 from thefuzz import fuzz
+import sys
+
+
+import pytesseract
+from pdf2image import convert_from_path
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
@@ -9957,5 +9962,249 @@ def descargar_excel():
         as_attachment=True, 
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+
+
+
+# ==============================================================================
+# MÓDULO: GESTIÓN DE CARTAS
+# ==============================================================================
+
+# Configuración de subidas (Crea la carpeta si no existe)
+UPLOAD_FOLDER_CARTAS = os.path.join(app.root_path, 'static', 'uploads', 'cartas')
+os.makedirs(UPLOAD_FOLDER_CARTAS, exist_ok=True)
+ALLOWED_EXTENSIONS_CARTAS = {'pdf'}
+
+def allowed_file_cartas(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS_CARTAS
+
+# ==============================================================================
+# 1. ANÁLISIS DE PDF LOCAL
+# ==============================================================================
+@app.route('/api/cartas/analizar-pdf', methods=['POST'])
+def analizar_pdf_ocr():
+    if 'archivo_pdf' not in request.files:
+        return jsonify({"error": "No se adjuntó archivo"}), 400
+        
+    file = request.files['archivo_pdf']
+    if file.filename == '':
+        return jsonify({"error": "Archivo inválido"}), 400
+
+    temp_path = os.path.join(tempfile.gettempdir(), secure_filename(file.filename))
+    file.save(temp_path)
+
+    try:
+        import fitz  # PyMuPDF que ya tienes instalado localmente
+        import re
+        
+        # 1. Leer el archivo localmente
+        doc = fitz.open(temp_path)
+        texto_extraido = doc[0].get_text()
+        doc.close()
+        os.remove(temp_path)
+
+        # 2. Si es una foto pura, el texto estará vacío.
+        # Fallback instantáneo a modo manual, sin hacer esperar al usuario.
+        if len(texto_extraido.strip()) < 15:
+            return jsonify({
+                "exito": True, 
+                "datos": {"numero_carta": "", "asunto": ""}, 
+                "alerta": "Documento escaneado detectado. Por favor, digite el Número y Asunto manualmente."
+            }), 200
+
+        # 3. Si el PDF es digital y tiene texto, lo extraemos con Regex
+        datos_sugeridos = {"numero_carta": "", "asunto": ""}
+        
+        match_carta = re.search(r'CARTA\s*(?:N[°|º|.]?|NRO[.]?)?\s*([0-9A-Za-z-]+)', texto_extraido, re.IGNORECASE)
+        if match_carta:
+            datos_sugeridos["numero_carta"] = "Carta N° " + match_carta.group(1).strip()
+
+        match_asunto = re.search(r'Asunto[:\s]+([^\n]+)', texto_extraido, re.IGNORECASE)
+        if match_asunto:
+            datos_sugeridos["asunto"] = match_asunto.group(1).strip()
+
+        return jsonify({"exito": True, "datos": datos_sugeridos}), 200
+
+    except Exception as e:
+        if os.path.exists(temp_path): os.remove(temp_path)
+        print(f"⚠️ [AVISO] Fallo en la lectura del PDF local: {e}")
+        # En caso de error, abrimos el formulario para llenado manual de inmediato
+        return jsonify({"exito": True, "datos": {"numero_carta": "", "asunto": ""}}), 200
+
+# ---------------------------------------------------------
+# 2. GUARDAR CARTA Y ARMAR EL HILO
+# ---------------------------------------------------------
+@app.route('/api/cartas/registrar', methods=['POST'])
+def registrar_carta():
+    try:
+        numero_carta = request.form.get('numero_carta')
+        asunto = request.form.get('asunto')
+        tipo = request.form.get('tipo')
+        fecha_str = request.form.get('fecha')
+        fecha_limite_str = request.form.get('fecha_limite')
+        estado_form = request.form.get('estado')
+        referencia_id = request.form.get('carta_referencia_id')
+        
+        file = request.files.get('archivo_pdf')
+
+        if not file or not allowed_file_cartas(file.filename):
+            return jsonify({"error": "Debe adjuntar un documento PDF válido"}), 400
+
+        fecha_obj = datetime.strptime(fecha_str, '%Y-%m-%d').date() if fecha_str else None
+        fecha_limite_obj = datetime.strptime(fecha_limite_str, '%Y-%m-%d').date() if fecha_limite_str else None
+
+        filename = secure_filename(file.filename)
+        nombre_unico = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
+        filepath = os.path.join(UPLOAD_FOLDER_CARTAS, nombre_unico)
+        file.save(filepath)
+        
+        ruta_relativa_bd = f"/static/uploads/cartas/{nombre_unico}"
+
+        nueva_carta = Carta(
+            numero_carta=numero_carta,
+            asunto=asunto,
+            tipo=tipo,
+            fecha_emision=fecha_obj if tipo == 'EMITIDA' else None,
+            fecha_recepcion=fecha_obj if tipo == 'RECIBIDA' else None,
+            fecha_limite=fecha_limite_obj,
+            ruta_pdf=ruta_relativa_bd,
+            estado=estado_form
+        )
+        db.session.add(nueva_carta)
+        db.session.flush()
+
+        if referencia_id:
+            carta_origen = Carta.query.get(referencia_id)
+            if carta_origen:
+                nueva_carta.referencias_pasadas.append(carta_origen)
+                if tipo == 'EMITIDA' and carta_origen.tipo == 'RECIBIDA' and carta_origen.estado == 'PENDIENTE':
+                    carta_origen.estado = 'ATENDIDA'
+
+        db.session.commit()
+        return jsonify({"exito": True, "mensaje": "Documento registrado correctamente"}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        if 'filepath' in locals() and os.path.exists(filepath): 
+            os.remove(filepath)
+        print(f"Error Guardado: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"Fallo al guardar: {str(e)}"}), 500
+
+# ==============================================================================
+# LISTAR CARTAS
+# ==============================================================================
+@app.route('/api/cartas/listar', methods=['GET'])
+def listar_cartas():
+    try:
+        # 1. Atrapamos los parámetros que envía JavaScript
+        page = request.args.get('page', 1, type=int)
+        search = request.args.get('search', '').strip()
+        tipo = request.args.get('tipo', '').strip()
+        estado = request.args.get('estado', '').strip()
+
+        # 2. Iniciamos la consulta base
+        query = Carta.query
+
+        # 3. Aplicamos los filtros dinámicamente si es que existen
+        if search:
+            # Filtra si el texto coincide con el Número de carta O con el Asunto (Ignora mayúsculas/minúsculas)
+            query = query.filter(db.or_(
+                Carta.numero_carta.ilike(f'%{search}%'),
+                Carta.asunto.ilike(f'%{search}%')
+            ))
+        
+        if tipo:
+            query = query.filter(Carta.tipo == tipo)
+            
+        if estado:
+            query = query.filter(Carta.estado == estado)
+
+        # 4. Ordenamos por las más recientes primero y paginamos
+        paginacion = query.order_by(Carta.id.desc()).paginate(page=page, per_page=10, error_out=False)
+
+        datos = [carta.to_dict() for carta in paginacion.items]
+
+        meta = {
+            "total_items": paginacion.total,
+            "total_pages": paginacion.pages,
+            "current_page": paginacion.page,
+            "has_next": paginacion.has_next,
+            "has_prev": paginacion.has_prev
+        }
+
+        return jsonify({"exito": True, "datos": datos, "meta": meta}), 200
+
+    except Exception as e:
+        print(f"Error al listar cartas: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+# ==============================================================================
+# OBTENER CARTAS PARA EL BUSCADOR DEL MODAL
+# ==============================================================================
+@app.route('/api/cartas/todas-basico', methods=['GET'])
+def listar_cartas_basico():
+    try:
+        # Traemos todas las cartas (solo los campos necesarios para el buscador)
+        cartas = Carta.query.order_by(Carta.id.desc()).all()
+        datos = [{"id": c.id, "numero_carta": c.numero_carta, "asunto": c.asunto} for c in cartas]
+        return jsonify({"exito": True, "datos": datos}), 200
+    except Exception as e:
+        print(f"Error al listar cartas para el buscador: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# ==============================================================================
+# OBTENER EL HILO COMPLETO DE UNA CARTA (EXPEDIENTE)
+# ==============================================================================
+@app.route('/api/cartas/hilo/<int:carta_id>', methods=['GET'])
+def obtener_hilo_carta(carta_id):
+    try:
+        # Encontramos la carta solicitada
+        carta_actual = Carta.query.get_or_404(carta_id)
+        
+        hilo_completo = []
+        
+        # 1. Función para subir hacia el origen (padres)
+        def buscar_padres(carta):
+            # Si tu modelo usa "referencias_pasadas" como colección ManyToMany:
+            if carta.referencias_pasadas:
+                for padre in carta.referencias_pasadas:
+                    if padre not in hilo_completo:
+                        hilo_completo.append(padre)
+                        buscar_padres(padre)
+
+        # 2. Función para bajar hacia el futuro (hijos)
+        # Esto busca qué cartas tienen a ESTA carta como su referencia pasada.
+        def buscar_hijos(carta):
+            # En SQLAlchemy, si definiste un backref (ej. 'respuestas'), úsalo.
+            # Si no, podemos consultar la BD:
+            todas_las_cartas = Carta.query.all()
+            for posible_hijo in todas_las_cartas:
+                if carta in posible_hijo.referencias_pasadas:
+                    if posible_hijo not in hilo_completo:
+                        hilo_completo.append(posible_hijo)
+                        buscar_hijos(posible_hijo)
+
+        # Agregamos la carta que buscó el usuario
+        hilo_completo.append(carta_actual)
+        
+        # Poblamos la lista hacia atrás y hacia adelante
+        buscar_padres(carta_actual)
+        buscar_hijos(carta_actual)
+
+        # Ordenamos del más reciente al más antiguo basados en la fecha del documento
+        hilo_completo = sorted(
+            hilo_completo, 
+            key=lambda x: x.fecha_emision if x.tipo == 'EMITIDA' else x.fecha_recepcion, 
+            reverse=True
+        )
+
+        # Retornamos los datos limpios para el Frontend
+        datos = [c.to_dict() for c in hilo_completo]
+
+        return jsonify({"exito": True, "datos": datos}), 200
+
+    except Exception as e:
+        print(f"Error armando el hilo: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
