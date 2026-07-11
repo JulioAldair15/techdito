@@ -70,8 +70,6 @@ import csv
 from thefuzz import fuzz
 import sys
 
-
-import pytesseract
 from pdf2image import convert_from_path
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
