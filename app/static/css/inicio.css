@@ -9048,3 +9048,220 @@ select.form-control {
     #tab-avance .select2-container--default .select2-selection--single .select2-selection__arrow {
         height: 38px !important; /* Centra la flechita verticalmente */
     }
+
+
+
+/* ==========================================
+   VARIABLES GLOBALES DEL MÓDULO CARTAS
+========================================== */
+/* VARIABLES GLOBALES */
+    :root {
+        --crt-accent: #2563eb;
+        --crt-accent-hover: #1d4ed8;
+        --crt-border: #e2e8f0;
+        --crt-text-main: #0f172a;
+        --crt-text-muted: #64748b;
+        --crt-hover-bg: #f8fafc;
+        --crt-active-bg: #eff6ff;
+        --crt-danger: #ef4444;
+        --crt-success: #10b981;
+        --crt-warning: #eab308;
+    }
+
+    #cartas_1 {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        color: var(--crt-text-main);
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 0; 
+        animation: slideUpFade 0.6s ease-out forwards;
+        opacity: 0; 
+    }
+
+    @keyframes slideUpFade {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    #cartas_1 .crt-header-wrapper {
+        display: flex; justify-content: space-between; align-items: flex-end;
+        margin-bottom: 25px; flex-wrap: wrap; gap: 15px;
+    }
+
+    #cartas_1 .crt-main-title { font-size: 1.5rem; margin: 0 0 5px 0; font-weight: 700; color: var(--crt-text-main); }
+    #cartas_1 .crt-subtitle { color: var(--crt-text-muted); margin: 0; font-size: 0.9rem; }
+
+    #cartas_1 .crt-main-tabs {
+        display: flex; gap: 10px; border-bottom: 1px solid var(--crt-border);
+        margin-bottom: 25px; flex-wrap: wrap; 
+    }
+
+    #cartas_1 .crt-main-tab {
+        background: transparent; border: none; padding: 10px 15px;
+        font-size: 0.95rem; font-weight: 600; color: var(--crt-text-muted);
+        cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; 
+        transition: all 0.3s; display: flex; align-items: center; gap: 8px;
+    }
+
+    #cartas_1 .crt-main-tab:hover { color: var(--crt-text-main); }
+    #cartas_1 .crt-main-tab.active { color: var(--crt-accent); border-bottom: 2px solid var(--crt-accent); }
+
+    #cartas_1 .crt-view-content { display: none; }
+    #cartas_1 .crt-view-content.active { display: block; animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    #cartas_1 .crt-filter-bar { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
+    #cartas_1 .crt-input {
+        padding: 10px 12px; border: 1px solid var(--crt-border); border-radius: 6px;
+        outline: none; font-size: 0.9rem; flex: 1 1 200px; background-color: transparent;
+    }
+    #cartas_1 .crt-input:focus { border-color: var(--crt-accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+
+    #cartas_1 .crt-btn { padding: 10px 18px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: 0.2s; font-size: 0.9rem;}
+    #cartas_1 .crt-btn-primary { background: var(--crt-accent); color: white; }
+    #cartas_1 .crt-btn-primary:hover { background: var(--crt-accent-hover); }
+
+    #cartas_1 .crt-table-container { width: 100%; overflow-x: auto; margin-bottom: 20px; }
+    #cartas_1 .crt-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+    #cartas_1 .crt-table th, #cartas_1 .crt-table td { 
+        padding: 14px 10px; text-align: left; border-bottom: 1px solid var(--crt-border); font-size: 0.9rem; 
+    }
+    #cartas_1 .crt-table th { color: var(--crt-text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;}
+    #cartas_1 .crt-table tbody tr:hover { background-color: var(--crt-hover-bg); }
+
+    #cartas_1 .crt-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;}
+    #cartas_1 .crt-badge-entrada { background: #dcfce7; color: #166534; }
+    #cartas_1 .crt-badge-salida { background: #fee2e2; color: #991b1b; }
+    #cartas_1 .crt-badge-pendiente { background: #fef9c3; color: #854d0e; }
+    #cartas_1 .crt-badge-atendida { background: var(--crt-hover-bg); color: var(--crt-text-muted); }
+
+    #cartas_1 .crt-layout-grid { display: grid; grid-template-columns: 320px 1fr; gap: 40px; align-items: start; }
+    #cartas_1 .crt-timeline-search { background: var(--crt-hover-bg); border-radius: 8px; padding: 20px; }
+    /* 1. Al contenedor principal le quitamos el padding izquierdo engañoso */
+    #cartas_1 .crt-timeline { 
+        position: relative; 
+        padding-left: 0; 
+        margin-top: 10px; 
+    }
+    
+    /* 2. La línea plateada va exactamente a 15px de la izquierda */
+    #cartas_1 .crt-timeline::before { 
+        content: ''; 
+        position: absolute; 
+        top: 0; 
+        bottom: 0; 
+        left: 15px; /* Centro exacto para un círculo de 32px */
+        width: 2px; 
+        background: var(--crt-border); 
+        z-index: 0;
+    }
+    
+    /* 3. Cada bloque empuja TODO su contenido 50px a la derecha para dejar espacio al círculo */
+    #cartas_1 .crt-timeline-item { 
+        position: relative; 
+        margin-bottom: 30px; 
+        padding-left: 50px; 
+    }
+    
+    /* 4. El círculo (32px) se pega a la izquierda (left: 0). Su centro queda exactamente alineado con la línea gris */
+    #cartas_1 .crt-timeline-marker {
+        position: absolute; 
+        left: 0; 
+        top: -2px; 
+        width: 32px; 
+        height: 32px; 
+        border-radius: 50%;
+        
+        /* LA MAGIA ESTÁ AQUÍ: Fondo totalmente blanco que tapa la línea */
+        background-color: #ffffff !important; 
+        
+        display: flex; 
+        justify-content: center; 
+        align-items: center;
+        font-size: 0.85rem; 
+        
+        /* Aseguramos que el círculo esté por encima de la línea (que tiene z-index: 0) */
+        z-index: 2 !important; 
+        
+        box-sizing: border-box; 
+    }
+    
+    #cartas_1 .crt-timeline-marker.emitted { border: 1px solid var(--crt-danger); color: var(--crt-danger); }
+    #cartas_1 .crt-timeline-marker.received { border: 1px solid var(--crt-success); color: var(--crt-success); }
+
+    /* 5. Restauramos el contenido a la normalidad (ya no necesita empujar los textos) */
+    #cartas_1 .crt-timeline-content { 
+        padding: 0 0 10px 0; 
+    }
+    
+    #cartas_1 .crt-timeline-header { 
+        display: flex; 
+        justify-content: space-between; 
+        margin-bottom: 8px; 
+        align-items: center; 
+        flex-wrap: wrap; 
+        gap: 10px;
+    }
+    /* ====================================================
+       ESTILOS AGREGADOS PARA EL MODAL (Ventana Emergente)
+       ==================================================== */
+    .crt-modal {
+        display: none; /* Oculto por defecto */
+        position: fixed;
+        z-index: 9999;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4) !important;
+        align-items: center;
+        justify-content: center;
+        animation: fadeInModal 0.2s ease;
+    }
+
+
+    .crt-modal.active {
+        display: flex;
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .crt-modal-content {
+        background-color: white;
+        border-radius: 8px;
+        width: 100%;
+        max-width: 600px; /* Ancho máximo del formulario */
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        transform: translateY(20px);
+        animation: slideUp 0.3s ease-out forwards;
+    }
+
+    @keyframes slideUp { to { transform: translateY(0); } }
+
+    .crt-modal-header {
+        padding: 20px;
+        border-bottom: 1px solid var(--crt-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--crt-hover-bg);
+        border-radius: 8px 8px 0 0;
+    }
+
+    .crt-close-btn {
+        background: transparent;
+        border: none;
+        font-size: 1.2rem;
+        color: var(--crt-text-muted);
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+
+    .crt-close-btn:hover { color: var(--crt-danger); }
+
+    /* MEDIA QUERIES PARA MÓVILES */
+    @media (max-width: 768px) {
+        #cartas_1 .crt-header-wrapper { flex-direction: column; align-items: flex-start; }
+        #cartas_1 .crt-layout-grid { grid-template-columns: 1fr; gap: 20px; } 
+        #cartas_1 .crt-btn { width: 100%; justify-content: center; }
+        .crt-modal-content { margin: 15px; } /* Margen en celulares para que no toque los bordes */
+    }
