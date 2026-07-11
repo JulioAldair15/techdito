@@ -16846,3 +16846,586 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+
+
+
+//// GESTION DE CARTAS ////
+let cartasGlobalesBD = []; 
+
+// =========================================================
+// 1. CONTROL DE VISTAS Y MODALES
+// =========================================================
+function cambiarPestanaCartas(idVista, boton) {
+    document.querySelectorAll('#cartas_1 .crt-main-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#cartas_1 .crt-view-content').forEach(v => v.classList.remove('active'));
+    boton.classList.add('active');
+    document.getElementById('vista-' + idVista).classList.add('active');
+}
+
+function abrirModalCarta() {
+    document.getElementById('modalCarta').classList.add('active');
+    // Llenamos el buscador automáticamente cada vez que se abre el modal
+    cargarOpcionesBuscador(); 
+}
+
+function cerrarModalCarta() {
+    document.getElementById('modalCarta').classList.remove('active');
+    // Limpiar formulario y resetear estados al cerrar
+    document.getElementById('formRegistrarCarta').reset();
+    document.getElementById('ocr-loading').style.display = 'none';
+    document.getElementById('carta_referencia_id').value = '';
+    const listaResultados = document.getElementById('lista_resultados_cartas');
+    if(listaResultados) listaResultados.style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const inputPdf = document.getElementById('input_archivo_pdf');
+    const loadingDiv = document.getElementById('ocr-loading');
+    
+    if(inputPdf) {
+        inputPdf.addEventListener('change', async function() {
+            const file = this.files[0];
+            if (!file) return;
+
+            // Mostrar el loader
+            loadingDiv.style.display = 'flex';
+
+            const formData = new FormData();
+            formData.append('archivo_pdf', file);
+
+            try {
+                const response = await fetch('/api/cartas/analizar-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.exito) {
+                    if (result.datos.numero_carta) {
+                        document.getElementById('input_numero_carta').value = result.datos.numero_carta;
+                    }
+                    if (result.datos.asunto) {
+                        document.getElementById('input_asunto').value = result.datos.asunto;
+                    }
+                } else {
+                    console.error("No se pudo extraer texto: ", result.error);
+                }
+            } catch (error) {
+                console.error("Error de conexión con el OCR:", error);
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
+        });
+    }
+});
+
+// =========================================================
+// 3. FORMATEO Y GUARDADO DE CARTA (Al darle a Guardar)
+// =========================================================
+async function guardarCartaFormateada(event) {
+    event.preventDefault(); // Detenemos el envío normal
+
+    const form = event.target;
+    const formData = new FormData(form);
+    const btnSubmit = form.querySelector('button[type="submit"]');
+
+    // Cambiar estado del botón a cargando
+    const textoOriginalBtn = btnSubmit.innerHTML;
+    btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+    btnSubmit.disabled = true;
+
+    // 1. FORMATEAR EL NÚMERO DE CARTA (Respeta la digitación manual del año)
+    let numCarta = document.getElementById('input_numero_carta').value.trim();
+    if (numCarta) {
+        formData.set('numero_carta', numCarta);
+    }
+
+    // 2. FORMATEAR ASUNTO A MAYÚSCULAS
+    let asunto = document.getElementById('input_asunto').value.toUpperCase();
+    formData.set('asunto', asunto);
+
+    // El ID de referencia se captura automáticamente porque el input "hidden" 
+    // tiene el atributo name="carta_referencia_id".
+
+    // 3. ENVIAR A FLASK
+    try {
+        const response = await fetch('/api/cartas/registrar', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+
+        if (result.exito) {
+            cerrarModalCarta();
+            cargarTablaCartas(1); // Recargamos la tabla visual
+        } else {
+            alert("Error al guardar: " + result.error);
+        }
+    } catch (error) {
+        console.error("Fallo de red:", error);
+        alert("Ocurrió un error de red al intentar guardar.");
+    } finally {
+        // Restaurar botón
+        btnSubmit.innerHTML = textoOriginalBtn;
+        btnSubmit.disabled = false;
+    }
+}
+
+// =========================================================
+// 4. LÓGICA DEL BUSCADOR INTERACTIVO PERSONALIZADO
+// =========================================================
+async function cargarOpcionesBuscador() {
+    try {
+        const response = await fetch('/api/cartas/todas-basico'); 
+        const result = await response.json();
+        
+        if (result.exito) {
+            cartasGlobalesBD = result.datos; // Guardamos en memoria para filtrar rápido
+            renderizarListaBuscador(cartasGlobalesBD);
+        }
+    } catch (e) {
+        console.error("Error cargando cartas previas:", e);
+    }
+}
+
+function renderizarListaBuscador(listaCartas) {
+    const contenedor = document.getElementById('lista_resultados_cartas');
+    if (!contenedor) return;
+    
+    contenedor.innerHTML = '';
+    
+    if(listaCartas.length === 0) {
+        contenedor.innerHTML = '<div style="padding: 10px; color: #94a3b8; font-size: 0.85rem; text-align: center;">No hay coincidencias</div>';
+        return;
+    }
+
+    listaCartas.forEach(carta => {
+        const item = document.createElement('div');
+        item.style.cssText = "padding: 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; color: #334155; transition: background 0.2s;";
+        item.innerHTML = `<strong style="color: #0f172a;">${carta.numero_carta}</strong><br><span style="color: #64748b;">${carta.asunto}</span>`;
+        
+        item.onmouseover = () => item.style.backgroundColor = '#f8fafc';
+        item.onmouseout = () => item.style.backgroundColor = 'transparent';
+        
+        item.onclick = () => {
+            document.getElementById('buscador_referencia').value = `${carta.numero_carta} | ${carta.asunto}`;
+            document.getElementById('carta_referencia_id').value = carta.id;
+            contenedor.style.display = 'none';
+        };
+        
+        contenedor.appendChild(item);
+    });
+}
+
+function mostrarOpcionesBuscador() {
+    const contenedor = document.getElementById('lista_resultados_cartas');
+    if(contenedor) contenedor.style.display = 'block';
+    // Limpiamos el ID oculto si el usuario empieza a escribir algo nuevo manualmente
+    document.getElementById('carta_referencia_id').value = ""; 
+}
+
+function filtrarOpcionesBuscador() {
+    const texto = document.getElementById('buscador_referencia').value.toLowerCase();
+    const cartasFiltradas = cartasGlobalesBD.filter(c => 
+        c.numero_carta.toLowerCase().includes(texto) || 
+        c.asunto.toLowerCase().includes(texto)
+    );
+    renderizarListaBuscador(cartasFiltradas);
+}
+
+// Ocultar la lista flotante si el usuario hace clic fuera de ella
+document.addEventListener('click', function(e) {
+    const container = document.getElementById('contenedor-buscador');
+    const lista = document.getElementById('lista_resultados_cartas');
+    if (container && lista && !container.contains(e.target)) {
+        lista.style.display = 'none';
+    }
+});
+
+
+// =====================================================================
+// 5. PAGINACIÓN Y CARGA DE LA BANDEJA PRINCIPAL
+// =====================================================================
+document.addEventListener('DOMContentLoaded', () => {
+    cargarTablaCartas(1);
+});
+
+// Variable global para no saturar el servidor al teclear rápido
+let temporizadorFiltro = null;
+
+function aplicarFiltrosCartas() {
+    clearTimeout(temporizadorFiltro);
+    // Espera 400ms después de que el usuario deje de escribir para hacer la búsqueda
+    temporizadorFiltro = setTimeout(() => {
+        cargarTablaCartas(1); // Siempre que filtramos, volvemos a la página 1
+    }, 400);
+}
+
+async function cargarTablaCartas(pagina) {
+    const tbody = document.querySelector('#vista-bandeja .crt-table tbody');
+    const paginadorContainer = document.querySelector('.crt-pagination');
+    
+    if(!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="6" class="crt-text-center" style="padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Cargando documentos...</td></tr>`;
+
+    // 1. CAPTURAR LOS VALORES DE LOS FILTROS
+    const search = document.getElementById('filtro_buscar') ? document.getElementById('filtro_buscar').value : '';
+    const tipo = document.getElementById('filtro_tipo') ? document.getElementById('filtro_tipo').value : '';
+    const estado = document.getElementById('filtro_estado') ? document.getElementById('filtro_estado').value : '';
+
+    // 2. CONSTRUIR LA URL CON LOS PARÁMETROS DE BÚSQUEDA
+    let url = `/api/cartas/listar?page=${pagina}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (tipo) url += `&tipo=${encodeURIComponent(tipo)}`;
+    if (estado) url += `&estado=${encodeURIComponent(estado)}`;
+
+    try {
+        const response = await fetch(url);
+        const result = await response.json();
+
+        if (result.exito) {
+            tbody.innerHTML = ''; 
+            
+            if (result.datos.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="crt-text-center" style="padding: 20px; color: #64748b;">No se encontraron documentos con esos filtros.</td></tr>`;
+            } else {
+                result.datos.forEach(carta => {
+                    let badgeFlujo = carta.tipo === 'RECIBIDA' 
+                        ? '<span class="crt-badge crt-badge-entrada"><i class="fas fa-arrow-down"></i> RECIBIDA</span>'
+                        : '<span class="crt-badge crt-badge-salida"><i class="fas fa-arrow-up"></i> EMITIDA</span>';
+                        
+                    let badgeEstado = carta.estado === 'PENDIENTE'
+                        ? '<span class="crt-badge crt-badge-pendiente">PENDIENTE</span>'
+                        : '<span class="crt-badge crt-badge-atendida">' + carta.estado + '</span>';
+
+                    let badgeVencimiento = carta.fecha_limite === '-' 
+                        ? '<span style="color: #94a3b8;">-</span>' 
+                        : `<span style="color: #ef4444; font-weight: 600;"><i class="far fa-calendar-times"></i> ${carta.fecha_limite}</span>`;
+
+                    let btnVerPDF = `<button onclick="abrirVisorPDF('${carta.ruta_pdf}', '${carta.numero_carta}')" title="Ver Documento" style="background: transparent; border: 1px solid #cbd5e1; color: #3b82f6; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#eff6ff'; this.style.borderColor='#3b82f6';" onmouseout="this.style.background='transparent'; this.style.borderColor='#cbd5e1';"><i class="fas fa-eye"></i></button>`;
+
+                    tbody.innerHTML += `
+                        <tr style="transition: background 0.2s;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='transparent'">
+                            <td style="color: var(--crt-accent); font-weight: 600;">${carta.numero_carta}</td>
+                            <td>${badgeFlujo}</td>
+                            <td>${carta.asunto}</td>
+                            <td>${carta.fecha}</td>
+                            <td>${badgeVencimiento}</td>
+                            <td>${badgeEstado}</td>
+                            <td style="text-align: center;">${btnVerPDF}</td>
+                        </tr>
+                    `;
+                });
+            }
+            dibujarControlesPaginacion(result.meta, paginadorContainer);
+        } else {
+            tbody.innerHTML = `<tr><td colspan="6" class="crt-text-center" style="color: red;">Error: ${result.error}</td></tr>`;
+        }
+    } catch (error) {
+        console.error("Error cargando la tabla:", error);
+        tbody.innerHTML = `<tr><td colspan="6" class="crt-text-center" style="color: red;">Error de conexión.</td></tr>`;
+    }
+}
+
+
+// =====================================================================
+// AUTOLOAD (Al abrir la página, cargamos la tabla y las opciones del buscador)
+// =====================================================================
+document.addEventListener('DOMContentLoaded', () => {
+    cargarTablaCartas(1);
+    cargarOpcionesBuscador(); // Carga las cartas globales en la variable cartasGlobalesBD
+});
+
+// =====================================================================
+// LÓGICA DEL BUSCADOR/SELECCIONADOR PRINCIPAL DE LA TABLA
+// =====================================================================
+function mostrarOpcionesFiltro() {
+    filtrarOpcionesFiltro(); // Al hacer clic, evalúa si debe mostrar algo
+}
+
+function filtrarOpcionesFiltro() {
+    const texto = document.getElementById('filtro_buscar').value.toLowerCase();
+    const contenedor = document.getElementById('lista_resultados_filtro');
+    
+    // 1. Disparamos la búsqueda real en la tabla de fondo
+    aplicarFiltrosCartas();
+
+    if (!contenedor) return;
+
+    // 2. Si el texto está vacío, ocultamos la lista flotante
+    if (texto.trim() === '') {
+        contenedor.style.display = 'none';
+        return;
+    }
+
+    // 3. Mostramos y llenamos la lista
+    contenedor.style.display = 'block';
+    contenedor.innerHTML = '';
+    
+    // Filtramos de la variable global y limitamos a 10 resultados para no saturar la pantalla
+    const cartasFiltradas = cartasGlobalesBD.filter(c => 
+        c.numero_carta.toLowerCase().includes(texto) || 
+        c.asunto.toLowerCase().includes(texto)
+    ).slice(0, 10); 
+
+    if(cartasFiltradas.length === 0) {
+        contenedor.innerHTML = '<div style="padding: 10px; color: #94a3b8; font-size: 0.85rem; text-align: center;">No hay coincidencias</div>';
+        return;
+    }
+
+    cartasFiltradas.forEach(carta => {
+        const item = document.createElement('div');
+        item.style.cssText = "padding: 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; color: #334155; transition: background 0.2s;";
+        item.innerHTML = `<strong style="color: #0f172a;">${carta.numero_carta}</strong><br><span style="color: #64748b;">${carta.asunto}</span>`;
+        
+        item.onmouseover = () => item.style.backgroundColor = '#f8fafc';
+        item.onmouseout = () => item.style.backgroundColor = 'transparent';
+        
+        // 4. AL SELECCIONAR: Autocompleta el input y oculta la lista
+        item.onclick = () => {
+            document.getElementById('filtro_buscar').value = carta.numero_carta;
+            contenedor.style.display = 'none';
+            aplicarFiltrosCartas(); // Fuerza la recarga de la tabla con la carta exacta
+        };
+        
+        contenedor.appendChild(item);
+    });
+}
+
+// 5. CERRAR LISTAS AL HACER CLIC AFUERA
+document.addEventListener('click', function(e) {
+    // Para el modal
+    const containerModal = document.getElementById('contenedor-buscador');
+    const listaModal = document.getElementById('lista_resultados_cartas');
+    if (containerModal && listaModal && !containerModal.contains(e.target)) {
+        listaModal.style.display = 'none';
+    }
+
+    // Para la barra principal
+    const containerFiltro = document.getElementById('contenedor-filtro-buscador');
+    const listaFiltro = document.getElementById('lista_resultados_filtro');
+    if (containerFiltro && listaFiltro && !containerFiltro.contains(e.target)) {
+        listaFiltro.style.display = 'none';
+    }
+});
+
+function dibujarControlesPaginacion(meta, container) {
+    // Estilos generales del contenedor para alinearlo todo a la derecha
+    container.style.display = 'flex';
+    container.style.justifyContent = 'flex-end';
+    container.style.alignItems = 'center';
+    container.style.gap = '20px';
+    container.style.marginTop = '20px';
+    container.style.paddingTop = '15px';
+    container.style.borderTop = '1px solid #e2e8f0';
+
+    if (!meta || meta.total_items === 0) {
+        container.innerHTML = '<div style="color: #64748b; font-size: 0.85rem;">No hay documentos para mostrar.</div>';
+        return;
+    }
+
+    let inicio = ((meta.current_page - 1) * 10) + 1;
+    let fin = Math.min(meta.current_page * 10, meta.total_items);
+
+    // Texto de información
+    let html = `<div style="color: #64748b; font-size: 0.85rem;">Mostrando <strong>${inicio}</strong> a <strong>${fin}</strong> de <strong>${meta.total_items}</strong> documentos</div>`;
+    
+    // Contenedor de los botones
+    html += `<div style="display: flex; gap: 5px;">`;
+
+    // Variables de diseño para los botones
+    const btnBase = "padding: 6px 12px; border: 1px solid #cbd5e1; background: white; color: #475569; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.2s;";
+    const btnActive = "padding: 6px 12px; border: 1px solid #0f172a; background: #0f172a; color: white; border-radius: 4px; font-size: 0.85rem; font-weight: 600;";
+    const btnDisabled = "padding: 6px 12px; border: 1px solid #e2e8f0; background: #f8fafc; color: #94a3b8; border-radius: 4px; cursor: not-allowed; font-size: 0.85rem;";
+
+    // Botón "Anterior"
+    if (meta.has_prev) {
+        html += `<button style="${btnBase}" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'" onclick="cargarTablaCartas(${meta.current_page - 1})"><i class="fas fa-chevron-left"></i></button>`;
+    } else {
+        html += `<button style="${btnDisabled}" disabled><i class="fas fa-chevron-left"></i></button>`;
+    }
+
+    // Botones numéricos
+    for (let i = 1; i <= meta.total_pages; i++) {
+        if (i === meta.current_page) {
+            html += `<button style="${btnActive}">${i}</button>`;
+        } else {
+            html += `<button style="${btnBase}" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'" onclick="cargarTablaCartas(${i})">${i}</button>`;
+        }
+    }
+
+    // Botón "Siguiente"
+    if (meta.has_next) {
+        html += `<button style="${btnBase}" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'" onclick="cargarTablaCartas(${meta.current_page + 1})"><i class="fas fa-chevron-right"></i></button>`;
+    } else {
+        html += `<button style="${btnDisabled}" disabled><i class="fas fa-chevron-right"></i></button>`;
+    }
+
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+// =====================================================================
+// LÓGICA DEL VISOR DE PDF
+// =====================================================================
+function abrirVisorPDF(rutaPDF, tituloCarta) {
+    if (!rutaPDF || rutaPDF === 'null') {
+        alert("El archivo PDF no se encuentra disponible.");
+        return;
+    }
+    
+    document.getElementById('tituloVisorPDF').innerHTML = `<i class="far fa-file-pdf" style="color: #ef4444; margin-right: 8px;"></i> ${tituloCarta}`;
+    document.getElementById('btnDescargarPDF').href = rutaPDF;
+    
+    // Mostramos el spinner mientras carga el iframe
+    document.getElementById('pdfLoadingSpinner').style.display = 'block';
+    
+    // Le inyectamos la ruta del PDF al iframe (Flask servirá la ruta estática)
+    document.getElementById('iframePDF').src = rutaPDF;
+    
+    document.getElementById('modalVisorPDF').classList.add('active');
+}
+
+function cerrarVisorPDF() {
+    document.getElementById('modalVisorPDF').classList.remove('active');
+    // Limpiamos el iframe por seguridad y rendimiento de memoria
+    setTimeout(() => { document.getElementById('iframePDF').src = ''; }, 300);
+}
+
+// =====================================================================
+// LÓGICA DE LA PESTAÑA DE HILOS / EXPEDIENTES
+// =====================================================================
+
+// 1. Buscador Inteligente para Hilos
+function mostrarOpcionesHilo() {
+    filtrarOpcionesHilo();
+}
+
+function filtrarOpcionesHilo() {
+    const texto = document.getElementById('filtro_hilo').value.toLowerCase();
+    const contenedor = document.getElementById('lista_resultados_hilo');
+    
+    if (!contenedor) return;
+
+    if (texto.trim() === '') {
+        contenedor.style.display = 'none';
+        return;
+    }
+
+    contenedor.style.display = 'block';
+    contenedor.innerHTML = '';
+    
+    const cartasFiltradas = cartasGlobalesBD.filter(c => 
+        c.numero_carta.toLowerCase().includes(texto) || 
+        c.asunto.toLowerCase().includes(texto)
+    ).slice(0, 10); 
+
+    if(cartasFiltradas.length === 0) {
+        contenedor.innerHTML = '<div style="padding: 10px; color: #94a3b8; font-size: 0.85rem; text-align: center;">No hay coincidencias</div>';
+        return;
+    }
+
+    cartasFiltradas.forEach(carta => {
+        const item = document.createElement('div');
+        item.style.cssText = "padding: 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; color: #334155; transition: background 0.2s;";
+        item.innerHTML = `<strong style="color: #0f172a;">${carta.numero_carta}</strong><br><span style="color: #64748b;">${carta.asunto}</span>`;
+        
+        item.onmouseover = () => item.style.backgroundColor = '#f8fafc';
+        item.onmouseout = () => item.style.backgroundColor = 'transparent';
+        
+        item.onclick = () => {
+            document.getElementById('filtro_hilo').value = carta.numero_carta;
+            document.getElementById('hilo_carta_id').value = carta.id;
+            contenedor.style.display = 'none';
+        };
+        
+        contenedor.appendChild(item);
+    });
+}
+
+// Agregar al EventListener global de clics para cerrar esta lista también
+document.addEventListener('click', function(e) {
+    const containerHilo = document.getElementById('contenedor-filtro-hilo');
+    const listaHilo = document.getElementById('lista_resultados_hilo');
+    if (containerHilo && listaHilo && !containerHilo.contains(e.target)) {
+        listaHilo.style.display = 'none';
+    }
+});
+
+
+// 2. Trazabilidad: Obtener y dibujar la línea de tiempo
+async function rastrearExpediente() {
+    const cartaId = document.getElementById('hilo_carta_id').value;
+    const timelineContainer = document.getElementById('contenedor_timeline');
+    
+    if (!cartaId) {
+        alert("Por favor, selecciona una carta de la lista sugerida.");
+        return;
+    }
+
+    timelineContainer.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Rastreando historial...</div>';
+
+    try {
+        // Llamamos al backend para que nos arme la rama completa
+        const response = await fetch(`/api/cartas/hilo/${cartaId}`);
+        const result = await response.json();
+
+        if (result.exito) {
+            timelineContainer.innerHTML = '';
+            const hilo = result.datos; // Array ordenado cronológicamente
+
+            if (hilo.length === 0) {
+                timelineContainer.innerHTML = '<div style="color: red;">No se encontró información.</div>';
+                return;
+            }
+
+            // Actualizamos el resumen izquierdo
+            document.getElementById('resumen_expediente').style.display = 'block';
+            document.getElementById('resumen_inicio').textContent = hilo[0].numero_carta;
+            document.getElementById('resumen_total').textContent = hilo.length;
+
+            // Dibujamos cada ítem de la línea de tiempo
+            hilo.forEach(carta => {
+                let colorMarker = carta.tipo === 'RECIBIDA' ? 'received' : 'emitted';
+                let iconMarker = carta.tipo === 'RECIBIDA' ? 'fa-arrow-down' : 'fa-arrow-up';
+                
+                let badgeFlujo = carta.tipo === 'RECIBIDA' 
+                    ? '<span class="crt-badge crt-badge-entrada">RECIBIDA</span>'
+                    : '<span class="crt-badge crt-badge-salida">EMITIDA</span>';
+                
+                let badgeEstado = carta.estado === 'PENDIENTE'
+                    ? '<span class="crt-badge crt-badge-pendiente" style="margin-left: 5px;">PENDIENTE</span>'
+                    : `<span class="crt-badge crt-badge-atendida" style="margin-left: 5px;">${carta.estado}</span>`;
+
+                timelineContainer.innerHTML += `
+                    <div class="crt-timeline-item">
+                        <div class="crt-timeline-marker ${colorMarker}"><i class="fas ${iconMarker}"></i></div>
+                        <div class="crt-timeline-content">
+                            <div class="crt-timeline-header">
+                                <span style="color: var(--crt-accent); font-weight: 600; font-size: 1.05rem;">${carta.numero_carta}</span>
+                                <span style="color: var(--crt-text-muted); font-size: 0.85rem;">${carta.fecha}</span>
+                            </div>
+                            <p style="margin: 0 0 8px 0; font-size: 0.95rem; color: var(--crt-text-main);"><strong>Asunto:</strong> ${carta.asunto}</p>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>${badgeFlujo} ${badgeEstado}</div>
+                                <!-- Inyectamos tu maravilloso visor de PDF directo en la línea de tiempo -->
+                                <button onclick="abrirVisorPDF('${carta.ruta_pdf}', '${carta.numero_carta}')" class="crt-btn" style="padding: 4px 10px; font-size: 0.75rem; background: transparent; color: #3b82f6; border: 1px solid #cbd5e1;">
+                                    <i class="fas fa-eye"></i> Leer PDF
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+        } else {
+            timelineContainer.innerHTML = `<div style="color: red;">Error: ${result.error}</div>`;
+        }
+    } catch (error) {
+        console.error(error);
+        timelineContainer.innerHTML = '<div style="color: red;">Error de conexión.</div>';
+    }
+}
