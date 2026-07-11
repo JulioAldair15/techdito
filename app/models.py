@@ -638,3 +638,52 @@ class UnidadMedida(db.Model):
     __tablename__ = 'unidad_medida'
     id_unidad = db.Column(db.Integer, primary_key=True)
     nombre_unidad = db.Column(db.String(50), unique=True, nullable=False)
+
+
+
+
+carta_referencia = db.Table('carta_referencia',
+    db.Column('carta_origen_id', db.Integer, db.ForeignKey('cartas.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('carta_destino_id', db.Integer, db.ForeignKey('cartas.id', ondelete='CASCADE'), primary_key=True)
+)
+
+class Carta(db.Model):
+    __tablename__ = 'cartas'
+
+    id = db.Column(db.Integer, primary_key=True)
+    numero_carta = db.Column(db.String(100), unique=True, nullable=False) # Ej: "Carta N° 045-2026-SEDALIB"
+    asunto = db.Column(db.String(255), nullable=False)
+    tipo = db.Column(db.Enum('EMITIDA', 'RECIBIDA', name='tipo_carta_enum'), nullable=False)
+    
+    # CORRECCIÓN 1: Ambos en True para evitar bloqueos en Base de Datos
+    fecha_emision = db.Column(db.Date, nullable=True) 
+    fecha_recepcion = db.Column(db.Date, nullable=True) 
+    
+    ruta_pdf = db.Column(db.String(255), nullable=False) # Ubicación del archivo escaneado
+    estado = db.Column(db.Enum('PENDIENTE', 'ATENDIDA', 'ARCHIVADA', name='estado_carta_enum'), default='PENDIENTE')
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+
+    fecha_limite = db.Column(db.Date, nullable=True)
+
+    # RELACIÓN MUCHOS A MUCHOS (El núcleo de la trazabilidad)
+    referencias_pasadas = db.relationship(
+        'Carta',
+        secondary=carta_referencia,
+        primaryjoin=(id == carta_referencia.c.carta_origen_id),
+        secondaryjoin=(id == carta_referencia.c.carta_destino_id),
+        backref=db.backref('referencias_futuras', lazy='dynamic'), 
+        lazy='subquery'
+    )
+
+    # CORRECCIÓN 2: Esta función es vital para que Flask pueda enviar los datos a tu HTML
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "numero_carta": self.numero_carta,
+            "asunto": self.asunto,
+            "tipo": self.tipo,
+            "fecha": self.fecha_emision.strftime('%d/%m/%Y') if self.tipo == 'EMITIDA' and self.fecha_emision else (self.fecha_recepcion.strftime('%d/%m/%Y') if self.fecha_recepcion else '-'),
+            "fecha_limite": self.fecha_limite.strftime('%d/%m/%Y') if self.fecha_limite else '-',
+            "estado": self.estado,
+            "ruta_pdf": self.ruta_pdf
+        }
