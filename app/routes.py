@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, date
 from sqlalchemy import extract, or_, text
 from calendar import monthrange
 import traceback  # Importamos para imprimir detalles de errores
-from barcode import Code128
+# from barcode import Code128
 from openpyxl import Workbook 
 from io import BytesIO
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment, PatternFill 
@@ -44,7 +44,15 @@ from PIL import ImageFont
 import zipfile
 from dateutil import parser
 from PIL import Image
-import fitz 
+
+# IVARGAS 11/07/2026
+# ====================================
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
+# ====================================
+
 from fpdf import FPDF
 import numpy as np
 import shutil
@@ -69,6 +77,12 @@ from sqlalchemy.orm import aliased
 import csv
 from thefuzz import fuzz
 import sys
+
+# IVARGAS  11/07/2026
+# ========================================
+from google.cloud import storage
+from google.oauth2.service_account import Credentials
+# ========================================
 
 from pdf2image import convert_from_path
 
@@ -9976,6 +9990,136 @@ def allowed_file_cartas(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS_CARTAS
 
 # ==============================================================================
+# GOOGLE CLOUD STORAGE HELPERS
+# ==============================================================================
+# IVARGAS - 11/07/2026
+def get_gcs_client():
+    if storage is None:
+        raise RuntimeError("google-cloud-storage no está instalado. Instala google-cloud-storage en tu entorno.")
+
+    credentials_file = app.config.get('GCS_CREDENTIALS_FILE')
+    if credentials_file:
+        if not os.path.exists(credentials_file):
+            raise RuntimeError(f"Archivo de credenciales GCS no encontrado: {credentials_file}")
+        credentials = Credentials.from_service_account_file(credentials_file)
+        return storage.Client(credentials=credentials)
+
+    return storage.Client()
+
+
+def upload_pdf_to_gcs(local_path, blob_name):
+    bucket_name = app.config.get('GCS_BUCKET_NAME')
+    if not bucket_name:
+        raise RuntimeError('La variable GCS_BUCKET_NAME no está configurada.')
+
+    client = get_gcs_client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(local_path, content_type='application/pdf')
+    return blob.name
+
+
+def get_signed_url(blob_name, as_attachment=False, filename=None):
+    bucket_name = app.config.get('GCS_BUCKET_NAME')
+    if not bucket_name:
+        raise RuntimeError('La variable GCS_BUCKET_NAME no está configurada.')
+
+    client = get_gcs_client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    expiration = timedelta(minutes=app.config.get('GCS_SIGNED_URL_EXPIRATION', 15))
+
+    if as_attachment:
+        if not filename:
+            filename = os.path.basename(blob_name)
+        return blob.generate_signed_url(
+            expiration=expiration,
+            version='v4',
+            method='GET',
+            response_disposition=f'attachment; filename="{filename}"'
+        )
+
+    return blob.generate_signed_url(
+        expiration=expiration,
+        version='v4',
+        method='GET'
+    )
+
+
+def delete_blob_from_gcs(blob_name):
+    """Elimina un archivo del bucket GCS."""
+    bucket_name = app.config.get('GCS_BUCKET_NAME')
+    if not bucket_name:
+        raise RuntimeError('La variable GCS_BUCKET_NAME no está configurada.')
+
+    try:
+        client = get_gcs_client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.delete()
+        print(f"[OK] Eliminado de GCS: {blob_name}")
+        return True
+    except Exception as e:
+        print(f"[AVISO] Error al eliminar de GCS: {e}")
+        return False
+
+
+def carta_to_dict(carta):
+    datos = carta.to_dict()
+    datos['ruta_pdf'] = url_for('obtener_documento_carta', carta_id=carta.id)
+    datos['ruta_descarga'] = url_for('descargar_carta', carta_id=carta.id)
+    return datos
+
+
+def reducir_pdf_tamano_raster(input_path, output_path, max_width=1000, image_quality=70):
+    """Reduce el tamaño del PDF rasterizando cada página con PyMuPDF (fitz).
+
+    - max_width: ancho máximo en px para las páginas renderizadas (reduce resolución si es mayor).
+    - image_quality: calidad JPEG (1-100) para la compresión de las imágenes.
+
+    Nota: Este método rasteriza las páginas (pierde texto seleccionable). Úsalo cuando
+    el objetivo sea reducir peso en producción y la pérdida de búsqueda sea aceptable.
+    """
+    try:
+        doc = fitz.open(input_path)
+        new_doc = fitz.open()
+
+        for page in doc:
+            rect = page.rect
+            width = rect.width
+            scale = 1.0
+            if width > max_width:
+                scale = max_width / width
+
+            mat = fitz.Matrix(scale, scale)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+
+            # Obtener JPEG con la calidad deseada
+            jpg_bytes = pix.tobytes('jpg', quality=image_quality)
+
+            # Crear página nueva con el tamaño del pixmap
+            new_page = new_doc.new_page(width=pix.width, height=pix.height)
+            new_page.insert_image(new_page.rect, stream=jpg_bytes)
+
+        # Guardar documento resultado
+        new_doc.save(output_path, garbage=4, deflate=True)
+        doc.close()
+        new_doc.close()
+        return True
+    except Exception as e:
+        print(f"[AVISO] Falló compresión de PDF: {e}")
+        try:
+            doc.close()
+        except:
+            pass
+        try:
+            new_doc.close()
+        except:
+            pass
+        return False
+# ========================================
+
+# ==============================================================================
 # 1. ANÁLISIS DE PDF LOCAL
 # ==============================================================================
 @app.route('/api/cartas/analizar-pdf', methods=['POST'])
@@ -10031,6 +10175,8 @@ def analizar_pdf_ocr():
 # ---------------------------------------------------------
 # 2. GUARDAR CARTA Y ARMAR EL HILO
 # ---------------------------------------------------------
+
+# --ivargas 
 @app.route('/api/cartas/registrar', methods=['POST'])
 def registrar_carta():
     try:
@@ -10052,10 +10198,39 @@ def registrar_carta():
 
         filename = secure_filename(file.filename)
         nombre_unico = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
-        filepath = os.path.join(UPLOAD_FOLDER_CARTAS, nombre_unico)
-        file.save(filepath)
-        
-        ruta_relativa_bd = f"/static/uploads/cartas/{nombre_unico}"
+
+        # IVARGAS - 11/07/2026
+        # ========================================
+        temp_filepath = os.path.join(tempfile.gettempdir(), nombre_unico)
+        file.save(temp_filepath)
+
+        # Intentar comprimir el PDF antes de enviarlo a GCS
+        compressed_path = os.path.join(tempfile.gettempdir(), f"compressed_{nombre_unico}")
+        try:
+            comprimido = reducir_pdf_tamano_raster(temp_filepath, compressed_path, max_width=1000, image_quality=70)
+        except Exception as e:
+            print(f"[AVISO] Error al intentar comprimir: {e}")
+            comprimido = False
+
+        upload_target = compressed_path if comprimido and os.path.exists(compressed_path) else temp_filepath
+
+        blob_name = f"cartas/{nombre_unico}"
+        upload_pdf_to_gcs(upload_target, blob_name)
+
+        # Limpiar temporales
+        try:
+            if os.path.exists(temp_filepath):
+                os.remove(temp_filepath)
+        except Exception:
+            pass
+        try:
+            if upload_target != temp_filepath and os.path.exists(upload_target):
+                os.remove(upload_target)
+        except Exception:
+            pass
+
+        ruta_relativa_bd = blob_name
+        # ========================================
 
         nueva_carta = Carta(
             numero_carta=numero_carta,
@@ -10082,8 +10257,13 @@ def registrar_carta():
 
     except Exception as e:
         db.session.rollback()
-        if 'filepath' in locals() and os.path.exists(filepath): 
-            os.remove(filepath)
+        
+        # IVARGAS - 11/07/2026
+        # ========================================
+        if 'temp_filepath' in locals() and os.path.exists(temp_filepath):
+            os.remove(temp_filepath)
+        # ========================================
+
         print(f"Error Guardado: {e}")
         traceback.print_exc()
         return jsonify({"error": f"Fallo al guardar: {str(e)}"}), 500
@@ -10120,7 +10300,10 @@ def listar_cartas():
         # 4. Ordenamos por las más recientes primero y paginamos
         paginacion = query.order_by(Carta.id.desc()).paginate(page=page, per_page=10, error_out=False)
 
-        datos = [carta.to_dict() for carta in paginacion.items]
+        # IVARGAS - 11/07/2026
+        # ========================================
+        datos = [carta_to_dict(carta) for carta in paginacion.items]
+        # ========================================
 
         meta = {
             "total_items": paginacion.total,
@@ -10149,6 +10332,157 @@ def listar_cartas_basico():
     except Exception as e:
         print(f"Error al listar cartas para el buscador: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+# IVARGAS - 11/07/2026
+# ========================================
+@app.route('/api/cartas/documento/<int:carta_id>', methods=['GET'])
+def obtener_documento_carta(carta_id):
+    try:
+        carta = Carta.query.get_or_404(carta_id)
+        if not carta.ruta_pdf:
+            return jsonify({"error": "No se encontró un documento asociado a esta carta."}), 404
+
+        signed_url = get_signed_url(carta.ruta_pdf)
+        return jsonify({"exito": True, "url": signed_url}), 200
+
+    except Exception as e:
+        print(f"Error generando URL de documento GCS: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/cartas/descargar/<int:carta_id>', methods=['GET'])
+def descargar_carta(carta_id):
+    try:
+        carta = Carta.query.get_or_404(carta_id)
+        if not carta.ruta_pdf:
+            return jsonify({"error": "No se encontró un documento asociado a esta carta."}), 404
+
+        filename = os.path.basename(carta.ruta_pdf)
+        signed_url = get_signed_url(carta.ruta_pdf, as_attachment=True, filename=filename)
+        return redirect(signed_url)
+
+    except Exception as e:
+        print(f"Error generando descarga GCS: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/cartas/eliminar/<int:carta_id>', methods=['DELETE'])
+def eliminar_carta(carta_id):
+    try:
+        carta = Carta.query.get_or_404(carta_id)
+        ruta_pdf = carta.ruta_pdf
+
+        # 1. Eliminar de GCS
+        if ruta_pdf:
+            delete_blob_from_gcs(ruta_pdf)
+
+        # 2. Eliminar referencias (lazy=True para no cargar todas de una vez)
+        carta.referencias_pasadas.clear()
+        # Si hay referencias futuras, también limpiarlas
+        for hijo in Carta.query.filter(Carta.referencias_pasadas.any(Carta.id == carta.id)).all():
+            hijo.referencias_pasadas.remove(carta)
+
+        # 3. Eliminar de BD
+        db.session.delete(carta)
+        db.session.commit()
+
+        return jsonify({"exito": True, "mensaje": "Carta eliminada correctamente"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error eliminando carta: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/cartas/actualizar/<int:carta_id>', methods=['PUT'])
+def actualizar_carta(carta_id):
+    try:
+        carta = Carta.query.get_or_404(carta_id)
+
+        # Capturar campos a actualizar (pueden ser parciales)
+        numero_carta = request.form.get('numero_carta')
+        asunto = request.form.get('asunto')
+        tipo = request.form.get('tipo')
+        fecha_str = request.form.get('fecha')
+        fecha_limite_str = request.form.get('fecha_limite')
+        estado_form = request.form.get('estado')
+        file = request.files.get('archivo_pdf')
+
+        # Actualizar campos simples
+        if numero_carta:
+            carta.numero_carta = numero_carta
+        if asunto:
+            carta.asunto = asunto.upper()
+        if tipo in ['EMITIDA', 'RECIBIDA']:
+            carta.tipo = tipo
+        if estado_form in ['PENDIENTE', 'ATENDIDA', 'ARCHIVADA']:
+            carta.estado = estado_form
+
+        if fecha_str:
+            try:
+                fecha_obj = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+                if tipo == 'EMITIDA':
+                    carta.fecha_emision = fecha_obj
+                elif tipo == 'RECIBIDA':
+                    carta.fecha_recepcion = fecha_obj
+            except ValueError:
+                pass
+
+        if fecha_limite_str:
+            try:
+                fecha_limite_obj = datetime.strptime(fecha_limite_str, '%Y-%m-%d').date()
+                carta.fecha_limite = fecha_limite_obj
+            except ValueError:
+                pass
+
+        # Si se envía un nuevo archivo, reemplazar
+        if file and allowed_file_cartas(file.filename):
+            # Eliminar antiguo de GCS
+            if carta.ruta_pdf:
+                delete_blob_from_gcs(carta.ruta_pdf)
+
+            # Subir nuevo
+            filename = secure_filename(file.filename)
+            nombre_unico = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
+            temp_filepath = os.path.join(tempfile.gettempdir(), nombre_unico)
+            file.save(temp_filepath)
+
+            # Comprimir
+            compressed_path = os.path.join(tempfile.gettempdir(), f"compressed_{nombre_unico}")
+            try:
+                comprimido = reducir_pdf_tamano_raster(temp_filepath, compressed_path, max_width=1000, image_quality=70)
+            except Exception as e:
+                print(f"[AVISO] Error al intentar comprimir: {e}")
+                comprimido = False
+
+            upload_target = compressed_path if comprimido and os.path.exists(compressed_path) else temp_filepath
+            blob_name = f"cartas/{nombre_unico}"
+            upload_pdf_to_gcs(upload_target, blob_name)
+
+            # Limpiar temporales
+            try:
+                if os.path.exists(temp_filepath):
+                    os.remove(temp_filepath)
+            except Exception:
+                pass
+            try:
+                if upload_target != temp_filepath and os.path.exists(upload_target):
+                    os.remove(upload_target)
+            except Exception:
+                pass
+
+            carta.ruta_pdf = blob_name
+
+        db.session.commit()
+        return jsonify({"exito": True, "mensaje": "Carta actualizada correctamente"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error actualizando carta: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+# ========================================
 
 # ==============================================================================
 # OBTENER EL HILO COMPLETO DE UNA CARTA (EXPEDIENTE)
@@ -10197,7 +10531,10 @@ def obtener_hilo_carta(carta_id):
         )
 
         # Retornamos los datos limpios para el Frontend
-        datos = [c.to_dict() for c in hilo_completo]
+        # IVARGAS - 11/07/2026
+        # =====================================
+        datos = [carta_to_dict(c) for c in hilo_completo]
+        # =====================================
 
         return jsonify({"exito": True, "datos": datos}), 200
 

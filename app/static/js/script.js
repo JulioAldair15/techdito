@@ -17271,23 +17271,37 @@ function dibujarControlesPaginacion(meta, container) {
 // =====================================================================
 // LÓGICA DEL VISOR DE PDF
 // =====================================================================
-function abrirVisorPDF(rutaPDF, tituloCarta) {
+// IVARGAS - 11/07/2026
+// =====================================
+async function abrirVisorPDF(rutaPDF, tituloCarta) {
     if (!rutaPDF || rutaPDF === 'null') {
         alert("El archivo PDF no se encuentra disponible.");
         return;
     }
-    
+
     document.getElementById('tituloVisorPDF').innerHTML = `<i class="far fa-file-pdf" style="color: #ef4444; margin-right: 8px;"></i> ${tituloCarta}`;
-    document.getElementById('btnDescargarPDF').href = rutaPDF;
-    
-    // Mostramos el spinner mientras carga el iframe
     document.getElementById('pdfLoadingSpinner').style.display = 'block';
-    
-    // Le inyectamos la ruta del PDF al iframe (Flask servirá la ruta estática)
-    document.getElementById('iframePDF').src = rutaPDF;
-    
     document.getElementById('modalVisorPDF').classList.add('active');
+
+    try {
+        const response = await fetch(rutaPDF);
+        const data = await response.json();
+
+        if (!response.ok || !data.exito) {
+            throw new Error(data.error || 'No se pudo obtener la URL del documento.');
+        }
+
+        const signedUrl = data.url;
+        document.getElementById('btnDescargarPDF').href = signedUrl;
+        document.getElementById('iframePDF').src = signedUrl;
+    } catch (error) {
+        console.error('Error al obtener documento:', error);
+        document.getElementById('pdfLoadingSpinner').style.display = 'none';
+        alert('No se pudo cargar el documento. Intente nuevamente.');
+        document.getElementById('modalVisorPDF').classList.remove('active');
+    }
 }
+// =====================================
 
 function cerrarVisorPDF() {
     document.getElementById('modalVisorPDF').classList.remove('active');

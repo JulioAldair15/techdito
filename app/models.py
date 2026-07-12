@@ -489,15 +489,15 @@ class DocumentoCarga(db.Model):
 # =========================
 # 📎 DOCUMENTOS EMPLEADO
 # =========================
-class DocumentoEmpleado(db.Model):
-    __tablename__ = 'documentos_empleados'
+# class DocumentoEmpleado(db.Model):
+#     __tablename__ = 'documentos_empleados'
 
-    id = db.Column(db.Integer, primary_key=True)
-    empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
-    tipo_documento_id = db.Column(db.Integer, db.ForeignKey('tipos_documento.id'), nullable=False)
+#     id = db.Column(db.Integer, primary_key=True)
+#     empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=False)
+#     tipo_documento_id = db.Column(db.Integer, db.ForeignKey('tipos_documento.id'), nullable=False)
 
-    ruta_archivo = db.Column(db.String(255))
-    fecha_subida = db.Column(db.DateTime, default=datetime.utcnow)
+#     ruta_archivo = db.Column(db.String(255))
+#     fecha_subida = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 # ==========================================
