@@ -10086,21 +10086,22 @@ def analizar_pdf_ocr():
     if file.filename == '':
         return jsonify({"error": "Archivo inválido"}), 400
 
+    # --- ANÁLISIS DESHABILITADO TEMPORALMENTE ---
+    # Se comenta la lógica de guardado temporal, lectura con PyMuPDF (fitz) y Regex.
+    # Se retorna directamente los campos vacíos para forzar el llenado manual en el sistema.
+    """
     temp_path = os.path.join(tempfile.gettempdir(), secure_filename(file.filename))
     file.save(temp_path)
 
     try:
-        import fitz  # PyMuPDF que ya tienes instalado localmente
+        import fitz  
         import re
         
-        # 1. Leer el archivo localmente
         doc = fitz.open(temp_path)
         texto_extraido = doc[0].get_text()
         doc.close()
         os.remove(temp_path)
 
-        # 2. Si es una foto pura, el texto estará vacío.
-        # Fallback instantáneo a modo manual, sin hacer esperar al usuario.
         if len(texto_extraido.strip()) < 15:
             return jsonify({
                 "exito": True, 
@@ -10108,7 +10109,6 @@ def analizar_pdf_ocr():
                 "alerta": "Documento escaneado detectado. Por favor, digite el Número y Asunto manualmente."
             }), 200
 
-        # 3. Si el PDF es digital y tiene texto, lo extraemos con Regex
         datos_sugeridos = {"numero_carta": "", "asunto": ""}
         
         match_carta = re.search(r'CARTA\s*(?:N[°|º|.]?|NRO[.]?)?\s*([0-9A-Za-z-]+)', texto_extraido, re.IGNORECASE)
@@ -10124,8 +10124,12 @@ def analizar_pdf_ocr():
     except Exception as e:
         if os.path.exists(temp_path): os.remove(temp_path)
         print(f"⚠️ [AVISO] Fallo en la lectura del PDF local: {e}")
-        # En caso de error, abrimos el formulario para llenado manual de inmediato
         return jsonify({"exito": True, "datos": {"numero_carta": "", "asunto": ""}}), 200
+    """
+
+    # Retorno directo que el frontend interpretará para abrir el formulario vacío
+    return jsonify({"exito": True, "datos": {"numero_carta": "", "asunto": ""}}), 200
+
 
 # ---------------------------------------------------------
 # 2. GUARDAR CARTA Y ARMAR EL HILO
@@ -10388,27 +10392,13 @@ def actualizar_carta(carta_id):
             temp_filepath = os.path.join(tempfile.gettempdir(), nombre_unico)
             file.save(temp_filepath)
 
-            # Comprimir
-            compressed_path = os.path.join(tempfile.gettempdir(), f"compressed_{nombre_unico}")
-            try:
-                comprimido = reducir_pdf_tamano_raster(temp_filepath, compressed_path, max_width=1000, image_quality=70)
-            except Exception as e:
-                print(f"[AVISO] Error al intentar comprimir: {e}")
-                comprimido = False
-
-            upload_target = compressed_path if comprimido and os.path.exists(compressed_path) else temp_filepath
             blob_name = f"cartas/{nombre_unico}"
-            upload_pdf_to_gcs(upload_target, blob_name)
+            upload_pdf_to_gcs(temp_filepath, blob_name)
 
-            # Limpiar temporales
+            # Limpiar temporal
             try:
                 if os.path.exists(temp_filepath):
                     os.remove(temp_filepath)
-            except Exception:
-                pass
-            try:
-                if upload_target != temp_filepath and os.path.exists(upload_target):
-                    os.remove(upload_target)
             except Exception:
                 pass
 
@@ -10480,6 +10470,21 @@ def obtener_hilo_carta(carta_id):
 
     except Exception as e:
         print(f"Error armando el hilo: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/cartas/detalle/<int:carta_id>', methods=['GET'])
+def obtener_detalle_carta(carta_id):
+    try:
+        # Busca la carta por su ID exacto
+        carta = Carta.query.get_or_404(carta_id)
+        
+        # Reutilizamos la función que ya formatea los datos
+        datos = carta_to_dict(carta)
+        
+        return jsonify({"exito": True, "datos": datos}), 200
+    except Exception as e:
+        print(f"Error obteniendo detalle de carta: {e}")
         return jsonify({"error": str(e)}), 500
 
 
