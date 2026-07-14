@@ -2824,6 +2824,43 @@ def get_asistencia():
     
 
 
+def formatear_nombre_visual(nombre_completo):
+    if not nombre_completo:
+        return ""
+
+    # Limpiamos espacios extra
+    nombre_limpio = " ".join(nombre_completo.split())
+    partes = nombre_limpio.split(' ')
+
+    # Si tiene 1 o 2 palabras, no hay mucho que reordenar
+    if len(partes) < 3:
+        return nombre_limpio
+
+    nombres_comunes = [
+        'JUAN', 'JOSE', 'LUIS', 'CARLOS', 'JULIO', 'JORGE', 'VICTOR', 'ROBERTO', 
+        'MIGUEL', 'CESAR', 'PEDRO', 'MANUEL', 'JESUS', 'FRANCISCO', 'ALDAIR', 
+        'KEVIN', 'BRAYAN', 'DIEGO', 'RENZO', 'EDGAR', 'OSCAR', 'FERNANDO', 
+        'CRISTIAN', 'CHRISTIAN', 'MARIA', 'ROSA', 'ANA', 'CARMEN', 'LUZ', 
+        'FLOR', 'RUTH', 'DIANA', 'CLAUDIA', 'MILAGROS', 
+        'LEYSER', 'OSMAN', 'EDINSON', 'YERSON', 'JEFERSON'
+    ]
+
+    # Evaluamos si la primera palabra es un nombre común
+    empieza_con_nombre = partes[0].upper() in nombres_comunes
+
+    if empieza_con_nombre:
+        if len(partes) == 3:
+            return f"{partes[1]} {partes[2]} {partes[0]}"
+        elif len(partes) == 4:
+            return f"{partes[2]} {partes[3]} {partes[0]} {partes[1]}"
+        else:
+            nombres = " ".join(partes[:-2])
+            apellidos = " ".join(partes[-2:])
+            return f"{apellidos} {nombres}"
+
+    return nombre_limpio
+
+
 @app.route('/api/getAsistenciaCompleta', methods=['POST'])
 def get_asistencia_completa():
     data = request.get_json()
@@ -2868,10 +2905,13 @@ def get_asistencia_completa():
         for empleado in empleados:
             registros = asistencia_por_empleado.get(empleado.id_empleado, [])
 
+            # 1. Formateamos el nombre del empleado
+            nombre_ordenado = formatear_nombre_visual(empleado.nombres)
+
             for registro in registros:
                 asistencia_completa[area].append({
                     "id": getattr(empleado, f"id_{area}", None),
-                    "nombres": empleado.nombres,
+                    "nombres": nombre_ordenado,  # <--- AQUÍ GUARDAMOS EL NOMBRE FORMATEADO
                     "dni": empleado.dni,
                     "cargo": empleado.cargo,
                     "area_global": area,
@@ -2884,6 +2924,9 @@ def get_asistencia_completa():
                     "viaticos": float(registro.viaticos) if registro.viaticos is not None else 0.0,
                     "cod_ope": registro.cod_ope if registro else None
                 })
+        
+        # 2. Ordenamos el área entera alfabéticamente por los apellidos
+        asistencia_completa[area] = sorted(asistencia_completa[area], key=lambda x: x["nombres"])
 
     # Generar y devolver el archivo Excel
     return generar_reporte_excel(asistencia_completa, fechaInicio, fechaFin)
@@ -2921,22 +2964,22 @@ def generar_reporte_excel(datos, fechaInicio, fechaFin):
 
     # Paleta de colores para los estados en la hoja "Asistencias"
     colores_estados = {
-        "A": "4fe548",   # Verde limón
-        "F": "FF0000",   # Rojo
-        "DT": "FFA500",  # Naranja
-        "FT": "FFFF00",  # Amarillo
-        "LG": "87CEEB",  # Celeste
-        "DM": "8A2BE2",  # Violeta
-        "V": "008000",   # Verde oscuro
-        "LSG": "FFC0CB", # Rosa
-        "SU": "A52A2A",  # Marrón
-        "CE": "00CED1",  # Turquesa
-        "FG": "9400D3",  # Púrpura
-        "LD": "4682B4",  # Azul acero
-        "DC": "ff00ff",  # Verde claro
-        "AP": "D2691E",  # Chocolate
-        "LP": "BDB76B",  # Caqui oscuro
-        "TC": "DC143C"   # Carmesí
+        "A": "92D050",   # Verde claro clásico (Inconfundible)
+        "F": "FF5050",   # Rojo coral suave (Salta a la vista)
+        "DT": "FFC000",  # Naranja ámbar
+        "FT": "FFFF00",  # Amarillo brillante
+        "LG": "9BC2E6",  # Azul cielo pálido
+        "DM": "B4A7D6",  # Morado lila (Suave pero claro)
+        "V": "00B0F0",   # Celeste agua brillante (No se confunde con A)
+        "LSG": "FF99CC", # Rosa chicle (Distinto de la F)
+        "SU": "C4BD97",  # Ocre apagado / Verde oliva
+        "CE": "D9D9D9",  # Gris plata (Neutro)
+        "FG": "DA9694",  # Rosa viejo / Salmón oscuro
+        "LD": "4BACC6",  # Azul acero 
+        "DC": "FCD5B4",  # Melocotón pálido (Rompe con los azules y verdes)
+        "AP": "E26B0A",  # Naranja ladrillo
+        "LP": "B2A1C7",  # Lavanda oscuro
+        "TC": "93CDDD"
     }
 
     # Diccionario de colores para empleados con área diferente a su área global
@@ -3242,27 +3285,27 @@ def generar_reporte_excel(datos, fechaInicio, fechaFin):
                 if empleado["area_global"] == empleado["area"]:
                     consolidado_map[clave]["area"] = empleado["area"]
         
-        # Ordenar alfabéticamente por el área
-        consolidado_ordenado = sorted(consolidado_map.values(), key=lambda x: x["area"])
+        # Ordenar alfabéticamente por el área y, en segundo lugar, por el nombre
+        consolidado_ordenado = sorted(consolidado_map.values(), key=lambda x: (x["area"], x["nombres"]))
 
-        # Paleta de colores para los estados
+        # Paleta de colores para los estados (Tonos Pastel / Amigables)
         colores_estados_1 = { 
-            "A": "4fe548",   # Verde limón
-            "F": "FF0000",   # Rojo
-            "DT": "FFA500",  # Naranja
-            "FT": "FFFF00",  # Amarillo
-            "LG": "87CEEB",  # Celeste
-            "DM": "8A2BE2",  # Violeta
-            "V": "008000",   # Verde oscuro
-            "LSG": "FFC0CB", # Rosa
-            "SU": "A52A2A",  # Marrón
-            "CE": "00CED1",  # Turquesa
-            "FG": "9400D3",  # Púrpura
-            "LD": "4682B4",  # Azul acero
-            "DC": "ff00ff",  # Verde claro
-            "AP": "D2691E",  # Chocolate
-            "LP": "BDB76B",  # Caqui oscuro
-            "TC": "DC143C"   # Carmesí
+            "A": "92D050",   # Verde claro clásico (Inconfundible)
+            "F": "FF5050",   # Rojo coral suave (Salta a la vista)
+            "DT": "FFC000",  # Naranja ámbar
+            "FT": "FFFF00",  # Amarillo brillante
+            "LG": "9BC2E6",  # Azul cielo pálido
+            "DM": "B4A7D6",  # Morado lila (Suave pero claro)
+            "V": "00B0F0",   # Celeste agua brillante (No se confunde con A)
+            "LSG": "FF99CC", # Rosa chicle (Distinto de la F)
+            "SU": "C4BD97",  # Ocre apagado / Verde oliva
+            "CE": "D9D9D9",  # Gris plata (Neutro)
+            "FG": "DA9694",  # Rosa viejo / Salmón oscuro
+            "LD": "4BACC6",  # Azul acero 
+            "DC": "FCD5B4",  # Melocotón pálido (Rompe con los azules y verdes)
+            "AP": "E26B0A",  # Naranja ladrillo
+            "LP": "B2A1C7",  # Lavanda oscuro
+            "TC": "93CDDD"
         }
 
         # Escribir datos consolidados en la hoja
