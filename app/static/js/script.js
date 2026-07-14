@@ -262,7 +262,7 @@ function formatearNombreVisual(nombreCompleto) {
         'KEVIN', 'BRAYAN', 'DIEGO', 'RENZO', 'EDGAR', 'OSCAR', 'FERNANDO', 
         'CRISTIAN', 'CHRISTIAN', 'MARIA', 'ROSA', 'ANA', 'CARMEN', 'LUZ', 
         'FLOR', 'RUTH', 'DIANA', 'CLAUDIA', 'MILAGROS', 'LEYSER', 'OSMAN', 
-        'EDINSON', 'YERSON', 'JEFERSON'
+        'EDINSON', 'YERSON', 'JEFERSON', 'ERIKA', 'EVA', 'MARIBEL'
     ];
 
     // Evaluamos si la PRIMERA palabra es un nombre común
