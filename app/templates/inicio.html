@@ -4419,8 +4419,12 @@
         </div>
     </div>
 
+    <!-- ========================================================= -->
+    <!-- MODAL PARA REGISTRAR CARTA (NUEVA)                        -->
+    <!-- ========================================================= -->
     <div id="modalCarta" class="crt-modal">
-        <div class="crt-modal-content" style="max-width: 700px;"> <div class="crt-modal-header">
+        <div class="crt-modal-content" style="max-width: 700px;"> 
+            <div class="crt-modal-header">
                 <h3 style="margin: 0; color: #0f172a;">Registrar Documento</h3>
                 <button type="button" class="crt-close-btn" onclick="cerrarModalCarta()"><i class="fas fa-times"></i></button>
             </div>
@@ -4466,27 +4470,31 @@
                     </div>
                 </div>
 
+                <!-- ========================================== -->
+                <!-- SECCIÓN DE REFERENCIAS (CHIPS) PARA REGISTRO-->
+                <!-- ========================================== -->
                 <div style="margin-bottom: 20px; position: relative;" id="contenedor-buscador">
-                    <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem; color: #475569;">Vincular a documento anterior <span style="font-weight: 400; color: #94a3b8;">(Opcional)</span></label>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem; color: #475569;">Vincular a documentos anteriores <span style="font-weight: 400; color: #94a3b8;">(Puedes seleccionar varios)</span></label>
                     
                     <div style="position: relative;">
                         <span style="position: absolute; left: 12px; top: 9px; color: #94a3b8;"><i class="fas fa-search"></i></span>
-                        <input type="text" id="buscador_referencia" class="crt-input" style="width: 100%; box-sizing: border-box; padding-left: 35px;" placeholder="Buscar por N° o Asunto para armar el expediente..." onfocus="mostrarOpcionesBuscador()" onkeyup="filtrarOpcionesBuscador()" autocomplete="off">
+                        <input type="text" id="buscador_referencia" class="crt-input" style="width: 100%; box-sizing: border-box; padding-left: 35px;" placeholder="Buscar por N° o Asunto..." onfocus="mostrarOpcionesBuscador()" onkeyup="filtrarOpcionesBuscador()" autocomplete="off">
                     </div>
                     
+                    <!-- AQUÍ SE DIBUJARÁN LAS ETIQUETAS VISUALES (CHIPS) -->
+                    <div id="contenedor-chips" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;"></div>
+                    
+                    <!-- AQUÍ SE GUARDARÁN LOS IDs SEPARADOS POR COMAS (Ej. "12,45,8") -->
                     <input type="hidden" name="carta_referencia_id" id="carta_referencia_id">
                     
                     <div id="lista_resultados_cartas" style="display: none; position: absolute; width: 100%; max-height: 180px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; box-shadow: 0 4px 10px rgba(0,0,0,0.1); z-index: 9999; border-radius: 4px; margin-top: 4px;">
-                        </div>
+                    </div>
                 </div>
+                <!-- ========================================== -->
 
                 <div style="margin-bottom: 25px; padding: 15px; border: 1px dashed #cbd5e1; background: #f8fafc; border-radius: 6px; text-align: center;">
                     <label style="display: block; margin-bottom: 10px; font-weight: 600; font-size: 0.85rem; color: #334155;">Documento Digitalizado (PDF) *</label>
                     <input type="file" id="input_archivo_pdf" name="archivo_pdf" accept=".pdf" required style="width: 100%; max-width: 350px; font-size: 0.85rem;">
-                    
-                    <div id="ocr-loading" style="display: none; justify-content: center; align-items: center; gap: 8px; margin-top: 10px; color: #3b82f6; font-size: 0.85rem; font-weight: 600;">
-                        <i class="fas fa-spinner fa-spin"></i> Escaneando datos del documento...
-                    </div>
                 </div>
 
                 <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
@@ -4498,7 +4506,9 @@
         </div>
     </div>
 
-    <!-- MODAL PARA EDITAR CARTA -->
+    <!-- ========================================================= -->
+    <!-- MODAL PARA EDITAR CARTA                                   -->
+    <!-- ========================================================= -->
     <div id="modalEditarCarta" class="crt-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center;">
         <div class="crt-modal-content" style="max-width: 700px; background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); width: 90%;"> 
             <div class="crt-modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid #e2e8f0;">
@@ -4506,7 +4516,6 @@
                 <button type="button" class="crt-close-btn" onclick="cerrarModalEditarCarta()" style="background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer;"><i class="fas fa-times"></i></button>
             </div>
             
-            <!-- Importante: El onsubmit llama a la función de editar pasando el event y un id temporal que inyectaremos con JS -->
             <form id="formEditarCarta" onsubmit="return ejecutarGuardarEdicion(event)" enctype="multipart/form-data" style="padding: 25px;">
                 
                 <!-- Campo oculto para guardar el ID de la carta que estamos editando -->
@@ -4551,9 +4560,30 @@
                     </div>
                 </div>
 
+                <!-- ========================================== -->
+                <!-- SECCIÓN DE REFERENCIAS (CHIPS) PARA EDITAR -->
+                <!-- ========================================== -->
+                <div style="margin-bottom: 20px; position: relative;" id="contenedor-buscador_editar">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem; color: #475569;">Vincular a documentos anteriores <span style="font-weight: 400; color: #94a3b8;">(Puedes seleccionar varios)</span></label>
+                    
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 9px; color: #94a3b8;"><i class="fas fa-search"></i></span>
+                        <input type="text" id="buscador_referencia_editar" class="crt-input" style="width: 100%; box-sizing: border-box; padding-left: 35px;" placeholder="Buscar por N° o Asunto..." onfocus="mostrarOpcionesBuscadorEditar()" onkeyup="filtrarOpcionesBuscadorEditar()" autocomplete="off">
+                    </div>
+                    
+                    <!-- AQUÍ SE DIBUJARÁN LAS ETIQUETAS VISUALES (CHIPS) PARA EDICIÓN -->
+                    <div id="contenedor-chips_editar" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;"></div>
+                    
+                    <!-- AQUÍ SE GUARDARÁN LOS IDs SEPARADOS POR COMAS -->
+                    <input type="hidden" name="carta_referencia_id" id="carta_referencia_id_editar">
+                    
+                    <div id="lista_resultados_cartas_editar" style="display: none; position: absolute; width: 100%; max-height: 180px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; box-shadow: 0 4px 10px rgba(0,0,0,0.1); z-index: 9999; border-radius: 4px; margin-top: 4px;">
+                    </div>
+                </div>
+                <!-- ========================================== -->
+
                 <div style="margin-bottom: 25px; padding: 15px; border: 1px dashed #cbd5e1; background: #f8fafc; border-radius: 6px; text-align: center;">
                     <label style="display: block; margin-bottom: 10px; font-weight: 600; font-size: 0.85rem; color: #334155;">Reemplazar Documento PDF <span style="font-weight: 400; color: #94a3b8;">(Déjalo vacío si no quieres cambiarlo)</span></label>
-                    <!-- Se quitó el atributo 'required' -->
                     <input type="file" id="input_archivo_pdf_editar" name="archivo_pdf" accept=".pdf" style="width: 100%; max-width: 350px; font-size: 0.85rem;">
                 </div>
 
@@ -4565,7 +4595,6 @@
             </form>
         </div>
     </div>
-
     <!-- ======================================================= -->
     <!-- MODAL VISOR DE PDF INTEGRADO -->
     <!-- ======================================================= -->
