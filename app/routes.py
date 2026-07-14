@@ -10071,52 +10071,7 @@ def carta_to_dict(carta):
     return datos
 
 
-def reducir_pdf_tamano_raster(input_path, output_path, max_width=1000, image_quality=70):
-    """Reduce el tamaño del PDF rasterizando cada página con PyMuPDF (fitz).
 
-    - max_width: ancho máximo en px para las páginas renderizadas (reduce resolución si es mayor).
-    - image_quality: calidad JPEG (1-100) para la compresión de las imágenes.
-
-    Nota: Este método rasteriza las páginas (pierde texto seleccionable). Úsalo cuando
-    el objetivo sea reducir peso en producción y la pérdida de búsqueda sea aceptable.
-    """
-    try:
-        doc = fitz.open(input_path)
-        new_doc = fitz.open()
-
-        for page in doc:
-            rect = page.rect
-            width = rect.width
-            scale = 1.0
-            if width > max_width:
-                scale = max_width / width
-
-            mat = fitz.Matrix(scale, scale)
-            pix = page.get_pixmap(matrix=mat, alpha=False)
-
-            # Obtener JPEG con la calidad deseada
-            jpg_bytes = pix.tobytes('jpg', quality=image_quality)
-
-            # Crear página nueva con el tamaño del pixmap
-            new_page = new_doc.new_page(width=pix.width, height=pix.height)
-            new_page.insert_image(new_page.rect, stream=jpg_bytes)
-
-        # Guardar documento resultado
-        new_doc.save(output_path, garbage=4, deflate=True)
-        doc.close()
-        new_doc.close()
-        return True
-    except Exception as e:
-        print(f"[AVISO] Falló compresión de PDF: {e}")
-        try:
-            doc.close()
-        except:
-            pass
-        try:
-            new_doc.close()
-        except:
-            pass
-        return False
 # ========================================
 
 # ==============================================================================
@@ -10204,28 +10159,13 @@ def registrar_carta():
         temp_filepath = os.path.join(tempfile.gettempdir(), nombre_unico)
         file.save(temp_filepath)
 
-        # Intentar comprimir el PDF antes de enviarlo a GCS
-        compressed_path = os.path.join(tempfile.gettempdir(), f"compressed_{nombre_unico}")
-        try:
-            comprimido = reducir_pdf_tamano_raster(temp_filepath, compressed_path, max_width=1000, image_quality=70)
-        except Exception as e:
-            print(f"[AVISO] Error al intentar comprimir: {e}")
-            comprimido = False
-
-        upload_target = compressed_path if comprimido and os.path.exists(compressed_path) else temp_filepath
-
         blob_name = f"cartas/{nombre_unico}"
-        upload_pdf_to_gcs(upload_target, blob_name)
+        upload_pdf_to_gcs(temp_filepath, blob_name)
 
-        # Limpiar temporales
+        # Limpiar temporal
         try:
             if os.path.exists(temp_filepath):
                 os.remove(temp_filepath)
-        except Exception:
-            pass
-        try:
-            if upload_target != temp_filepath and os.path.exists(upload_target):
-                os.remove(upload_target)
         except Exception:
             pass
 
