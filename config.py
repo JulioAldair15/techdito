@@ -10,7 +10,7 @@ class Config:
     # IVARGAS - 11/07/2026
     # ========================================
 
-    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://u308659888_radian_asis:Wu#8|j0FoY@srv2021.hstgr.io:3306/u308659888_radian_asis'
+    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://techdito:_SuperDbTechdito123$@34.122.204.235:3306/radian_asistencias'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SECRET_KEY = "REVWRVNPRlRfTE"
 
