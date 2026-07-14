@@ -2841,8 +2841,9 @@ def formatear_nombre_visual(nombre_completo):
         'MIGUEL', 'CESAR', 'PEDRO', 'MANUEL', 'JESUS', 'FRANCISCO', 'ALDAIR', 
         'KEVIN', 'BRAYAN', 'DIEGO', 'RENZO', 'EDGAR', 'OSCAR', 'FERNANDO', 
         'CRISTIAN', 'CHRISTIAN', 'MARIA', 'ROSA', 'ANA', 'CARMEN', 'LUZ', 
-        'FLOR', 'RUTH', 'DIANA', 'CLAUDIA', 'MILAGROS', 
-        'LEYSER', 'OSMAN', 'EDINSON', 'YERSON', 'JEFERSON', 'ERIKA', 'EVA', 'MARIBEL'
+        'FLOR', 'RUTH', 'DIANA', 'CLAUDIA', 'MILAGROS', 'LEYSER', 'OSMAN', 
+        'EDINSON', 'YERSON', 'JEFERSON', 'ERIKA', 'EVA', 'MARIBEL', 'JAIME',
+        'RAUL', 'JERRY', 'DANTE', 'ADRIANA', 'ISABEL'
     ]
 
     # Evaluamos si la primera palabra es un nombre común
