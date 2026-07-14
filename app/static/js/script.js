@@ -16879,47 +16879,47 @@ function cerrarModalCarta() {
     if(listaResultados) listaResultados.style.display = 'none';
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const inputPdf = document.getElementById('input_archivo_pdf');
-    const loadingDiv = document.getElementById('ocr-loading');
+//document.addEventListener('DOMContentLoaded', () => {
+    //const inputPdf = document.getElementById('input_archivo_pdf');
+    //const loadingDiv = document.getElementById('ocr-loading');
     
-    if(inputPdf) {
-        inputPdf.addEventListener('change', async function() {
-            const file = this.files[0];
-            if (!file) return;
+    //if(inputPdf) {
+        //inputPdf.addEventListener('change', async function() {
+            //const file = this.files[0];
+            //if (!file) return;
 
             // Mostrar el loader
-            loadingDiv.style.display = 'flex';
+            //loadingDiv.style.display = 'flex';
 
-            const formData = new FormData();
-            formData.append('archivo_pdf', file);
+            //const formData = new FormData();
+            //formData.append('archivo_pdf', file);
 
-            try {
-                const response = await fetch('/api/cartas/analizar-pdf', {
-                    method: 'POST',
-                    body: formData
-                });
+            //try {
+                //const response = await fetch('/api/cartas/analizar-pdf', {
+                    //method: 'POST',
+                    //body: formData
+                //});
 
-                const result = await response.json();
+                //const result = await response.json();
 
-                if (result.exito) {
-                    if (result.datos.numero_carta) {
-                        document.getElementById('input_numero_carta').value = result.datos.numero_carta;
-                    }
-                    if (result.datos.asunto) {
-                        document.getElementById('input_asunto').value = result.datos.asunto;
-                    }
-                } else {
-                    console.error("No se pudo extraer texto: ", result.error);
-                }
-            } catch (error) {
-                console.error("Error de conexión con el OCR:", error);
-            } finally {
-                loadingDiv.style.display = 'none';
-            }
-        });
-    }
-});
+                //if (result.exito) {
+                    //if (result.datos.numero_carta) {
+                        //document.getElementById('input_numero_carta').value = result.datos.numero_carta;
+                    //}
+                    //if (result.datos.asunto) {
+                        //document.getElementById('input_asunto').value = result.datos.asunto;
+                    //}
+                //} else {
+                    //console.error("No se pudo extraer texto: ", result.error);
+                //}
+            //} catch (error) {
+                //console.error("Error de conexión con el OCR:", error);
+            //} finally {
+                //loadingDiv.style.display = 'none';
+            //}
+        //});
+    //}
+//});
 
 // =========================================================
 // 3. FORMATEO Y GUARDADO DE CARTA (Al darle a Guardar)
@@ -16972,6 +16972,100 @@ async function guardarCartaFormateada(event) {
         btnSubmit.disabled = false;
     }
 }
+
+
+// =========================================================
+// 4. FUNCIONES DE ACCIÓN: DESCARGAR, ELIMINAR Y ACTUALIZAR
+// =========================================================
+
+// --- DESCARGAR CARTA ---
+// Esta función abre la URL de descarga en una nueva pestaña
+function descargarCarta(cartaId) {
+    if (!cartaId) return;
+    // Abrimos la ruta GET en una nueva pestaña, el backend se encargará del redirect a GCS
+    window.open(`/api/cartas/descargar/${cartaId}`, '_blank');
+}
+
+// --- ELIMINAR CARTA ---
+async function eliminarCarta(cartaId) {
+    if (!cartaId) return;
+    
+    // Confirmación de seguridad
+    if (!confirm("¿Estás seguro de que deseas eliminar este documento? Esta acción no se puede deshacer y eliminará el archivo adjunto.")) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/cartas/eliminar/${cartaId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+
+        if (result.exito) {
+            alert("Documento eliminado correctamente.");
+            // Recargar la tabla (asegúrate de que esta función exista en tu código base)
+            if (typeof cargarTablaCartas === 'function') {
+                cargarTablaCartas(1); 
+            }
+        } else {
+            alert("Error al eliminar: " + result.error);
+        }
+    } catch (error) {
+        console.error("Error de red al eliminar:", error);
+        alert("Ocurrió un error de red al intentar eliminar el documento.");
+    }
+}
+
+// --- ACTUALIZAR CARTA ---
+// Función asíncrona para enviar los datos de edición al servidor
+async function guardarEdicionCarta(event, cartaId) {
+    event.preventDefault();
+
+    const form = event.target;
+    const formData = new FormData(form);
+    const btnSubmit = form.querySelector('button[type="submit"]');
+    const textoOriginalBtn = btnSubmit.innerHTML;
+
+    btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Actualizando...';
+    btnSubmit.disabled = true;
+
+    // Formatear asunto a mayúsculas si existe en el formulario
+    let inputAsunto = document.getElementById('input_asunto_editar');
+    if (inputAsunto) {
+        formData.set('asunto', inputAsunto.value.toUpperCase());
+    }
+
+    try {
+        const response = await fetch(`/api/cartas/actualizar/${cartaId}`, {
+            method: 'PUT',
+            body: formData
+        });
+        
+        const result = await response.json();
+
+        if (result.exito) {
+            // Cerrar modal de edición (debes tener una función similar en tu código)
+            if (typeof cerrarModalEditarCarta === 'function') {
+                cerrarModalEditarCarta();
+            }
+            // Recargar tabla
+            if (typeof cargarTablaCartas === 'function') {
+                cargarTablaCartas(1);
+            }
+            alert("Documento actualizado correctamente.");
+        } else {
+            alert("Error al actualizar: " + result.error);
+        }
+    } catch (error) {
+        console.error("Fallo de red al actualizar:", error);
+        alert("Ocurrió un error de red al intentar actualizar.");
+    } finally {
+        btnSubmit.innerHTML = textoOriginalBtn;
+        btnSubmit.disabled = false;
+    }
+}
+
 
 // =========================================================
 // 4. LÓGICA DEL BUSCADOR INTERACTIVO PERSONALIZADO
@@ -17069,7 +17163,8 @@ async function cargarTablaCartas(pagina) {
     
     if(!tbody) return;
 
-    tbody.innerHTML = `<tr><td colspan="6" class="crt-text-center" style="padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Cargando documentos...</td></tr>`;
+    // Cambiado colspan="6" a "7" para que cubra toda la tabla
+    tbody.innerHTML = `<tr><td colspan="7" class="crt-text-center" style="padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Cargando documentos...</td></tr>`;
 
     // 1. CAPTURAR LOS VALORES DE LOS FILTROS
     const search = document.getElementById('filtro_buscar') ? document.getElementById('filtro_buscar').value : '';
@@ -17090,7 +17185,7 @@ async function cargarTablaCartas(pagina) {
             tbody.innerHTML = ''; 
             
             if (result.datos.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="crt-text-center" style="padding: 20px; color: #64748b;">No se encontraron documentos con esos filtros.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="crt-text-center" style="padding: 20px; color: #64748b;">No se encontraron documentos con esos filtros.</td></tr>`;
             } else {
                 result.datos.forEach(carta => {
                     let badgeFlujo = carta.tipo === 'RECIBIDA' 
@@ -17105,7 +17200,14 @@ async function cargarTablaCartas(pagina) {
                         ? '<span style="color: #94a3b8;">-</span>' 
                         : `<span style="color: #ef4444; font-weight: 600;"><i class="far fa-calendar-times"></i> ${carta.fecha_limite}</span>`;
 
+                    // BOTONES DE ACCIÓN (Mantienen tu diseño original)
                     let btnVerPDF = `<button onclick="abrirVisorPDF('${carta.ruta_pdf}', '${carta.numero_carta}')" title="Ver Documento" style="background: transparent; border: 1px solid #cbd5e1; color: #3b82f6; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#eff6ff'; this.style.borderColor='#3b82f6';" onmouseout="this.style.background='transparent'; this.style.borderColor='#cbd5e1';"><i class="fas fa-eye"></i></button>`;
+                    
+                    let btnDescargar = `<button onclick="descargarCarta(${carta.id})" title="Descargar Documento" style="background: transparent; border: 1px solid #cbd5e1; color: #10b981; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#ecfdf5'; this.style.borderColor='#10b981';" onmouseout="this.style.background='transparent'; this.style.borderColor='#cbd5e1';"><i class="fas fa-download"></i></button>`;
+                    
+                    let btnEditar = `<button onclick="abrirModalEditarCarta(${carta.id})" title="Editar Registro" style="background: transparent; border: 1px solid #cbd5e1; color: #f59e0b; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#fffbeb'; this.style.borderColor='#f59e0b';" onmouseout="this.style.background='transparent'; this.style.borderColor='#cbd5e1';"><i class="fas fa-edit"></i></button>`;
+                    
+                    let btnEliminar = `<button onclick="eliminarCarta(${carta.id})" title="Eliminar Registro" style="background: transparent; border: 1px solid #cbd5e1; color: #ef4444; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#fef2f2'; this.style.borderColor='#ef4444';" onmouseout="this.style.background='transparent'; this.style.borderColor='#cbd5e1';"><i class="fas fa-trash"></i></button>`;
 
                     tbody.innerHTML += `
                         <tr style="transition: background 0.2s;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='transparent'">
@@ -17115,18 +17217,25 @@ async function cargarTablaCartas(pagina) {
                             <td>${carta.fecha}</td>
                             <td>${badgeVencimiento}</td>
                             <td>${badgeEstado}</td>
-                            <td style="text-align: center;">${btnVerPDF}</td>
+                            
+                            <!-- COLUMNA DE BOTONES CON FLEX PARA QUE SE ALINEEN PERFECTAMENTE -->
+                            <td style="text-align: center; display: flex; justify-content: center; gap: 6px;">
+                                ${btnVerPDF}
+                                ${btnDescargar}
+                                ${btnEditar}
+                                ${btnEliminar}
+                            </td>
                         </tr>
                     `;
                 });
             }
             dibujarControlesPaginacion(result.meta, paginadorContainer);
         } else {
-            tbody.innerHTML = `<tr><td colspan="6" class="crt-text-center" style="color: red;">Error: ${result.error}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="crt-text-center" style="color: red;">Error: ${result.error}</td></tr>`;
         }
     } catch (error) {
         console.error("Error cargando la tabla:", error);
-        tbody.innerHTML = `<tr><td colspan="6" class="crt-text-center" style="color: red;">Error de conexión.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="crt-text-center" style="color: red;">Error de conexión.</td></tr>`;
     }
 }
 
@@ -17442,4 +17551,78 @@ async function rastrearExpediente() {
         console.error(error);
         timelineContainer.innerHTML = '<div style="color: red;">Error de conexión.</div>';
     }
+}
+
+
+// =========================================================
+// FUNCIONES DEL MODAL DE EDICIÓN
+// =========================================================
+
+// Abrir el modal y precargar los datos
+function abrirModalEditarCarta(cartaId) {
+    // 1. Mostrar el modal
+    const modal = document.getElementById('modalEditarCarta');
+    modal.style.display = 'flex'; 
+    
+    // 2. Limpiar el form por si quedó algo sucio
+    document.getElementById('formEditarCarta').reset();
+    
+    // 3. Asignar el ID al input oculto
+    document.getElementById('input_id_editar').value = cartaId;
+
+    // Mostramos un mini-estado de carga en los inputs mientras llegan los datos
+    document.getElementById('input_numero_carta_editar').value = "Cargando...";
+    document.getElementById('input_asunto_editar').value = "Cargando...";
+
+    // 4. Hacemos la petición a la nueva ruta específica
+    fetch(`/api/cartas/detalle/${cartaId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.exito && data.datos) {
+                // Aquí ya tenemos la carta exacta
+                const carta = data.datos;
+                
+                // Llenar los campos
+                document.getElementById('input_numero_carta_editar').value = carta.numero_carta || '';
+                document.getElementById('input_asunto_editar').value = carta.asunto || '';
+                
+                // Formateo de fecha (cuidado con los campos nulos o '-')
+                document.getElementById('input_fecha_editar').value = carta.fecha !== '-' ? carta.fecha : '';
+                
+                if (carta.fecha_limite && carta.fecha_limite !== '-') {
+                    document.getElementById('input_fecha_limite_editar').value = carta.fecha_limite;
+                } else {
+                    document.getElementById('input_fecha_limite_editar').value = '';
+                }
+
+                // Selects
+                document.getElementById('input_tipo_editar').value = carta.tipo || '';
+                document.getElementById('input_estado_editar').value = carta.estado || 'PENDIENTE';
+            } else {
+                alert("No se pudieron cargar los datos de la carta.");
+                cerrarModalEditarCarta();
+            }
+        })
+        .catch(err => {
+            console.error("Error al cargar datos para editar:", err);
+            alert("Error de conexión al intentar cargar los datos.");
+            cerrarModalEditarCarta();
+        });
+}
+
+// Cerrar el modal
+function cerrarModalEditarCarta() {
+    document.getElementById('modalEditarCarta').style.display = 'none';
+    document.getElementById('formEditarCarta').reset();
+}
+
+// Función intermedia para capturar el submit del form y pasárselo a la función de actualización
+function ejecutarGuardarEdicion(event) {
+    // El ID lo sacamos del input oculto
+    const cartaId = document.getElementById('input_id_editar').value;
+    
+    // Llamamos a la función que me pediste antes
+    guardarEdicionCarta(event, cartaId);
+    
+    return false; // Evita recargar la página
 }
