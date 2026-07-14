@@ -16865,16 +16865,18 @@ function cambiarPestanaCartas(idVista, boton) {
 
 function abrirModalCarta() {
     document.getElementById('modalCarta').classList.add('active');
-    // Llenamos el buscador automáticamente cada vez que se abre el modal
     cargarOpcionesBuscador(); 
 }
 
 function cerrarModalCarta() {
     document.getElementById('modalCarta').classList.remove('active');
-    // Limpiar formulario y resetear estados al cerrar
     document.getElementById('formRegistrarCarta').reset();
-    document.getElementById('ocr-loading').style.display = 'none';
+    
+    // Limpiamos los chips y el input oculto al cerrar
     document.getElementById('carta_referencia_id').value = '';
+    const contenedorChips = document.getElementById('contenedor-chips');
+    if(contenedorChips) contenedorChips.innerHTML = '';
+    
     const listaResultados = document.getElementById('lista_resultados_cartas');
     if(listaResultados) listaResultados.style.display = 'none';
 }
@@ -17070,13 +17072,15 @@ async function guardarEdicionCarta(event, cartaId) {
 // =========================================================
 // 4. LÓGICA DEL BUSCADOR INTERACTIVO PERSONALIZADO
 // =========================================================
+let cartasSeleccionadasChips = []; // Arreglo para manejar los objetos seleccionados
+
 async function cargarOpcionesBuscador() {
     try {
         const response = await fetch('/api/cartas/todas-basico'); 
         const result = await response.json();
         
         if (result.exito) {
-            cartasGlobalesBD = result.datos; // Guardamos en memoria para filtrar rápido
+            cartasGlobalesBD = result.datos;
             renderizarListaBuscador(cartasGlobalesBD);
         }
     } catch (e) {
@@ -17096,6 +17100,9 @@ function renderizarListaBuscador(listaCartas) {
     }
 
     listaCartas.forEach(carta => {
+        // Evitamos renderizar en la lista cartas que ya fueron seleccionadas (chips)
+        if (cartasSeleccionadasChips.some(c => c.id === carta.id)) return;
+
         const item = document.createElement('div');
         item.style.cssText = "padding: 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; color: #334155; transition: background 0.2s;";
         item.innerHTML = `<strong style="color: #0f172a;">${carta.numero_carta}</strong><br><span style="color: #64748b;">${carta.asunto}</span>`;
@@ -17104,8 +17111,8 @@ function renderizarListaBuscador(listaCartas) {
         item.onmouseout = () => item.style.backgroundColor = 'transparent';
         
         item.onclick = () => {
-            document.getElementById('buscador_referencia').value = `${carta.numero_carta} | ${carta.asunto}`;
-            document.getElementById('carta_referencia_id').value = carta.id;
+            agregarChipReferencia(carta);
+            document.getElementById('buscador_referencia').value = ''; // Limpiamos el buscador
             contenedor.style.display = 'none';
         };
         
@@ -17113,11 +17120,52 @@ function renderizarListaBuscador(listaCartas) {
     });
 }
 
+// --- NUEVAS FUNCIONES PARA MANEJAR LAS ETIQUETAS (CHIPS) ---
+function agregarChipReferencia(carta) {
+    // Evitar duplicados por seguridad
+    if (cartasSeleccionadasChips.some(c => c.id === carta.id)) return;
+
+    cartasSeleccionadasChips.push(carta);
+    actualizarVistaChips();
+}
+
+function eliminarChipReferencia(id) {
+    cartasSeleccionadasChips = cartasSeleccionadasChips.filter(c => c.id !== id);
+    actualizarVistaChips();
+    // Volver a renderizar la lista por si el usuario quiere buscar la que acaba de borrar
+    filtrarOpcionesBuscador();
+}
+
+function actualizarVistaChips() {
+    const contenedorChips = document.getElementById('contenedor-chips');
+    const inputOculto = document.getElementById('carta_referencia_id');
+    
+    contenedorChips.innerHTML = '';
+    
+    // Generar el HTML de las etiquetas
+    cartasSeleccionadasChips.forEach(carta => {
+        const chip = document.createElement('div');
+        // CSS en línea para no tocar tus hojas de estilo
+        chip.style.cssText = "display: inline-flex; align-items: center; background-color: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; font-size: 0.80rem; padding: 4px 10px; border-radius: 16px; font-weight: 600;";
+        chip.innerHTML = `
+            ${carta.numero_carta}
+            <i class="fas fa-times" style="margin-left: 8px; cursor: pointer; color: #0369a1;" onclick="eliminarChipReferencia(${carta.id})" title="Quitar"></i>
+        `;
+        contenedorChips.appendChild(chip);
+    });
+
+    // Generar el string de IDs separados por coma (Ej: "12,45,8")
+    const idsString = cartasSeleccionadasChips.map(c => c.id).join(',');
+    inputOculto.value = idsString;
+}
+// -----------------------------------------------------------
+
 function mostrarOpcionesBuscador() {
     const contenedor = document.getElementById('lista_resultados_cartas');
-    if(contenedor) contenedor.style.display = 'block';
-    // Limpiamos el ID oculto si el usuario empieza a escribir algo nuevo manualmente
-    document.getElementById('carta_referencia_id').value = ""; 
+    if(contenedor) {
+        contenedor.style.display = 'block';
+        filtrarOpcionesBuscador(); // Refresca la lista sin las ya seleccionadas
+    }
 }
 
 function filtrarOpcionesBuscador() {
@@ -17129,12 +17177,20 @@ function filtrarOpcionesBuscador() {
     renderizarListaBuscador(cartasFiltradas);
 }
 
-// Ocultar la lista flotante si el usuario hace clic fuera de ella
+// Ocultar la lista flotante si el usuario hace clic fuera de ella (Se mantiene igual)
 document.addEventListener('click', function(e) {
-    const container = document.getElementById('contenedor-buscador');
-    const lista = document.getElementById('lista_resultados_cartas');
-    if (container && lista && !container.contains(e.target)) {
-        lista.style.display = 'none';
+    // Para el modal
+    const containerModal = document.getElementById('contenedor-buscador');
+    const listaModal = document.getElementById('lista_resultados_cartas');
+    if (containerModal && listaModal && !containerModal.contains(e.target)) {
+        listaModal.style.display = 'none';
+    }
+
+    // Para la barra principal (Tu código existente en la sección 5)
+    const containerFiltro = document.getElementById('contenedor-filtro-buscador');
+    const listaFiltro = document.getElementById('lista_resultados_filtro');
+    if (containerFiltro && listaFiltro && !containerFiltro.contains(e.target)) {
+        listaFiltro.style.display = 'none';
     }
 });
 
@@ -17557,36 +17613,29 @@ async function rastrearExpediente() {
 // =========================================================
 // FUNCIONES DEL MODAL DE EDICIÓN
 // =========================================================
+let cartasSeleccionadasChipsEditar = [];
 
-// Abrir el modal y precargar los datos
 function abrirModalEditarCarta(cartaId) {
-    // 1. Mostrar el modal
     const modal = document.getElementById('modalEditarCarta');
     modal.style.display = 'flex'; 
-    
-    // 2. Limpiar el form por si quedó algo sucio
     document.getElementById('formEditarCarta').reset();
-    
-    // 3. Asignar el ID al input oculto
     document.getElementById('input_id_editar').value = cartaId;
 
-    // Mostramos un mini-estado de carga en los inputs mientras llegan los datos
+    // Limpiar chips del modal de edición
+    cartasSeleccionadasChipsEditar = [];
+    actualizarVistaChipsEditar();
+
     document.getElementById('input_numero_carta_editar').value = "Cargando...";
     document.getElementById('input_asunto_editar').value = "Cargando...";
 
-    // 4. Hacemos la petición a la nueva ruta específica
     fetch(`/api/cartas/detalle/${cartaId}`)
         .then(res => res.json())
         .then(data => {
             if (data.exito && data.datos) {
-                // Aquí ya tenemos la carta exacta
                 const carta = data.datos;
                 
-                // Llenar los campos
                 document.getElementById('input_numero_carta_editar').value = carta.numero_carta || '';
                 document.getElementById('input_asunto_editar').value = carta.asunto || '';
-                
-                // Formateo de fecha (cuidado con los campos nulos o '-')
                 document.getElementById('input_fecha_editar').value = carta.fecha !== '-' ? carta.fecha : '';
                 
                 if (carta.fecha_limite && carta.fecha_limite !== '-') {
@@ -17595,9 +17644,15 @@ function abrirModalEditarCarta(cartaId) {
                     document.getElementById('input_fecha_limite_editar').value = '';
                 }
 
-                // Selects
                 document.getElementById('input_tipo_editar').value = carta.tipo || '';
                 document.getElementById('input_estado_editar').value = carta.estado || 'PENDIENTE';
+
+                // Si tu backend devuelve las referencias pasadas en el JSON (ej. carta.referencias), las precargamos
+                // Si no las devuelve actualmente, esto simplemente no hará nada.
+                if (carta.referencias && carta.referencias.length > 0) {
+                    carta.referencias.forEach(ref => agregarChipReferenciaEditar(ref));
+                }
+
             } else {
                 alert("No se pudieron cargar los datos de la carta.");
                 cerrarModalEditarCarta();
@@ -17610,19 +17665,134 @@ function abrirModalEditarCarta(cartaId) {
         });
 }
 
-// Cerrar el modal
 function cerrarModalEditarCarta() {
     document.getElementById('modalEditarCarta').style.display = 'none';
     document.getElementById('formEditarCarta').reset();
+    
+    // Limpiar chips
+    cartasSeleccionadasChipsEditar = [];
+    actualizarVistaChipsEditar();
+    
+    const listaResultados = document.getElementById('lista_resultados_cartas_editar');
+    if(listaResultados) listaResultados.style.display = 'none';
 }
 
-// Función intermedia para capturar el submit del form y pasárselo a la función de actualización
 function ejecutarGuardarEdicion(event) {
-    // El ID lo sacamos del input oculto
     const cartaId = document.getElementById('input_id_editar').value;
-    
-    // Llamamos a la función que me pediste antes
     guardarEdicionCarta(event, cartaId);
-    
-    return false; // Evita recargar la página
+    return false;
 }
+
+// --- FUNCIONES DE CHIPS PARA EL MODAL DE EDICIÓN ---
+function agregarChipReferenciaEditar(carta) {
+    // Evitar que el usuario se referencie a sí mismo
+    const idActual = document.getElementById('input_id_editar').value;
+    if (carta.id == idActual) {
+        alert("Una carta no puede referenciarse a sí misma.");
+        return;
+    }
+
+    if (cartasSeleccionadasChipsEditar.some(c => c.id === carta.id)) return;
+    cartasSeleccionadasChipsEditar.push(carta);
+    actualizarVistaChipsEditar();
+}
+
+function eliminarChipReferenciaEditar(id) {
+    cartasSeleccionadasChipsEditar = cartasSeleccionadasChipsEditar.filter(c => c.id !== id);
+    actualizarVistaChipsEditar();
+    filtrarOpcionesBuscadorEditar();
+}
+
+function actualizarVistaChipsEditar() {
+    const contenedorChips = document.getElementById('contenedor-chips_editar');
+    const inputOculto = document.getElementById('carta_referencia_id_editar');
+    contenedorChips.innerHTML = '';
+    
+    cartasSeleccionadasChipsEditar.forEach(carta => {
+        const chip = document.createElement('div');
+        chip.style.cssText = "display: inline-flex; align-items: center; background-color: #fef3c7; color: #b45309; border: 1px solid #fde68a; font-size: 0.80rem; padding: 4px 10px; border-radius: 16px; font-weight: 600;";
+        chip.innerHTML = `
+            ${carta.numero_carta}
+            <i class="fas fa-times" style="margin-left: 8px; cursor: pointer; color: #92400e;" onclick="eliminarChipReferenciaEditar(${carta.id})" title="Quitar"></i>
+        `;
+        contenedorChips.appendChild(chip);
+    });
+
+    const idsString = cartasSeleccionadasChipsEditar.map(c => c.id).join(',');
+    inputOculto.value = idsString;
+}
+
+// --- BUSCADOR DEL MODAL DE EDICIÓN ---
+function mostrarOpcionesBuscadorEditar() {
+    const contenedor = document.getElementById('lista_resultados_cartas_editar');
+    if(contenedor) {
+        contenedor.style.display = 'block';
+        filtrarOpcionesBuscadorEditar();
+    }
+}
+
+function filtrarOpcionesBuscadorEditar() {
+    const texto = document.getElementById('buscador_referencia_editar').value.toLowerCase();
+    const idActual = document.getElementById('input_id_editar').value; // Para evitar que se busque a sí misma
+    
+    const cartasFiltradas = cartasGlobalesBD.filter(c => 
+        (c.numero_carta.toLowerCase().includes(texto) || c.asunto.toLowerCase().includes(texto)) &&
+        c.id != idActual // Excluye la carta que se está editando
+    );
+    renderizarListaBuscadorEditar(cartasFiltradas);
+}
+
+function renderizarListaBuscadorEditar(listaCartas) {
+    const contenedor = document.getElementById('lista_resultados_cartas_editar');
+    if (!contenedor) return;
+    
+    contenedor.innerHTML = '';
+    
+    if(listaCartas.length === 0) {
+        contenedor.innerHTML = '<div style="padding: 10px; color: #94a3b8; font-size: 0.85rem; text-align: center;">No hay coincidencias</div>';
+        return;
+    }
+
+    listaCartas.forEach(carta => {
+        if (cartasSeleccionadasChipsEditar.some(c => c.id === carta.id)) return;
+
+        const item = document.createElement('div');
+        item.style.cssText = "padding: 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; color: #334155; transition: background 0.2s;";
+        item.innerHTML = `<strong style="color: #0f172a;">${carta.numero_carta}</strong><br><span style="color: #64748b;">${carta.asunto}</span>`;
+        
+        item.onmouseover = () => item.style.backgroundColor = '#f8fafc';
+        item.onmouseout = () => item.style.backgroundColor = 'transparent';
+        
+        item.onclick = () => {
+            agregarChipReferenciaEditar(carta);
+            document.getElementById('buscador_referencia_editar').value = ''; 
+            contenedor.style.display = 'none';
+        };
+        
+        contenedor.appendChild(item);
+    });
+}
+
+// Actualizamos el EventListener Global para cerrar la lista del modal de edición al hacer clic fuera
+document.addEventListener('click', function(e) {
+    // Para el modal de Registro
+    const containerModal = document.getElementById('contenedor-buscador');
+    const listaModal = document.getElementById('lista_resultados_cartas');
+    if (containerModal && listaModal && !containerModal.contains(e.target)) {
+        listaModal.style.display = 'none';
+    }
+
+    // Para el modal de Edición
+    const containerModalEditar = document.getElementById('contenedor-buscador_editar');
+    const listaModalEditar = document.getElementById('lista_resultados_cartas_editar');
+    if (containerModalEditar && listaModalEditar && !containerModalEditar.contains(e.target)) {
+        listaModalEditar.style.display = 'none';
+    }
+
+    // Para la barra principal (Tu código existente en la sección 5)
+    const containerFiltro = document.getElementById('contenedor-filtro-buscador');
+    const listaFiltro = document.getElementById('lista_resultados_filtro');
+    if (containerFiltro && listaFiltro && !containerFiltro.contains(e.target)) {
+        listaFiltro.style.display = 'none';
+    }
+});
