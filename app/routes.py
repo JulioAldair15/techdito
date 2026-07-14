@@ -10145,6 +10145,8 @@ def registrar_carta():
         fecha_str = request.form.get('fecha')
         fecha_limite_str = request.form.get('fecha_limite')
         estado_form = request.form.get('estado')
+        
+        # Aquí capturamos la cadena que puede contener "1" o "1,4,7"
         referencia_id = request.form.get('carta_referencia_id')
         
         file = request.files.get('archivo_pdf')
@@ -10189,12 +10191,20 @@ def registrar_carta():
         db.session.add(nueva_carta)
         db.session.flush()
 
+        # =========================================================
+        # MODIFICACIÓN PARA MÚLTIPLES REFERENCIAS
+        # =========================================================
         if referencia_id:
-            carta_origen = Carta.query.get(referencia_id)
-            if carta_origen:
-                nueva_carta.referencias_pasadas.append(carta_origen)
-                if tipo == 'EMITIDA' and carta_origen.tipo == 'RECIBIDA' and carta_origen.estado == 'PENDIENTE':
-                    carta_origen.estado = 'ATENDIDA'
+            # Separamos la cadena por comas y limpiamos espacios vacíos
+            lista_ids = [r_id.strip() for r_id in referencia_id.split(',') if r_id.strip().isdigit()]
+            
+            for ref_id_single in lista_ids:
+                carta_origen = Carta.query.get(int(ref_id_single))
+                if carta_origen:
+                    nueva_carta.referencias_pasadas.append(carta_origen)
+                    if tipo == 'EMITIDA' and carta_origen.tipo == 'RECIBIDA' and carta_origen.estado == 'PENDIENTE':
+                        carta_origen.estado = 'ATENDIDA'
+        # =========================================================
 
         db.session.commit()
         return jsonify({"exito": True, "mensaje": "Documento registrado correctamente"}), 201
