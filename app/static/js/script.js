@@ -244,6 +244,53 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
+function formatearNombreVisual(nombreCompleto) {
+    if (!nombreCompleto) return "";
+
+    // 1. Limpiamos espacios extra
+    let nombreLimpio = nombreCompleto.trim().replace(/\s+/g, ' ');
+    let partes = nombreLimpio.split(' ');
+
+    // Si tiene 1 o 2 palabras, no hay mucho que reordenar de forma segura
+    if (partes.length < 3) return nombreLimpio;
+
+    // 2. Diccionario de nombres de pila masculinos y femeninos muy comunes
+    // Puedes agregar más según la recurrencia en tu personal
+    const nombresComunes = [
+        'JUAN', 'JOSE', 'LUIS', 'CARLOS', 'JULIO', 'JORGE', 'VICTOR', 'ROBERTO', 
+        'MIGUEL', 'CESAR', 'PEDRO', 'MANUEL', 'JESUS', 'FRANCISCO', 'ALDAIR', 
+        'KEVIN', 'BRAYAN', 'DIEGO', 'RENZO', 'EDGAR', 'OSCAR', 'FERNANDO', 
+        'CRISTIAN', 'CHRISTIAN', 'MARIA', 'ROSA', 'ANA', 'CARMEN', 'LUZ', 
+        'FLOR', 'RUTH', 'DIANA', 'CLAUDIA', 'MILAGROS', 'LEYSER', 'OSMAN', 
+        'EDINSON', 'YERSON', 'JEFERSON'
+    ];
+
+    // Evaluamos si la PRIMERA palabra es un nombre común
+    let empiezaConNombre = nombresComunes.includes(partes[0].toUpperCase());
+
+    if (empiezaConNombre) {
+        // Asumimos formato: [Nombres] [Apellidos] -> Lo pasamos a: [Apellidos] [Nombres]
+        if (partes.length === 3) {
+            // Ej: JULIO RODRIGUEZ MARQUINA -> RODRIGUEZ MARQUINA JULIO
+            return `${partes[1]} ${partes[2]} ${partes[0]}`;
+        } else if (partes.length === 4) {
+            // Ej: JULIO ALDAIR RODRIGUEZ MARQUINA -> RODRIGUEZ MARQUINA JULIO ALDAIR
+            return `${partes[2]} ${partes[3]} ${partes[0]} ${partes[1]}`;
+        } else {
+            // Si tiene 5 o más palabras (ej. nombres largos o apellidos compuestos)
+            // Asumimos que las últimas dos son los apellidos
+            let nombres = partes.slice(0, partes.length - 2).join(' ');
+            let apellidos = partes.slice(partes.length - 2).join(' ');
+            return `${apellidos} ${nombres}`;
+        }
+    }
+
+    // Si no empezó con un nombre común, asumimos que ya es [Apellidos] [Nombres]
+    // Ej: SANCHEZ CARRASCO JOSE MANUEL
+    return nombreLimpio;
+}
+
+
 // RECAUDACION
 document.addEventListener('DOMContentLoaded', function () {
     });
@@ -278,6 +325,13 @@ async function cargarEmpleadosRecaudacion() {
         }
 
         console.log('Respuesta del servidor:', empleados);
+
+        empleados.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+
+        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
 
         // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#recaudacion .empleados-table tbody');
@@ -321,7 +375,7 @@ async function cargarEmpleadosRecaudacion() {
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${empleado.dni}</td>
-                <td>${empleado.nombres}</td>
+                <td>${empleado.nombre_visual}</td>
                 <td>${empleado.cargo}</td>
                 <td>
                     <select name="estado">${estadoOptions}</select>
@@ -524,15 +578,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             choices.clearChoices();
 
             // Añadir opciones a Choices.js
+            const opcionesFormateadas = empleados.map(empleado => ({
+                value: empleado.id_empleado,
+                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
+                customProperties: {
+                    dni: empleado.dni,
+                    cargo: empleado.cargo,
+                },
+            }));
+
+            // Ordenamos el desplegable alfabéticamente
+            opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
+
             choices.setChoices(
-                empleados.map(empleado => ({
-                    value: empleado.id_empleado,
-                    label: empleado.nombres,
-                    customProperties: {
-                        dni: empleado.dni,
-                        cargo: empleado.cargo,
-                    },
-                })),
+                opcionesFormateadas,
                 'value',
                 'label',
                 false
@@ -602,7 +661,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const diaSemana = obtenerDiaSeleccionado(); // 📌 Determinar si es domingo
         const opcionesEstado = obtenerOpcionesEstado(diaSemana);
 
-        const nombresApellidos = empleadoSeleccionado.nombres;
+        const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
         const dni = empleadoSeleccionado.dni;
         const cargo = empleadoSeleccionado.cargo;
 
@@ -911,6 +970,13 @@ async function cargarEmpleadosLecturas() {
 
         console.log('Respuesta del servidor:', empleados);
 
+        empleados.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+
+        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+
         // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#lecturas .empleados-table-lecturas tbody');
         tbody.innerHTML = ''; // Limpiamos la tabla
@@ -955,7 +1021,7 @@ async function cargarEmpleadosLecturas() {
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${empleado.dni}</td>
-                <td>${empleado.nombres}</td>
+                <td>${empleado.nombre_visual}</td>
                 <td>${empleado.cargo}</td>
                 <td>
                     <select name="estado">${estadoOptions}</select>
@@ -1217,15 +1283,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             choicesLectura.clearChoices();
 
             // Añadir opciones a Choices.js
+            const opcionesFormateadas = empleados.map(empleado => ({
+                value: empleado.id_empleado,
+                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
+                customProperties: {
+                    dni: empleado.dni,
+                    cargo: empleado.cargo,
+                },
+            }));
+
+            // Ordenamos el desplegable alfabéticamente
+            opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
+
             choicesLectura.setChoices(
-                empleados.map(empleado => ({
-                    value: empleado.id_empleado,
-                    label: empleado.nombres,
-                    customProperties: {
-                        dni: empleado.dni,
-                        cargo: empleado.cargo,
-                    },
-                })),
+                opcionesFormateadas,
                 'value',
                 'label',
                 false
@@ -1297,7 +1368,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const diaSemana = obtenerDiaSeleccionado(); // 📌 Determinar si es domingo
         const opcionesEstado = obtenerOpcionesEstado(diaSemana);
 
-        const nombresApellidos = empleadoSeleccionado.nombres;
+        const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
         const dni = empleadoSeleccionado.dni;
         const cargo = empleadoSeleccionado.cargo;
 
@@ -1691,6 +1762,13 @@ async function cargarEmpleadosDistribucion() {
 
         console.log('Respuesta del servidor:', empleados);
 
+        empleados.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+
+        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+
         // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#distribucion .empleados-table-distribucion tbody');
         tbody.innerHTML = ''; // Limpiamos la tabla
@@ -1733,7 +1811,7 @@ async function cargarEmpleadosDistribucion() {
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${empleado.dni}</td>
-                <td>${empleado.nombres}</td>
+                <td>${empleado.nombre_visual}</td>
                 <td>${empleado.cargo}</td>
                 <td>
                     <select name="estado">${estadoOptions}</select>
@@ -1996,15 +2074,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             choicesDistribucion.clearChoices();
 
             // Añadir opciones a Choices.js
+            const opcionesFormateadas = empleados.map(empleado => ({
+                value: empleado.id_empleado,
+                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
+                customProperties: {
+                    dni: empleado.dni,
+                    cargo: empleado.cargo,
+                },
+            }));
+
+            // Ordenamos el desplegable alfabéticamente
+            opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
+
             choicesDistribucion.setChoices(
-                empleados.map(empleado => ({
-                    value: empleado.id_empleado,
-                    label: empleado.nombres,
-                    customProperties: {
-                        dni: empleado.dni,
-                        cargo: empleado.cargo,
-                    },
-                })),
+                opcionesFormateadas,
                 'value',
                 'label',
                 false
@@ -2076,7 +2159,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const diaSemana = obtenerDiaSeleccionado(); // 📌 Determinar si es domingo
         const opcionesEstado = obtenerOpcionesEstado(diaSemana);
 
-        const nombresApellidos = empleadoSeleccionado.nombres;
+        const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
         const dni = empleadoSeleccionado.dni;
         const cargo = empleadoSeleccionado.cargo;
 
@@ -2471,6 +2554,13 @@ async function cargarEmpleadosInspecciones() {
 
         console.log('Respuesta del servidor:', empleados);
 
+        empleados.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+
+        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+
         // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#inspecciones .empleados-table-inspecciones tbody');
         tbody.innerHTML = ''; // Limpiamos la tabla
@@ -2513,7 +2603,7 @@ async function cargarEmpleadosInspecciones() {
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${empleado.dni}</td>
-                <td>${empleado.nombres}</td>
+                <td>${empleado.nombre_visual}</td>
                 <td>${empleado.cargo}</td>
                 <td>
                     <select name="estado">${estadoOptions}</select>
@@ -2778,15 +2868,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             choicesInspecciones.clearChoices();
 
             // Añadir opciones a Choices.js
+            const opcionesFormateadas = empleados.map(empleado => ({
+                value: empleado.id_empleado,
+                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
+                customProperties: {
+                    dni: empleado.dni,
+                    cargo: empleado.cargo,
+                },
+            }));
+
+            // Ordenamos el desplegable alfabéticamente
+            opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
+
             choicesInspecciones.setChoices(
-                empleados.map(empleado => ({
-                    value: empleado.id_empleado,
-                    label: empleado.nombres,
-                    customProperties: {
-                        dni: empleado.dni,
-                        cargo: empleado.cargo,
-                    },
-                })),
+                opcionesFormateadas,
                 'value',
                 'label',
                 false
@@ -2858,7 +2953,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const diaSemana = obtenerDiaSeleccionado(); // 📌 Determinar si es domingo
         const opcionesEstado = obtenerOpcionesEstado(diaSemana);
 
-        const nombresApellidos = empleadoSeleccionado.nombres;
+        const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
         const dni = empleadoSeleccionado.dni;
         const cargo = empleadoSeleccionado.cargo;
 
@@ -3248,6 +3343,13 @@ async function cargarEmpleadosCatastro() {
 
         console.log('Respuesta del servidor:', empleados);
 
+        empleados.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+
+        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+
         // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#catastro .empleados-table-catastro tbody');
         tbody.innerHTML = ''; // Limpiamos la tabla
@@ -3290,7 +3392,7 @@ async function cargarEmpleadosCatastro() {
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${empleado.dni}</td>
-                <td>${empleado.nombres}</td>
+                <td>${empleado.nombre_visual}</td>
                 <td>${empleado.cargo}</td>
                 <td>
                     <select name="estado">${estadoOptions}</select>
@@ -3554,15 +3656,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             choicesCatastro.clearChoices();
 
             // Añadir opciones a Choices.js
+            const opcionesFormateadas = empleados.map(empleado => ({
+                value: empleado.id_empleado,
+                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
+                customProperties: {
+                    dni: empleado.dni,
+                    cargo: empleado.cargo,
+                },
+            }));
+
+            // Ordenamos el desplegable alfabéticamente
+            opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
+
             choicesCatastro.setChoices(
-                empleados.map(empleado => ({
-                    value: empleado.id_empleado,
-                    label: empleado.nombres,
-                    customProperties: {
-                        dni: empleado.dni,
-                        cargo: empleado.cargo,
-                    },
-                })),
+                opcionesFormateadas,
                 'value',
                 'label',
                 false
@@ -3634,7 +3741,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const diaSemana = obtenerDiaSeleccionado(); // 📌 Determinar si es domingo
         const opcionesEstado = obtenerOpcionesEstado(diaSemana);
 
-        const nombresApellidos = empleadoSeleccionado.nombres;
+        const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
         const dni = empleadoSeleccionado.dni;
         const cargo = empleadoSeleccionado.cargo;
 
@@ -4024,6 +4131,13 @@ async function cargarEmpleadosMedidores() {
 
         console.log('Respuesta del servidor:', empleados);
 
+        empleados.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+
+        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+
         // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#medidores .empleados-table-medidores tbody');
         tbody.innerHTML = ''; // Limpiamos la tabla
@@ -4067,7 +4181,7 @@ async function cargarEmpleadosMedidores() {
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${empleado.dni}</td>
-                <td>${empleado.nombres}</td>
+                <td>${empleado.nombre_visual}</td>
                 <td>${empleado.cargo}</td>
 
                 <td>
@@ -4332,15 +4446,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             choicesMedidores.clearChoices();
 
             // Añadir opciones a Choices.js
+            const opcionesFormateadas = empleados.map(empleado => ({
+                value: empleado.id_empleado,
+                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
+                customProperties: {
+                    dni: empleado.dni,
+                    cargo: empleado.cargo,
+                },
+            }));
+
+            // Ordenamos el desplegable alfabéticamente
+            opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
+
             choicesMedidores.setChoices(
-                empleados.map(empleado => ({
-                    value: empleado.id_empleado,
-                    label: empleado.nombres,
-                    customProperties: {
-                        dni: empleado.dni,
-                        cargo: empleado.cargo,
-                    },
-                })),
+                opcionesFormateadas,
                 'value',
                 'label',
                 false
@@ -4412,7 +4531,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const diaSemana = obtenerDiaSeleccionado(); // 📌 Determinar si es domingo
         const opcionesEstado = obtenerOpcionesEstado(diaSemana);
 
-        const nombresApellidos = empleadoSeleccionado.nombres;
+        const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
         const dni = empleadoSeleccionado.dni;
         const cargo = empleadoSeleccionado.cargo;
 
@@ -4802,6 +4921,13 @@ async function cargarEmpleadosPersuasivas() {
 
         console.log('Respuesta del servidor:', empleados);
 
+        empleados.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+
+        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+
         // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#persuasivas .empleados-table-persuasivas tbody');
         tbody.innerHTML = ''; // Limpiamos la tabla
@@ -4844,7 +4970,7 @@ async function cargarEmpleadosPersuasivas() {
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${empleado.dni}</td>
-                <td>${empleado.nombres}</td>
+                <td>${empleado.nombre_visual}</td>
                 <td>${empleado.cargo}</td>
                 <td>
                     <select name="estado">${estadoOptions}</select>
@@ -5107,15 +5233,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             choicesPersuasivas.clearChoices();
 
             // Añadir opciones a Choices.js
+            const opcionesFormateadas = empleados.map(empleado => ({
+                value: empleado.id_empleado,
+                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
+                customProperties: {
+                    dni: empleado.dni,
+                    cargo: empleado.cargo,
+                },
+            }));
+
+            // Ordenamos el desplegable alfabéticamente
+            opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
+
             choicesPersuasivas.setChoices(
-                empleados.map(empleado => ({
-                    value: empleado.id_empleado,
-                    label: empleado.nombres,
-                    customProperties: {
-                        dni: empleado.dni,
-                        cargo: empleado.cargo,
-                    },
-                })),
+                opcionesFormateadas,
                 'value',
                 'label',
                 false
@@ -5186,7 +5317,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const diaSemana = obtenerDiaSeleccionado(); // 📌 Determinar si es domingo
         const opcionesEstado = obtenerOpcionesEstado(diaSemana);
 
-        const nombresApellidos = empleadoSeleccionado.nombres;
+        const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
         const dni = empleadoSeleccionado.dni;
         const cargo = empleadoSeleccionado.cargo;
 
@@ -5595,6 +5726,13 @@ async function cargarEmpleadosNorte() {
 
         console.log('Respuesta del servidor:', empleados);
 
+        empleados.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+
+        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+
         // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#norte .empleados-table-norte tbody');
         tbody.innerHTML = ''; // Limpiamos la tabla
@@ -5638,7 +5776,7 @@ async function cargarEmpleadosNorte() {
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${empleado.dni}</td>
-                <td>${empleado.nombres}</td>
+                <td>${empleado.nombre_visual}</td>
                 <td>${empleado.cargo}</td>
                 <td>
                     <select name="estado">${estadoOptions}</select>
@@ -5904,15 +6042,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             choicesNorte.clearChoices();
 
             // Añadir opciones a Choices.js
+            const opcionesFormateadas = empleados.map(empleado => ({
+                value: empleado.id_empleado,
+                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
+                customProperties: {
+                    dni: empleado.dni,
+                    cargo: empleado.cargo,
+                },
+            }));
+
+            // Ordenamos el desplegable alfabéticamente
+            opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
+
             choicesNorte.setChoices(
-                empleados.map(empleado => ({
-                    value: empleado.id_empleado,
-                    label: empleado.nombres,
-                    customProperties: {
-                        dni: empleado.dni,
-                        cargo: empleado.cargo,
-                    },
-                })),
+                opcionesFormateadas,
                 'value',
                 'label',
                 false
@@ -5984,7 +6127,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const diaSemana = obtenerDiaSeleccionado(); // 📌 Determinar si es domingo
         const opcionesEstado = obtenerOpcionesEstado(diaSemana);
 
-        const nombresApellidos = empleadoSeleccionado.nombres;
+        const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
         const dni = empleadoSeleccionado.dni;
         const cargo = empleadoSeleccionado.cargo;
 
@@ -6372,6 +6515,13 @@ async function cargarEmpleadosadministrativo_1() {
 
         console.log('Respuesta del servidor:', empleados);
 
+        empleados.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+
+        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+
         // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#administrativo_1 .empleados-table-administrativo_1 tbody');
         tbody.innerHTML = ''; // Limpiamos la tabla
@@ -6387,7 +6537,7 @@ async function cargarEmpleadosadministrativo_1() {
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${empleado.dni}</td>
-                <td>${empleado.nombres}</td>
+                <td>${empleado.nombre_visual}</td>
                 <td>${empleado.cargo}</td>
                 <td>
                     <select name="estado">
@@ -6588,15 +6738,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             choicesadministrativo_1.clearChoices();
 
             // Añadir opciones a Choices.js
+            const opcionesFormateadas = empleados.map(empleado => ({
+                value: empleado.id_empleado,
+                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
+                customProperties: {
+                    dni: empleado.dni,
+                    cargo: empleado.cargo,
+                },
+            }));
+
+            // Ordenamos el desplegable alfabéticamente
+            opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
+
             choicesadministrativo_1.setChoices(
-                empleados.map(empleado => ({
-                    value: empleado.id_empleado,
-                    label: empleado.nombres,
-                    customProperties: {
-                        dni: empleado.dni,
-                        cargo: empleado.cargo,
-                    },
-                })),
+                opcionesFormateadas,
                 'value',
                 'label',
                 false
@@ -6631,7 +6786,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             return;
         }
 
-        const nombresApellidos = empleadoSeleccionado.nombres;
+        const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
         const dni = empleadoSeleccionado.dni;
         const cargo = empleadoSeleccionado.cargo;
 
@@ -6926,12 +7081,23 @@ document.querySelector('.btn-buscar').addEventListener('click', async () => {
         });
 
         if (!response.ok) throw new Error(`Error en la API: ${response.statusText}`);
+        
+        // ✅ ESTA ES LA LÍNEA QUE FALTABA ✅
         empleadosData = await response.json();
 
         if (!Array.isArray(empleadosData) || empleadosData.length === 0) {
             alert("No se encontraron registros para el intervalo de fechas seleccionado.");
             return;
         }
+
+        // =======================================================
+        // NUEVO: Formatear y ordenar antes de mostrar (Por Área)
+        // =======================================================
+        empleadosData.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+        empleadosData.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+        // =======================================================
 
         actualizarTabla('asistencias');
 
@@ -6958,6 +7124,15 @@ async function cargarConsolidado(tipo) {
 
         if (!response.ok) throw new Error(`Error en la API: ${response.statusText}`);
         empleadosData = await response.json();
+
+        // =======================================================
+        // NUEVO: Formatear y ordenar antes de mostrar (Consolidado)
+        // =======================================================
+        empleadosData.forEach(emp => {
+            emp.nombre_visual = formatearNombreVisual(emp.nombres);
+        });
+        empleadosData.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+        // =======================================================
 
         actualizarTabla(tipo === 'asistencias' ? 'consolidado' : 'consolidado_pasajes');
         
@@ -7029,7 +7204,7 @@ function actualizarTabla(modo) {
         tr.innerHTML = `
             <td>${index + 1}</td>
             <td>${empleado.dni}</td>
-            <td>${empleado.nombres}</td>
+            <td>${empleado.nombre_visual}</td> <!-- AQUÍ USAMOS nombre_visual -->
             <td>${empleado.cargo}</td>
             ${(modo === 'consolidado' || modo === 'consolidado_pasajes') ? `<td>${empleado.area_global || ''}</td><td>${empleado.area || ''}</td>` : ''}
         `;
