@@ -588,6 +588,8 @@ class MovimientoDetalle(db.Model):
     tipo_movimiento = db.Column(db.String(20), nullable=False)
     cantidad = db.Column(db.Numeric(10, 2), nullable=False)
 
+    observaciones = db.Column(db.Text, nullable=True)
+
     precio_unitario = db.Column(db.Numeric(10, 2), nullable=True) 
     estado = db.Column(db.String(20), default='ACTIVO')
     stock_restante = db.Column(db.Numeric(10, 2), nullable=True)
