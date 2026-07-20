@@ -8603,7 +8603,7 @@ def api_listar_datos():
                 "cantidad": float(e.cantidad),
                 "precio": float(e.precio_unitario or e.producto_rel.precio_igv or 0),
                 "proveedor": e.entrada_rel.proveedor.razon_social if e.entrada_rel.proveedor else "-",
-                "obs": e.entrada_rel.obs_entrada or "-"
+                "obs": e.observaciones if e.observaciones else "-"
             } for e in ultimas_entradas],
 
             "empleados": [{
@@ -8624,7 +8624,7 @@ def api_listar_datos():
                 
                 "empleado": s.salida_rel.empleado.nombres if s.salida_rel and s.salida_rel.empleado else "-",
                 "area": s.salida_rel.empleado.area if s.salida_rel and s.salida_rel.empleado else "-", 
-                "obs": s.salida_rel.obs_salida or "-"
+                "obs": s.observaciones if s.observaciones else "-"
             } for s in ultimas_salidas],
 
             "lotes_disponibles": lista_lotes_salida
@@ -8826,7 +8826,8 @@ def guardar_entrada_lote():
                 stock_restante=cant_float,    
                 estado='ACTIVO',
                 talla=talla_val,
-                id_empleado_recupero=id_emp_rec
+                id_empleado_recupero=id_emp_rec,
+                observaciones=item.get('obs', '')
             )
             db.session.add(movimiento)
             
@@ -8901,7 +8902,8 @@ def guardar_salida_lote():
                 precio_unitario=lote_especifico.precio_unitario, # Mantiene el costo de esa entrada
                 estado='ACTIVO',
                 talla=lote_especifico.talla,
-                id_lote_origen=lote_especifico.id_movimiento
+                id_lote_origen=lote_especifico.id_movimiento,
+                observaciones=item.get('obs', '')
             )
             db.session.add(movimiento)
 
@@ -9003,7 +9005,6 @@ def api_historico_kardex():
                 doc_ref = m.entrada_rel.nro_factura or "-"
                 guia = m.entrada_rel.nro_guia or "-"
                 prov = m.entrada_rel.proveedor.razon_social if m.entrada_rel.proveedor else "-"
-                obs = m.entrada_rel.obs_entrada
                 
                 # 🚨 CAPTURAMOS EL EMPLEADO DE RECUPERO SI EXISTE
                 emp_retorno = Empleado.query.get(m.id_empleado_recupero).nombres if m.id_empleado_recupero else "-"
@@ -9024,8 +9025,6 @@ def api_historico_kardex():
                 
                 # 🚨 LAS SALIDAS NORMALES NO TIENEN EMPLEADO DE RECUPERO
                 emp_retorno = "-" 
-                
-                obs = m.salida_rel.obs_salida
 
             # Datos del Empleado Solicitante (El que se lleva la salida)
             emp = m.salida_rel.empleado.nombres if (not es_entrada and m.salida_rel.empleado) else "-"
@@ -9053,7 +9052,7 @@ def api_historico_kardex():
                 "documento": doc_ref,
                 "fecha_factura": f_fac,
                 "guia": guia,
-                "obs": obs or "-"
+                "obs": m.observaciones if m.observaciones else "-"
             })
 
         # 6. Devolver el JSON con metadata de paginación
