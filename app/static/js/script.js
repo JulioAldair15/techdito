@@ -7273,6 +7273,73 @@ function actualizarTabla(modo) {
     });
 }
 
+// Funcionalidad para ordenar la tabla con diseño minimalista
+document.addEventListener('DOMContentLoaded', () => {
+    const tabla = document.getElementById('tabla-asistencia-administrativo');
+    const thead = tabla.querySelector('thead');
+    let columnaActual = -1;
+    let ordenAscendente = true;
+
+    // 1. Observador: Agrega la clase 'th-sortable' automáticamente a las cabeceras
+    // Esto es necesario porque tu código reescribe el THEAD dinámicamente
+    const observer = new MutationObserver(() => {
+        thead.querySelectorAll('th').forEach(th => {
+            if (!th.classList.contains('th-sortable')) {
+                th.classList.add('th-sortable');
+            }
+        });
+    });
+    observer.observe(thead, { childList: true, subtree: true });
+
+    // 2. Lógica de ordenamiento al hacer clic
+    tabla.addEventListener('click', (e) => {
+        const th = e.target.closest('th');
+        if (!th || !th.closest('thead')) return;
+
+        const tbody = tabla.querySelector('tbody');
+        const thRow = th.parentElement;
+        const indexColumna = Array.from(thRow.children).indexOf(th);
+
+        if (!tbody.querySelectorAll('tr').length) return;
+
+        // Determinar dirección de ordenamiento
+        if (columnaActual === indexColumna) {
+            ordenAscendente = !ordenAscendente;
+        } else {
+            ordenAscendente = true;
+            columnaActual = indexColumna;
+        }
+
+        // Limpiar las clases activas de todas las cabeceras
+        thead.querySelectorAll('th').forEach(cabecera => {
+            cabecera.classList.remove('asc', 'desc');
+        });
+
+        // Agregar la clase de dirección a la cabecera actual
+        th.classList.add(ordenAscendente ? 'asc' : 'desc');
+
+        // Función para obtener el valor
+        const obtenerValor = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
+
+        // Función de comparación
+        const compararFila = (idx, asc) => (a, b) => {
+            const valA = obtenerValor(asc ? a : b, idx).trim();
+            const valB = obtenerValor(asc ? b : a, idx).trim();
+
+            if (valA !== '' && valB !== '' && !isNaN(valA) && !isNaN(valB)) {
+                return parseFloat(valA) - parseFloat(valB);
+            }
+            return valA.localeCompare(valB);
+        };
+
+        // Ordenar e inyectar
+        const filasOrdenadas = Array.from(tbody.querySelectorAll('tr'))
+            .sort(compararFila(indexColumna, ordenAscendente));
+
+        filasOrdenadas.forEach(tr => tbody.appendChild(tr));
+    });
+});
+
 
 document.getElementById('btn-asistencias').addEventListener('click', () => actualizarTabla('asistencias'));
 document.getElementById('btn-pasajes').addEventListener('click', () => actualizarTabla('pasajes'));
