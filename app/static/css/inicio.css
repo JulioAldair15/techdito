@@ -3267,7 +3267,36 @@ h2 {
     overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
 }
 
+/* Estilos minimalistas para las cabeceras ordenables */
+.th-sortable {
+    cursor: pointer;
+    position: relative;
+    padding-right: 18px !important; /* Espacio para la flecha */
+    user-select: none; /* Evita que el texto se seleccione al hacer doble clic */
+}
 
+/* Flecha por defecto (estado inactivo) */
+.th-sortable::after {
+    content: '↕'; 
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.2; /* Muy sutil para ser minimalista */
+    font-size: 12px;
+}
+
+/* Flecha ascendente */
+.th-sortable.asc::after {
+    content: '↑';
+    opacity: 0.8;
+}
+
+/* Flecha descendente */
+.th-sortable.desc::after {
+    content: '↓';
+    opacity: 0.8;
+}
 
 
 /* =========================================
