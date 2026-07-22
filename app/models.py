@@ -626,6 +626,10 @@ class MatrizValidacion(db.Model):
     newmed = db.Column(db.String(50), nullable=True)
     operador = db.Column(db.String(150), nullable=True)
 
+    ciclo = db.Column(db.String(50), nullable=True)
+    carga = db.Column(db.String(50), nullable=True)
+    periodo = db.Column(db.String(50), nullable=True)
+
     # Campos de gestión interna y validación (Solicitados)
     fecha_subida = db.Column(db.DateTime, default=datetime.utcnow)
     fecha_validacion = db.Column(db.DateTime, nullable=True)
