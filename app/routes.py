@@ -9463,88 +9463,138 @@ def exportar_excel_inventario():
 def subir_matriz_csv():
     print("\n[DEBUG] === INICIANDO SUBIDA DE MATRIZ CSV ===")
     
-    # 1. Validar que el archivo venga en la petición
     if 'archivo_csv' not in request.files:
-        print("[DEBUG] Error: No se encontró 'archivo_csv' en request.files")
         return jsonify({'error': 'No se encontró el archivo en la petición.'}), 400
     
     file = request.files['archivo_csv']
-    print(f"[DEBUG] Archivo recibido: {file.filename}")
-    
     if file.filename == '':
-        print("[DEBUG] Error: El nombre del archivo está vacío.")
         return jsonify({'error': 'No seleccionó ningún archivo.'}), 400
         
     if not file.filename.lower().endswith('.csv'):
-        print("[DEBUG] Error: Extensión no válida.")
         return jsonify({'error': 'El formato debe ser .csv estrictamente.'}), 400
 
     try:
-        # 2. Leer y decodificar el archivo en memoria
-        print("[DEBUG] Leyendo y decodificando archivo...")
+        # Decodificar el archivo
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         
-        # 3. Detectar delimitador
-        first_line = stream.readline()
-        delimiter = ';' if ';' in first_line else ','
-        print(f"[DEBUG] Delimitador detectado: '{delimiter}'")
+        # Detectar delimitador leyendo algunas líneas
+        primera_linea = stream.readline()
+        segunda_linea = stream.readline()
+        delimiter = ';' if ';' in primera_linea + segunda_linea else ','
         
-        stream.seek(0) # Volver el cursor al inicio del archivo
-        
+        stream.seek(0)
         reader = csv.reader(stream, delimiter=delimiter)
-        header = next(reader, None) # Saltar la primera fila (Cabeceras)
-        print(f"[DEBUG] Cabeceras extraídas: {header}")
         
-        registros_insertados = 0
-        filas_ignoradas = 0
+        # 1. LEER LAS CABECERAS (Directamente la primera fila)
+        headers_raw = next(reader, None)
+        if not headers_raw:
+            return jsonify({'error': 'El archivo está vacío o no tiene cabeceras válidas.'}), 400
+            
+        headers = [h.strip().upper() for h in headers_raw]
         
+        # 2. MAPEAR SOLO LAS COLUMNAS QUE QUEREMOS MANTENER
+        columnas_requeridas = {
+            'CLICODFAC': 'clicodfac',
+            'MEDCODYGO': 'medcodygo',
+            'LECTURA': 'lectura',
+            'FECLEC': 'feclec',
+            'HORALEC': 'horalec',
+            'OBS1': 'obs1',
+            'OBS2': 'obs2',
+            'NEWMED': 'newmed',
+            'NOMBRE OPERADOR': 'operador',
+            'CICLO': 'ciclo',
+            'CARGA': 'carga',
+            'PERIODO': 'periodo'
+        }
+        
+        # Obtener los índices de estas columnas en el CSV
+        indices_col = {}
+        for col_csv, col_db in columnas_requeridas.items():
+            if col_csv in headers:
+                indices_col[col_db] = headers.index(col_csv)
+            else:
+                return jsonify({'error': f'Falta la columna requerida en el CSV: {col_csv}'}), 400
+
         def clean_val(val):
             return val.strip() if val and val.strip() else None
 
-        print("[DEBUG] Iniciando procesamiento de filas...")
+        # 3. EXTRAER LOS DATOS DEL CSV
+        filas_csv = []
+        periodos_en_csv = set() 
         
-        # 4. Iterar sobre las filas e instanciar el modelo
-        for indice, row in enumerate(reader, start=2): # start=2 porque la fila 1 es la cabecera
+        for row in reader:
+            if not row or not any(row): continue # Ignorar filas totalmente vacías
             
-            # ¡CORRECCIÓN CLAVE AQUÍ! Ahora evalúa si tiene menos de 9 columnas
-            if not row or len(row) < 9:
-                print(f"[DEBUG - IGNORADA Fila {indice}] Longitud: {len(row) if row else 0} | Contenido: {row}")
-                filas_ignoradas += 1
+            # Construimos un diccionario solo con las columnas deseadas
+            datos_fila = {
+                col_db: clean_val(row[idx]) if idx < len(row) else None
+                for col_db, idx in indices_col.items()
+            }
+            
+            filas_csv.append(datos_fila)
+            if datos_fila['periodo']:
+                periodos_en_csv.add(datos_fila['periodo'])
+
+        # 4. VALIDACIÓN DE REGISTROS EXISTENTES POR (CLICODFAC, PERIODO)
+        registros_existentes = set()
+        
+        if periodos_en_csv:
+            existentes_db = db.session.query(MatrizValidacion.clicodfac, MatrizValidacion.periodo)\
+                .filter(MatrizValidacion.periodo.in_(periodos_en_csv)).all()
+                
+            registros_existentes = {(r.clicodfac, r.periodo) for r in existentes_db}
+
+        # 5. FILTRAR E INSERTAR SOLO LOS NUEVOS
+        registros_a_insertar = []
+        filas_ignoradas_por_duplicidad = 0
+        
+        for fila in filas_csv:
+            clave = (fila['clicodfac'], fila['periodo'])
+            
+            # Si la tupla (clicodfac, periodo) ya existe, se ignora
+            if clave in registros_existentes:
+                filas_ignoradas_por_duplicidad += 1
                 continue
                 
-            try:
-                nueva_matriz = MatrizValidacion(
-                    clicodfac=clean_val(row[0]),
-                    medcodygo=clean_val(row[1]),
-                    lectura=clean_val(row[2]),
-                    feclec=clean_val(row[3]),
-                    horalec=clean_val(row[4]),
-                    obs1=clean_val(row[5]),
-                    obs2=clean_val(row[6]),
-                    newmed=clean_val(row[7]),
-                    operador=clean_val(row[8]),
-                    estado='PENDIENTE',
-                    fecha_subida=datetime.utcnow() - timedelta(hours=5)
-                )
-                db.session.add(nueva_matriz)
-                registros_insertados += 1
-                
-            except Exception as row_err:
-                print(f"[DEBUG - ERROR Fila {indice}] Falló al preparar registro. Error: {row_err}")
-                
-        # 5. Confirmar transacción en la base de datos
-        print(f"[DEBUG] Resumen iteración -> Insertados: {registros_insertados} | Ignoradas: {filas_ignoradas}")
-        db.session.commit()
-        print("[DEBUG] Commit ejecutado exitosamente en la base de datos.")
+            # Si no existe, preparamos el registro
+            nueva_matriz = MatrizValidacion(
+                clicodfac=fila['clicodfac'],
+                medcodygo=fila['medcodygo'],
+                lectura=fila['lectura'],
+                feclec=fila['feclec'],
+                horalec=fila['horalec'],
+                obs1=fila['obs1'],
+                obs2=fila['obs2'],
+                newmed=fila['newmed'],
+                operador=fila['operador'],
+                ciclo=fila['ciclo'],
+                carga=fila['carga'],
+                periodo=fila['periodo'],
+                estado='PENDIENTE',
+                fecha_subida=datetime.utcnow() - timedelta(hours=5)
+            )
+            registros_a_insertar.append(nueva_matriz)
+            
+            # Agregamos al set para evitar que se dupliquen si vienen repetidos en el mismo CSV
+            registros_existentes.add(clave)
+
+        # 6. COMMIT A LA BASE DE DATOS
+        cantidad_insertados = len(registros_a_insertar)
+        if cantidad_insertados > 0:
+            db.session.add_all(registros_a_insertar)
+            db.session.commit()
+            
+        print(f"[DEBUG] Nuevos: {cantidad_insertados} | Ignorados (Ya en sistema): {filas_ignoradas_por_duplicidad}")
         print("[DEBUG] === FIN DE SUBIDA ===\n")
         
         return jsonify({
             'success': True, 
-            'mensaje': f'Se guardaron {registros_insertados} registros correctamente en la base de datos.'
+            'mensaje': f'Se guardaron {cantidad_insertados} registros nuevos. Se ignoraron {filas_ignoradas_por_duplicidad} registros que ya existían para el mismo periodo.'
         }), 200
 
     except Exception as e:
-        db.session.rollback() # Revertir cambios si algo falla
+        db.session.rollback()
         print(f"[ERROR DB] Error general al procesar CSV de Matriz: {e}")
         return jsonify({'error': f'Ocurrió un error interno: {str(e)}'}), 500
 
@@ -9790,6 +9840,11 @@ def get_matriz_revision():
     data = [{
         'id_matriz': r.id_matriz,
         'suministro': r.clicodfac or '-',
+        # --- NUEVOS CAMPOS AGREGADOS ---
+        'ciclo': r.ciclo or '-',
+        'carga': r.carga or '-',
+        'periodo': r.periodo or '-',
+        # -------------------------------
         'newmed': r.newmed or '-',
         'lectura_nueva': r.nueva_lect or r.lectura or '-', 
         'observacion_nueva': r.nueva_obs or r.obs1 or 'SIN OBSERVACIÓN',
@@ -9910,6 +9965,11 @@ def previsualizar_reporte():
 
     datos = [{
         "clicodfac": r.clicodfac or "-",
+        # --- NUEVOS CAMPOS AGREGADOS ---
+        "ciclo": r.ciclo or "-",
+        "carga": r.carga or "-",
+        "periodo": r.periodo or "-",
+        # -------------------------------
         "medcodygo": r.medcodygo or "-",
         "lectura": r.lectura or "-",
         "feclec": r.feclec or "-",
@@ -9957,6 +10017,11 @@ def descargar_excel():
     for r in resultados:
         df_data.append({
             "SUMINISTRO": r.clicodfac,
+            # --- NUEVOS CAMPOS AGREGADOS ---
+            "CICLO": r.ciclo,
+            "CARGA": r.carga,
+            "PERIODO": r.periodo,
+            # -------------------------------
             "MEDIDOR": r.medcodygo,
             "FECHA LECTURA": r.feclec,
             "LECTURA DIGITADA": r.lectura,
