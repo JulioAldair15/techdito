@@ -16122,7 +16122,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!file) {
             fileNameDisplay.textContent = 'Ningún archivo seleccionado...';
             fileNameDisplay.style.color = '';
-            previewBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-20"><i class="fas fa-file-csv" style="font-size: 2rem; color: #ccc; margin-bottom: 10px; display:block;"></i>La data del CSV aparecerá aquí antes de subir.</td></tr>';
+            // CAMBIO: colspan="12"
+            previewBody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-20"><i class="fas fa-file-csv" style="font-size: 2rem; color: #ccc; margin-bottom: 10px; display:block;"></i>La data del CSV aparecerá aquí antes de subir.</td></tr>';
             return;
         }
 
@@ -16142,7 +16143,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
             
             if (rows.length <= 1) {
-                previewBody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-20 fw-600">El archivo CSV está vacío o no contiene registros válidos.</td></tr>';
+                // CAMBIO: colspan="12"
+                previewBody.innerHTML = '<tr><td colspan="12" class="text-center text-danger py-20 fw-600">El archivo CSV está vacío o no contiene registros válidos.</td></tr>';
                 return;
             }
 
@@ -16158,8 +16160,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 let tr = document.createElement('tr');
                 
-                // Iterar sobre las 10 columnas requeridas (Corregido a j < 10)
-                for (let j = 0; j < 9; j++) {
+                // CAMBIO CLAVE AQUÍ: Iterar sobre las 12 columnas requeridas (antes era 9)
+                for (let j = 0; j < 12; j++) {
                     let td = document.createElement('td');
                     let cellData = cols[j] ? cols[j].trim().replace(/^"|"$/g, '') : '-';
                     td.textContent = cellData || '-';
@@ -16171,7 +16173,8 @@ document.addEventListener("DOMContentLoaded", () => {
             // Si hay más de 50 registros, mostrar un aviso
             if (rows.length > 51) {
                 let infoRow = document.createElement('tr');
-                infoRow.innerHTML = `<td colspan="9" class="text-center py-10 text-muted" style="background: var(--c-gray-bg); font-weight: 600;">
+                // CAMBIO: colspan="12"
+                infoRow.innerHTML = `<td colspan="12" class="text-center py-10 text-muted" style="background: var(--c-gray-bg); font-weight: 600;">
                     Mostrando previsualización de 50 filas (Total de registros a subir: ${rows.length - 1})
                 </td>`;
                 previewBody.appendChild(infoRow);
@@ -16179,7 +16182,8 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         reader.onerror = function() {
-            previewBody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-20 fw-600">Error al leer el archivo. Verifique el formato.</td></tr>';
+            // CAMBIO: colspan="12"
+            previewBody.innerHTML = '<tr><td colspan="12" class="text-center text-danger py-20 fw-600">Error al leer el archivo. Verifique el formato.</td></tr>';
         };
 
         // Leer el archivo como texto UTF-8
@@ -16225,7 +16229,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     cargarLecturasGestion(1);
                     fileNameDisplay.textContent = 'Ningún archivo seleccionado...';
                     fileNameDisplay.style.color = '';
-                    previewBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-20"><i class="fas fa-file-csv" style="font-size: 2rem; color: #ccc; margin-bottom: 10px; display:block;"></i>La data del CSV aparecerá aquí antes de subir.</td></tr>';
+                    // CAMBIO: colspan="12"
+                    previewBody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-20"><i class="fas fa-file-csv" style="font-size: 2rem; color: #ccc; margin-bottom: 10px; display:block;"></i>La data del CSV aparecerá aquí antes de subir.</td></tr>';
                     
                 } else {
                     // Error del servidor
@@ -16280,7 +16285,8 @@ async function cargarLecturasGestion(page = 1) {
     const tbody = document.getElementById('tbody-gestion-lecturas');
     const paginationContainer = document.querySelector('.pagination-pro');
 
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-20"><i class="fas fa-spinner fa-spin text-blue"></i> Cargando datos...</td></tr>';
+    // CAMBIO: colspan="8"
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-20"><i class="fas fa-spinner fa-spin text-blue"></i> Cargando datos...</td></tr>';
 
     try {
         // Volvemos a la URL original, SIN el parámetro de estado
@@ -16290,7 +16296,8 @@ async function cargarLecturasGestion(page = 1) {
         tbody.innerHTML = '';
 
         if (data.lecturas.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-20">No se encontraron registros para esta fecha/operario.</td></tr>';
+            // CAMBIO: colspan="8"
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-20">No se encontraron registros para esta fecha/operario.</td></tr>';
             paginationContainer.style.display = 'none';
             return;
         }
@@ -16299,8 +16306,13 @@ async function cargarLecturasGestion(page = 1) {
         data.lecturas.forEach(lec => {
             let statusDot = lec.estado === 'PENDIENTE' ? 'dot-warning' : 'bg-green';
             const tr = document.createElement('tr');
+            
+            // CAMBIO: Agregados los campos ciclo, carga y periodo
             tr.innerHTML = `
                 <td><span class="badge-code">${lec.clicodfac}</span></td>
+                <td class="text-muted">${lec.ciclo || '-'}</td>
+                <td class="text-muted">${lec.carga || '-'}</td>
+                <td class="fw-600">${lec.periodo || '-'}</td>
                 <td>${lec.medcodygo}</td>
                 <td class="fw-600">${lec.lectura}</td>
                 <td>${lec.feclec}</td>
@@ -16336,7 +16348,8 @@ async function cargarLecturasGestion(page = 1) {
 
     } catch (error) {
         console.error("Error al cargar lecturas:", error);
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-20">Error al consultar los datos.</td></tr>';
+        // CAMBIO: colspan="8"
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-20">Error al consultar los datos.</td></tr>';
     }
 }
 
@@ -16400,7 +16413,8 @@ async function cargarLecturasRevalidacion(page = 1) {
     
     if(!tbody) return;
 
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-20"><i class="fas fa-spinner fa-spin text-blue"></i> Buscando suministros...</td></tr>';
+    // CAMBIO: colspan="9"
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-20"><i class="fas fa-spinner fa-spin text-blue"></i> Buscando suministros...</td></tr>';
 
     try {
         // LLAMAMOS A LA API (Ahora le pasamos el &page=...)
@@ -16411,7 +16425,8 @@ async function cargarLecturasRevalidacion(page = 1) {
 
         if (!data.success || data.data.length === 0) {
             const textoEstado = estado ? estado : "POR MODIFICAR";
-            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-20">No hay suministros "${textoEstado}" para esta fecha y operario.</td></tr>`;
+            // CAMBIO: colspan="9"
+            tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-20">No hay suministros "${textoEstado}" para esta fecha y operario.</td></tr>`;
             if (paginationContainer) paginationContainer.style.display = 'none';
             return;
         }
@@ -16444,6 +16459,9 @@ async function cargarLecturasRevalidacion(page = 1) {
             
             tr.innerHTML = `
                 <td><span class="badge-code">${item.suministro}</span></td>
+                <td class="text-muted">${item.ciclo || '-'}</td>
+                <td class="text-muted">${item.carga || '-'}</td>
+                <td class="fw-600">${item.periodo || '-'}</td>
                 <td class="text-green fw-600">${item.lectura_nueva}</td>
                 <td class="text-muted">${item.observacion_nueva}</td>
                 <td class="text-muted">${item.newmed}</td>
@@ -16490,7 +16508,8 @@ async function cargarLecturasRevalidacion(page = 1) {
 
     } catch (error) {
         console.error("Error al cargar la matriz de revisión:", error);
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-20">Error al consultar los datos.</td></tr>';
+        // CAMBIO: colspan="9"
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-20">Error al consultar los datos.</td></tr>';
     }
 }
 
@@ -16689,7 +16708,8 @@ document.addEventListener("DOMContentLoaded", () => {
                             
                             // Si la tabla se queda completamente vacía tras remover la fila, mostrar mensaje limpia
                             if (tbodyValidacion.querySelectorAll('tr').length === 0) {
-                                tbodyValidacion.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-20">No quedan más registros pendientes en esta búsqueda.</td></tr>`;
+                                // CAMBIO: colspan="9"
+                                tbodyValidacion.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-20">No quedan más registros pendientes en esta búsqueda.</td></tr>`;
                             }
                         }, 400);
                     }
@@ -17003,10 +17023,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            tbody.innerHTML = `<tr><td colspan="8" class="text-center py-20"><i class="fas fa-spinner fa-spin text-muted"></i> Cargando data...</td></tr>`;
+            // CAMBIO: colspan="11"
+            tbody.innerHTML = `<tr><td colspan="11" class="text-center py-20"><i class="fas fa-spinner fa-spin text-muted"></i> Cargando data...</td></tr>`;
 
             try {
-                // ENVIAMOS LA FECHA TAMBIÉN AL BACKEND
                 const response = await fetch('/api/reportes/previsualizar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -17018,20 +17038,25 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (result.success && result.data.length > 0) {
                     document.getElementById('reporte-contador').textContent = `PREVISUALIZACIÓN DE REPORTE (${result.total} registros)`;
                     
+                    // CAMBIO: Agregamos ciclo, carga y periodo a la tabla
                     tbody.innerHTML = result.data.map(r => `
                         <tr>
                             <td><strong>${r.clicodfac}</strong></td>
+                            <td class="text-muted">${r.ciclo || '-'}</td>
+                            <td class="text-muted">${r.carga || '-'}</td>
+                            <td class="fw-600">${r.periodo || '-'}</td>
                             <td>${r.medcodygo}</td>
                             <td>${r.lectura}</td>
                             <td>${r.feclec}</td>
                             <td>${r.operador}</td>
                             <td><span class="badge" style="background:#e2e8f0; color:#334155; padding: 4px 8px; border-radius: 4px; font-size:10px; font-weight:bold;">${r.estado}</span></td>
-                            <td style="color:#10b981; font-weight:bold;">${r.nueva_lect}</td>
-                            <td style="color:#ef4444; font-weight:bold;">${r.nuevo_med}</td>
+                            <td style="color:#10b981; font-weight:bold;">${r.nueva_lect || '-'}</td>
+                            <td style="color:#ef4444; font-weight:bold;">${r.nuevo_med || '-'}</td>
                         </tr>
                     `).join('');
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-20">No se encontraron registros.</td></tr>`;
+                    // CAMBIO: colspan="11"
+                    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-20">No se encontraron registros.</td></tr>`;
                     document.getElementById('reporte-contador').textContent = `PREVISUALIZACIÓN DE REPORTE (0 registros)`;
                 }
             } catch (error) {
@@ -17089,7 +17114,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
-
 
 
 
