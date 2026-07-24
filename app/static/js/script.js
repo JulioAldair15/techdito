@@ -17480,13 +17480,51 @@ function aplicarFiltrosCartas() {
     }, 400);
 }
 
+// =========================================================
+// VARIABLES GLOBALES PARA EL ORDENAMIENTO
+// =========================================================
+let columnaOrdenActual = 'fecha'; // Columna por defecto
+let direccionOrdenActual = 'desc'; // Por defecto, los más recientes primero
+
+// Función para cambiar el orden al hacer clic en las cabeceras
+function cambiarOrden(columna) {
+    if (columnaOrdenActual === columna) {
+        // Si clicamos la misma columna, invertimos la dirección
+        direccionOrdenActual = direccionOrdenActual === 'asc' ? 'desc' : 'asc';
+    } else {
+        // Si es una columna nueva, por defecto la ordenamos ascendente
+        columnaOrdenActual = columna;
+        direccionOrdenActual = 'asc';
+    }
+    
+    // Actualizar íconos visuales
+    const todasLasColumnas = ['numero_carta', 'tipo', 'asunto', 'fecha', 'fecha_limite', 'estado'];
+    todasLasColumnas.forEach(col => {
+        const iconSpan = document.getElementById(`sort_icon_${col}`);
+        if(iconSpan) {
+            if (col === columnaOrdenActual) {
+                iconSpan.innerHTML = direccionOrdenActual === 'asc' ? '<i class="fas fa-sort-up"></i>' : '<i class="fas fa-sort-down"></i>';
+                iconSpan.style.color = '#0f172a'; // Color más oscuro para la columna activa
+            } else {
+                iconSpan.innerHTML = '<i class="fas fa-sort"></i>';
+                iconSpan.style.color = '#cbd5e1'; // Color gris para las inactivas
+            }
+        }
+    });
+
+    // Recargar tabla desde la página 1 con el nuevo orden
+    cargarTablaCartas(1);
+}
+
+// =========================================================
+// TU FUNCIÓN MODIFICADA PARA ENVIAR EL ORDEN EN LA URL
+// =========================================================
 async function cargarTablaCartas(pagina) {
     const tbody = document.querySelector('#vista-bandeja .crt-table tbody');
     const paginadorContainer = document.querySelector('.crt-pagination');
     
     if(!tbody) return;
 
-    // Cambiado colspan="6" a "7" para que cubra toda la tabla
     tbody.innerHTML = `<tr><td colspan="7" class="crt-text-center" style="padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Cargando documentos...</td></tr>`;
 
     // 1. CAPTURAR LOS VALORES DE LOS FILTROS
@@ -17494,8 +17532,9 @@ async function cargarTablaCartas(pagina) {
     const tipo = document.getElementById('filtro_tipo') ? document.getElementById('filtro_tipo').value : '';
     const estado = document.getElementById('filtro_estado') ? document.getElementById('filtro_estado').value : '';
 
-    // 2. CONSTRUIR LA URL CON LOS PARÁMETROS DE BÚSQUEDA
-    let url = `/api/cartas/listar?page=${pagina}`;
+    // 2. CONSTRUIR LA URL CON BÚSQUEDA Y ORDENAMIENTO
+    let url = `/api/cartas/listar?page=${pagina}&sort_by=${columnaOrdenActual}&sort_dir=${direccionOrdenActual}`;
+    
     if (search) url += `&search=${encodeURIComponent(search)}`;
     if (tipo) url += `&tipo=${encodeURIComponent(tipo)}`;
     if (estado) url += `&estado=${encodeURIComponent(estado)}`;
@@ -17523,13 +17562,9 @@ async function cargarTablaCartas(pagina) {
                         ? '<span style="color: #94a3b8;">-</span>' 
                         : `<span style="color: #ef4444; font-weight: 600;"><i class="far fa-calendar-times"></i> ${carta.fecha_limite}</span>`;
 
-                    // BOTONES DE ACCIÓN (Mantienen tu diseño original)
                     let btnVerPDF = `<button onclick="abrirVisorPDF('${carta.ruta_pdf}', '${carta.numero_carta}')" title="Ver Documento" style="background: transparent; border: 1px solid #cbd5e1; color: #3b82f6; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#eff6ff'; this.style.borderColor='#3b82f6';" onmouseout="this.style.background='transparent'; this.style.borderColor='#cbd5e1';"><i class="fas fa-eye"></i></button>`;
-                    
                     let btnDescargar = `<button onclick="descargarCarta(${carta.id})" title="Descargar Documento" style="background: transparent; border: 1px solid #cbd5e1; color: #10b981; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#ecfdf5'; this.style.borderColor='#10b981';" onmouseout="this.style.background='transparent'; this.style.borderColor='#cbd5e1';"><i class="fas fa-download"></i></button>`;
-                    
                     let btnEditar = `<button onclick="abrirModalEditarCarta(${carta.id})" title="Editar Registro" style="background: transparent; border: 1px solid #cbd5e1; color: #f59e0b; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#fffbeb'; this.style.borderColor='#f59e0b';" onmouseout="this.style.background='transparent'; this.style.borderColor='#cbd5e1';"><i class="fas fa-edit"></i></button>`;
-                    
                     let btnEliminar = `<button onclick="eliminarCarta(${carta.id})" title="Eliminar Registro" style="background: transparent; border: 1px solid #cbd5e1; color: #ef4444; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#fef2f2'; this.style.borderColor='#ef4444';" onmouseout="this.style.background='transparent'; this.style.borderColor='#cbd5e1';"><i class="fas fa-trash"></i></button>`;
 
                     tbody.innerHTML += `
@@ -17541,7 +17576,6 @@ async function cargarTablaCartas(pagina) {
                             <td>${badgeVencimiento}</td>
                             <td>${badgeEstado}</td>
                             
-                            <!-- COLUMNA DE BOTONES CON FLEX PARA QUE SE ALINEEN PERFECTAMENTE -->
                             <td style="text-align: center; display: flex; justify-content: center; gap: 6px;">
                                 ${btnVerPDF}
                                 ${btnDescargar}
@@ -17552,6 +17586,7 @@ async function cargarTablaCartas(pagina) {
                     `;
                 });
             }
+            // Asegúrate de que tienes la función optimizada de paginación que te pasé antes
             dibujarControlesPaginacion(result.meta, paginadorContainer);
         } else {
             tbody.innerHTML = `<tr><td colspan="7" class="crt-text-center" style="color: red;">Error: ${result.error}</td></tr>`;
