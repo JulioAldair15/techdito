@@ -10341,8 +10341,8 @@ def listar_cartas():
         tipo = request.args.get('tipo', '').strip()
         estado = request.args.get('estado', '').strip()
         
-        sort_by = request.args.get('sort_by', 'fecha')
-        sort_dir = request.args.get('sort_dir', 'desc')
+        sort_by = request.args.get('sort_by', 'fecha').strip()
+        sort_dir = request.args.get('sort_dir', 'desc').strip()
 
         query = Carta.query
 
@@ -10351,47 +10351,49 @@ def listar_cartas():
                 Carta.numero_carta.ilike(f'%{search}%'),
                 Carta.asunto.ilike(f'%{search}%')
             ))
-        
         if tipo:
             query = query.filter(Carta.tipo == tipo)
-            
         if estado:
             query = query.filter(Carta.estado == estado)
 
-        # ==================================================
-        # LÓGICA DE ORDENAMIENTO (CON EXTRACCIÓN DE FECHAS)
-        # ==================================================
-        if hasattr(Carta, sort_by):
-            columna = getattr(Carta, sort_by)
-            
-            if sort_by in ['fecha', 'fecha_limite']:
-                # Truco: Partimos el texto "DD/MM/YYYY" para que SQL ordene por Año, luego Mes, luego Día
-                if sort_dir == 'asc':
-                    query = query.order_by(
-                        func.substr(columna, 7, 4).asc(),
-                        func.substr(columna, 4, 2).asc(),
-                        func.substr(columna, 1, 2).asc()
-                    )
-                else:
-                    query = query.order_by(
-                        func.substr(columna, 7, 4).desc(),
-                        func.substr(columna, 4, 2).desc(),
-                        func.substr(columna, 1, 2).desc()
-                    )
+        # =========================================================
+        # EL NUEVO ORDENAMIENTO (CON FECHAS REALES DB.DATE)
+        # =========================================================
+        if sort_by == 'fecha':
+            # Como la columna "fecha" no existe, le enseñamos a SQL de dónde sacarla
+            columna_virtual_fecha = case(
+                (Carta.tipo == 'EMITIDA', Carta.fecha_emision),
+                else_=Carta.fecha_recepcion
+            )
+            if sort_dir == 'asc':
+                query = query.order_by(columna_virtual_fecha.asc())
             else:
-                # Para columnas normales (N° Carta, Asunto, etc.)
-                if sort_dir == 'asc':
-                    query = query.order_by(columna.asc())
-                else:
-                    query = query.order_by(columna.desc())
+                query = query.order_by(columna_virtual_fecha.desc())
+                
+        elif sort_by == 'fecha_limite':
+            # fecha_limite sí existe y es un db.Date, ¡se ordena sola!
+            if sort_dir == 'asc':
+                query = query.order_by(Carta.fecha_limite.asc())
+            else:
+                query = query.order_by(Carta.fecha_limite.desc())
+                
+        elif hasattr(Carta, sort_by):
+            # Para el resto de columnas (numero_carta, asunto, estado, etc.)
+            columna = getattr(Carta, sort_by)
+            if sort_dir == 'asc':
+                query = query.order_by(columna.asc())
+            else:
+                query = query.order_by(columna.desc())
         else:
+            # Fallback de seguridad
             query = query.order_by(Carta.id.desc())
-        # ==================================================
+        # =========================================================
 
         paginacion = query.paginate(page=page, per_page=10, error_out=False)
-
-        # IVARGAS - 11/07/2026
-        datos = [carta_to_dict(carta) for carta in paginacion.items]
+        
+        # OJO: Cambié carta_to_dict a carta.to_dict() porque vi que así 
+        # se llama tu método en el modelo que me pasaste.
+        datos = [carta.to_dict() for carta in paginacion.items]
 
         meta = {
             "total_items": paginacion.total,
