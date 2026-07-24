@@ -10336,22 +10336,17 @@ def registrar_carta():
 @app.route('/api/cartas/listar', methods=['GET'])
 def listar_cartas():
     try:
-        # 1. Atrapamos los parámetros que envía JavaScript
         page = request.args.get('page', 1, type=int)
         search = request.args.get('search', '').strip()
         tipo = request.args.get('tipo', '').strip()
         estado = request.args.get('estado', '').strip()
         
-        # NUEVO: Atrapamos los parámetros de orden (por defecto fecha, descendente)
         sort_by = request.args.get('sort_by', 'fecha')
         sort_dir = request.args.get('sort_dir', 'desc')
 
-        # 2. Iniciamos la consulta base
         query = Carta.query
 
-        # 3. Aplicamos los filtros dinámicamente si es que existen
         if search:
-            # Filtra si el texto coincide con el Número de carta O con el Asunto (Ignora mayúsculas/minúsculas)
             query = query.filter(db.or_(
                 Carta.numero_carta.ilike(f'%{search}%'),
                 Carta.asunto.ilike(f'%{search}%')
@@ -10363,13 +10358,14 @@ def listar_cartas():
         if estado:
             query = query.filter(Carta.estado == estado)
 
-        # 4. APLICAMOS EL ORDENAMIENTO DINÁMICO ANTES DE PAGINAR
+        # ==================================================
+        # LÓGICA DE ORDENAMIENTO (CON EXTRACCIÓN DE FECHAS)
+        # ==================================================
         if hasattr(Carta, sort_by):
             columna = getattr(Carta, sort_by)
             
-            # TRUCO: Si la columna es una fecha guardada como texto DD/MM/YYYY
             if sort_by in ['fecha', 'fecha_limite']:
-                # Extraemos: Año (posición 7, 4 letras), Mes (pos 4, 2 letras), Día (pos 1, 2 letras)
+                # Truco: Partimos el texto "DD/MM/YYYY" para que SQL ordene por Año, luego Mes, luego Día
                 if sort_dir == 'asc':
                     query = query.order_by(
                         func.substr(columna, 7, 4).asc(),
@@ -10383,22 +10379,19 @@ def listar_cartas():
                         func.substr(columna, 1, 2).desc()
                     )
             else:
-                # Para el resto de columnas (asunto, tipo, estado, etc.)
+                # Para columnas normales (N° Carta, Asunto, etc.)
                 if sort_dir == 'asc':
                     query = query.order_by(columna.asc())
                 else:
                     query = query.order_by(columna.desc())
         else:
-            # Fallback seguro
             query = query.order_by(Carta.id.desc())
+        # ==================================================
 
-        # 5. Paginamos (Ya ordenado)
         paginacion = query.paginate(page=page, per_page=10, error_out=False)
 
         # IVARGAS - 11/07/2026
-        # ========================================
         datos = [carta_to_dict(carta) for carta in paginacion.items]
-        # ========================================
 
         meta = {
             "total_items": paginacion.total,
