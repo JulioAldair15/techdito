@@ -3603,16 +3603,27 @@
                             <table class="crt-table">
                                 <thead>
                                     <tr>
-                                        <th>N° Documento</th>
-                                        <th>Flujo</th>
-                                        <th>Asunto</th>
-                                        <th>Fecha</th>
-                                        <th>Vencimiento</th>
-                                        <th>Estado</th>
+                                        <th style="cursor: pointer; user-select: none;" onclick="cambiarOrden('numero_carta')">
+                                            N° Documento <span id="sort_icon_numero_carta" style="color: #cbd5e1; margin-left: 5px; font-size: 0.8rem;"><i class="fas fa-sort"></i></span>
+                                        </th>
+                                        <th style="cursor: pointer; user-select: none;" onclick="cambiarOrden('tipo')">
+                                            Flujo <span id="sort_icon_tipo" style="color: #cbd5e1; margin-left: 5px; font-size: 0.8rem;"><i class="fas fa-sort"></i></span>
+                                        </th>
+                                        <th style="cursor: pointer; user-select: none;" onclick="cambiarOrden('asunto')">
+                                            Asunto <span id="sort_icon_asunto" style="color: #cbd5e1; margin-left: 5px; font-size: 0.8rem;"><i class="fas fa-sort"></i></span>
+                                        </th>
+                                        <th style="cursor: pointer; user-select: none;" onclick="cambiarOrden('fecha')">
+                                            Fecha <span id="sort_icon_fecha" style="color: #cbd5e1; margin-left: 5px; font-size: 0.8rem;"><i class="fas fa-sort"></i></span>
+                                        </th>
+                                        <th style="cursor: pointer; user-select: none;" onclick="cambiarOrden('fecha_limite')">
+                                            Vencimiento <span id="sort_icon_fecha_limite" style="color: #cbd5e1; margin-left: 5px; font-size: 0.8rem;"><i class="fas fa-sort"></i></span>
+                                        </th>
+                                        <th style="cursor: pointer; user-select: none;" onclick="cambiarOrden('estado')">
+                                            Estado <span id="sort_icon_estado" style="color: #cbd5e1; margin-left: 5px; font-size: 0.8rem;"><i class="fas fa-sort"></i></span>
+                                        </th>
                                         <th style="text-align: center;">Acción</th> 
                                     </tr>
                                 </thead>
-                                
                                 <tbody>
                                 </tbody>
                             </table>
