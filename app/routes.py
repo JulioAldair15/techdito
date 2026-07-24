@@ -10341,6 +10341,10 @@ def listar_cartas():
         search = request.args.get('search', '').strip()
         tipo = request.args.get('tipo', '').strip()
         estado = request.args.get('estado', '').strip()
+        
+        # NUEVO: Atrapamos los parámetros de orden (por defecto fecha, descendente)
+        sort_by = request.args.get('sort_by', 'fecha')
+        sort_dir = request.args.get('sort_dir', 'desc')
 
         # 2. Iniciamos la consulta base
         query = Carta.query
@@ -10359,8 +10363,20 @@ def listar_cartas():
         if estado:
             query = query.filter(Carta.estado == estado)
 
-        # 4. Ordenamos por las más recientes primero y paginamos
-        paginacion = query.order_by(Carta.id.desc()).paginate(page=page, per_page=10, error_out=False)
+        # 4. APLICAMOS EL ORDENAMIENTO DINÁMICO ANTES DE PAGINAR
+        # Verificamos que la columna solicitada exista en la base de datos por seguridad
+        if hasattr(Carta, sort_by):
+            columna = getattr(Carta, sort_by)
+            if sort_dir == 'asc':
+                query = query.order_by(columna.asc())
+            else:
+                query = query.order_by(columna.desc())
+        else:
+            # Fallback seguro (el que tenías antes) por si envían basura en la URL
+            query = query.order_by(Carta.id.desc())
+
+        # 5. Paginamos (Ya ordenado)
+        paginacion = query.paginate(page=page, per_page=10, error_out=False)
 
         # IVARGAS - 11/07/2026
         # ========================================
