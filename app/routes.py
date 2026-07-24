@@ -10364,15 +10364,32 @@ def listar_cartas():
             query = query.filter(Carta.estado == estado)
 
         # 4. APLICAMOS EL ORDENAMIENTO DINÁMICO ANTES DE PAGINAR
-        # Verificamos que la columna solicitada exista en la base de datos por seguridad
         if hasattr(Carta, sort_by):
             columna = getattr(Carta, sort_by)
-            if sort_dir == 'asc':
-                query = query.order_by(columna.asc())
+            
+            # TRUCO: Si la columna es una fecha guardada como texto DD/MM/YYYY
+            if sort_by in ['fecha', 'fecha_limite']:
+                # Extraemos: Año (posición 7, 4 letras), Mes (pos 4, 2 letras), Día (pos 1, 2 letras)
+                if sort_dir == 'asc':
+                    query = query.order_by(
+                        func.substr(columna, 7, 4).asc(),
+                        func.substr(columna, 4, 2).asc(),
+                        func.substr(columna, 1, 2).asc()
+                    )
+                else:
+                    query = query.order_by(
+                        func.substr(columna, 7, 4).desc(),
+                        func.substr(columna, 4, 2).desc(),
+                        func.substr(columna, 1, 2).desc()
+                    )
             else:
-                query = query.order_by(columna.desc())
+                # Para el resto de columnas (asunto, tipo, estado, etc.)
+                if sort_dir == 'asc':
+                    query = query.order_by(columna.asc())
+                else:
+                    query = query.order_by(columna.desc())
         else:
-            # Fallback seguro (el que tenías antes) por si envían basura en la URL
+            # Fallback seguro
             query = query.order_by(Carta.id.desc())
 
         # 5. Paginamos (Ya ordenado)
