@@ -17665,13 +17665,14 @@ function dibujarControlesPaginacion(meta, container) {
     // Texto de información
     let html = `<div style="color: #64748b; font-size: 0.85rem;">Mostrando <strong>${inicio}</strong> a <strong>${fin}</strong> de <strong>${meta.total_items}</strong> documentos</div>`;
     
-    // Contenedor de los botones
-    html += `<div style="display: flex; gap: 5px;">`;
+    // Contenedor de los botones (le agregué align-items: center por si los "..." se desalinean)
+    html += `<div style="display: flex; gap: 5px; align-items: center;">`;
 
     // Variables de diseño para los botones
     const btnBase = "padding: 6px 12px; border: 1px solid #cbd5e1; background: white; color: #475569; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.2s;";
     const btnActive = "padding: 6px 12px; border: 1px solid #0f172a; background: #0f172a; color: white; border-radius: 4px; font-size: 0.85rem; font-weight: 600;";
     const btnDisabled = "padding: 6px 12px; border: 1px solid #e2e8f0; background: #f8fafc; color: #94a3b8; border-radius: 4px; cursor: not-allowed; font-size: 0.85rem;";
+    const spanEllipsis = "padding: 6px 4px; color: #94a3b8; font-size: 0.85rem; font-weight: 600;";
 
     // Botón "Anterior"
     if (meta.has_prev) {
@@ -17680,14 +17681,44 @@ function dibujarControlesPaginacion(meta, container) {
         html += `<button style="${btnDisabled}" disabled><i class="fas fa-chevron-left"></i></button>`;
     }
 
-    // Botones numéricos
-    for (let i = 1; i <= meta.total_pages; i++) {
+    // --- LÓGICA DE VENTANA DESLIZANTE (Para evitar botones infinitos) ---
+    let startPage = Math.max(1, meta.current_page - 2);
+    let endPage = Math.min(meta.total_pages, meta.current_page + 2);
+
+    // Ajuste para mantener siempre 5 botones visibles si es posible
+    if (endPage - startPage < 4) {
+        if (startPage === 1) {
+            endPage = Math.min(5, meta.total_pages);
+        } else if (endPage === meta.total_pages) {
+            startPage = Math.max(1, meta.total_pages - 4);
+        }
+    }
+
+    // Botón 1 y puntos suspensivos iniciales (Si la ventana está muy adelante)
+    if (startPage > 1) {
+        html += `<button style="${btnBase}" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'" onclick="cargarTablaCartas(1)">1</button>`;
+        if (startPage > 2) {
+            html += `<span style="${spanEllipsis}">...</span>`;
+        }
+    }
+
+    // Botones numéricos de la ventana central
+    for (let i = startPage; i <= endPage; i++) {
         if (i === meta.current_page) {
             html += `<button style="${btnActive}">${i}</button>`;
         } else {
             html += `<button style="${btnBase}" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'" onclick="cargarTablaCartas(${i})">${i}</button>`;
         }
     }
+
+    // Puntos suspensivos finales y botón de la última página (Si la ventana no ha llegado al final)
+    if (endPage < meta.total_pages) {
+        if (endPage < meta.total_pages - 1) {
+            html += `<span style="${spanEllipsis}">...</span>`;
+        }
+        html += `<button style="${btnBase}" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'" onclick="cargarTablaCartas(${meta.total_pages})">${meta.total_pages}</button>`;
+    }
+    // ------------------------------------------------------------------
 
     // Botón "Siguiente"
     if (meta.has_next) {
@@ -17699,7 +17730,6 @@ function dibujarControlesPaginacion(meta, container) {
     html += `</div>`;
     container.innerHTML = html;
 }
-
 // =====================================================================
 // LÓGICA DEL VISOR DE PDF
 // =====================================================================
