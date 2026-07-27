@@ -8490,7 +8490,7 @@ def api_listar_datos():
         productos = Producto.query.order_by(Producto.nombre_prod.asc()).all()
         proveedores = Proveedor.query.order_by(Proveedor.razon_social.asc()).all()
         empleados = Empleado.query.filter_by(estado='ACTIVO').order_by(Empleado.nombres.asc()).all()
-        ultimas_salidas = MovimientoDetalle.query.filter_by(tipo_movimiento='SALIDA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(30).all()
+        ultimas_salidas = MovimientoDetalle.query.filter_by(tipo_movimiento='SALIDA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
 
         lista_productos = []
         for p in productos:
@@ -8550,7 +8550,7 @@ def api_listar_datos():
         # ==========================================
         # LISTA HISTÓRICA DE ENTRADAS
         # ==========================================
-        ultimas_entradas = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(30).all()
+        ultimas_entradas = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
 
         # ==========================================
         # 🚨 NUEVO: LOTES DISPONIBLES (CON STOCK) PARA EL SELECT DE SALIDAS 🚨
