@@ -10360,7 +10360,6 @@ def listar_cartas():
         # EL NUEVO ORDENAMIENTO (CON FECHAS REALES DB.DATE)
         # =========================================================
         if sort_by == 'fecha':
-            # Como la columna "fecha" no existe, le enseñamos a SQL de dónde sacarla
             columna_virtual_fecha = case(
                 (Carta.tipo == 'EMITIDA', Carta.fecha_emision),
                 else_=Carta.fecha_recepcion
@@ -10371,29 +10370,27 @@ def listar_cartas():
                 query = query.order_by(columna_virtual_fecha.desc())
                 
         elif sort_by == 'fecha_limite':
-            # fecha_limite sí existe y es un db.Date, ¡se ordena sola!
             if sort_dir == 'asc':
                 query = query.order_by(Carta.fecha_limite.asc())
             else:
                 query = query.order_by(Carta.fecha_limite.desc())
                 
         elif hasattr(Carta, sort_by):
-            # Para el resto de columnas (numero_carta, asunto, estado, etc.)
             columna = getattr(Carta, sort_by)
             if sort_dir == 'asc':
                 query = query.order_by(columna.asc())
             else:
                 query = query.order_by(columna.desc())
         else:
-            # Fallback de seguridad
             query = query.order_by(Carta.id.desc())
         # =========================================================
 
         paginacion = query.paginate(page=page, per_page=10, error_out=False)
         
-        # OJO: Cambié carta_to_dict a carta.to_dict() porque vi que así 
-        # se llama tu método en el modelo que me pasaste.
-        datos = [carta.to_dict() for carta in paginacion.items]
+        # ========================================
+        # RESTAURADO A TU FUNCIÓN ORIGINAL (IVARGAS)
+        # ========================================
+        datos = [carta_to_dict(carta) for carta in paginacion.items]
 
         meta = {
             "total_items": paginacion.total,
