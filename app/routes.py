@@ -8552,12 +8552,14 @@ def api_listar_datos():
         # ==========================================
         ultimas_entradas = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
 
-        # ==========================================
-        # 🚨 NUEVO: LOTES DISPONIBLES (CON STOCK) PARA EL SELECT DE SALIDAS 🚨
-        # ==========================================
+        #lotes_vivos = MovimientoDetalle.query.filter(
+            #MovimientoDetalle.tipo_movimiento == 'ENTRADA',
+            #MovimientoDetalle.stock_restante > 0,
+            #MovimientoDetalle.estado == 'ACTIVO'
+        #).order_by(MovimientoDetalle.id_movimiento.asc()).all()
+
         lotes_vivos = MovimientoDetalle.query.filter(
             MovimientoDetalle.tipo_movimiento == 'ENTRADA',
-            MovimientoDetalle.stock_restante > 0,
             MovimientoDetalle.estado == 'ACTIVO'
         ).order_by(MovimientoDetalle.id_movimiento.asc()).all()
 
