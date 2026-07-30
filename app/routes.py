@@ -8489,7 +8489,9 @@ def api_listar_datos():
         categorias = Categoria.query.order_by(Categoria.tipo_categoria.asc()).all()
         productos = Producto.query.order_by(Producto.nombre_prod.asc()).all()
         proveedores = Proveedor.query.order_by(Proveedor.razon_social.asc()).all()
-        empleados = Empleado.query.filter_by(estado='ACTIVO').order_by(Empleado.nombres.asc()).all()
+        empleados = Empleado.query.filter(
+            Empleado.estado.in_(['ACTIVO', 'CESADO'])
+        ).order_by(Empleado.nombres.asc()).all()
         ultimas_salidas = MovimientoDetalle.query.filter_by(tipo_movimiento='SALIDA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
 
         lista_productos = []
