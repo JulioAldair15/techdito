@@ -2939,6 +2939,7 @@
                                     <table class="alm-table" style="width: 100%; border-collapse: collapse; margin: 0;">
     
                                         <thead style="position: sticky; top: 0; z-index: 20; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+                                            <!-- FILA 1: TÍTULOS -->
                                             <tr>
                                                 <th onclick="ordenarPorFechaFactura()" style="cursor: pointer; user-select: none; transition: color 0.2s;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'" title="Clic para ordenar">
                                                     Fecha Factura
@@ -2960,12 +2961,11 @@
                                                 <th style="min-width: 150px;">Observaciones</th>
                                                 <th style="width: 80px; text-align: center;">Acción</th>
                                             </tr>
-                                        </thead>
-                                        
-                                        <tbody style="position: sticky; top: 45px; z-index: 15; background-color: #f0fdf4; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                            <tr class="alm-entry-row">
-                                                <td><input type="date" id="ent-fecha-fac" class="alm-input alm-input-lock" style="width: 100%;"></td>
-                                                <td><input type="date" id="ent-fecha-ing" class="alm-input alm-input-lock" style="width: 100%;"></td>
+                                            
+                                            <!-- FILA 2: INPUTS (AHORA DENTRO DEL THEAD) -->
+                                            <tr class="alm-entry-row" style="background-color: #f0fdf4;">
+                                                <td><input type="date" id="ent-fecha-fac" class="alm-input alm-input-lock" style="width: 100%;" onblur="this.value = this.value"></td>
+                                                <td><input type="date" id="ent-fecha-ing" class="alm-input alm-input-lock" style="width: 100%;" onblur="this.value = this.value"></td>
                                                 <td><input type="text" id="ent-factura" class="alm-input alm-input-lock" placeholder="F001" style="width: 100%; text-transform: uppercase;"></td>
                                                 <td><input type="text" id="ent-guia" class="alm-input alm-input-lock" placeholder="G001" style="width: 100%; text-transform: uppercase;"></td>
                                                 <td><input type="text" id="ent-codigo" class="alm-input" placeholder="Auto" disabled style="width: 100%; background-color: #e2e8f0; font-weight: bold; text-align: center;"></td>
@@ -3002,8 +3002,9 @@
                                                     </div>
                                                 </td>
                                             </tr>
-                                        </tbody>
+                                        </thead>
                                         
+                                        <!-- Y DIRECTAMENTE SIGUE TU TBODY DE DATOS -->
                                         <tbody id="body-tabla-entradas">
                                             <tr>
                                                 <td colspan="13" class="alm-text-center" style="color: #94a3b8; padding: 20px;">
@@ -3026,6 +3027,7 @@
                                     <table class="alm-table" style="width: 100%; border-collapse: collapse; margin: 0;">
                                         
                                         <thead style="position: sticky; top: 0; z-index: 20; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+                                            <!-- FILA 1: TÍTULOS -->
                                             <tr>
                                                 <th onclick="ordenarPorFechaSalida()" style="cursor: pointer; user-select: none; transition: color 0.2s;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'" title="Clic para ordenar">
                                                     Fecha de Salida
@@ -3036,27 +3038,34 @@
                                                 <th>Nombre Producto</th>
                                                 <th>Empleado</th>
                                                 <th>Área</th>
+                                                <th>Talla</th>
                                                 <th>Observación</th>
                                                 <th class="alm-text-center">Adjunto / Acción</th>
                                             </tr>
-                                        </thead>
-                                        
-                                        <tbody style="position: sticky; top: 45px; z-index: 15; background-color: #fef2f2; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                            <tr class="alm-entry-row">
-                                                <td><input type="date" id="sal-fecha" class="alm-input alm-input-lock-sal"></td>
+                                            
+                                            <!-- FILA 2: INPUTS (AHORA DENTRO DEL THEAD) -->
+                                            <tr class="alm-entry-row" style="background-color: #fef2f2;">
+                                                <td><input type="date" id="sal-fecha" class="alm-input alm-input-lock-sal" onblur="this.value = this.value"></td>
                                                 <td><input type="number" id="sal-cantidad" class="alm-input alm-input-sm" placeholder="0" style="width: 80px; font-weight: bold; color: #ef4444; border-color: #ef4444;"></td>
                                                 <td><input type="text" id="sal-codigo" class="alm-input" placeholder="Auto" disabled style="background-color: #e2e8f0; font-weight: bold; width: 90px;"></td>
+                                                
                                                 <td style="min-width: 300px;">
                                                     <select id="sal-sel-producto" class="alm-input" style="width: 100%;">
                                                         <option value="">Buscar producto...</option>
                                                     </select>
                                                 </td>
+                                                
                                                 <td style="min-width: 200px;">
                                                     <select id="sal-sel-empleado" class="alm-input alm-input-lock-sal" style="width: 100%;">
                                                         <option value="">Buscar empleado...</option>
                                                     </select>
                                                 </td>
+                                                
                                                 <td><input type="text" id="sal-area" class="alm-input alm-input-lock-sal" placeholder="Área destino"></td>
+                                                
+                                                <!-- 🚨 NUEVA COLUMNA PARA LA TALLA -->
+                                                <td><input type="text" id="sal-talla" class="alm-input" placeholder="-" disabled style="background-color: #e2e8f0; font-weight: bold; width: 70px; text-align: center;"></td>
+
                                                 <td><input type="text" id="sal-obs" class="alm-input" placeholder="Obs..."></td>
                                                 <td class="alm-text-center">
                                                     <div class="alm-action-group">
@@ -3065,11 +3074,13 @@
                                                     </div>
                                                 </td>
                                             </tr>
-                                        </tbody>
+                                        </thead>
                                         
+                                        <!-- Y DIRECTAMENTE SIGUE TU TBODY DE DATOS -->                                                                                                          
                                         <tbody id="body-tabla-salidas">
                                             <tr>
-                                                <td colspan="8" class="alm-text-center" style="color: #94a3b8; padding: 20px;">
+                                                <!-- 🚨 CAMBIAR COLSPAN A 9 -->
+                                                <td colspan="9" class="alm-text-center" style="color: #94a3b8; padding: 20px;">
                                                     <i class="fas fa-spinner fa-spin"></i> Cargando salidas...
                                                 </td>
                                             </tr>
@@ -3122,18 +3133,18 @@
 
                             </div>
                             
-                            <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 500px; overflow-y: auto; overflow-x: auto; position: relative;">
+                            <div class="alm-table-scroll alm-custom-scrollbar" style="max-height: 700px; overflow-y: auto; overflow-x: auto; position: relative; border-radius: 0 0 8px 8px;">
                                 <table class="alm-table" style="width: 100%; min-width: 2200px; border-collapse: collapse; margin: 0; white-space: nowrap;">
                                     <thead style="position: sticky; top: 0; z-index: 20; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
                                         <tr>
-                                            <th onclick="ordenarTablaKardex(0, 'fecha')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Fecha y Hora <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(0, 'fecha')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Fecha<i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
                                             <th onclick="ordenarTablaKardex(1, 'texto')" class="alm-text-center" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Tipo <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
-                                            <th onclick="ordenarTablaKardex(2, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Cód. Producto <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(2, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Cód. Prod. <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
                                             <th onclick="ordenarTablaKardex(3, 'texto')" style="min-width: 250px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Nombre Producto <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
                                             <th onclick="ordenarTablaKardex(4, 'texto')" style="width: 60px; text-align: center; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Talla <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
                                             <th onclick="ordenarTablaKardex(5, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Unidad <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
                                             <th onclick="ordenarTablaKardex(6, 'texto')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Categoría <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
-                                            <th onclick="ordenarTablaKardex(7, 'numero')" class="alm-text-center" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Cant. Movimiento <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
+                                            <th onclick="ordenarTablaKardex(7, 'numero')" class="alm-text-center" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Cant. Mov. <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
                                             <th onclick="ordenarTablaKardex(8, 'numero')" style="cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Stock Final <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
                                             <th onclick="ordenarTablaKardex(9, 'texto')" style="min-width: 200px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Proveedor / Entidad <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
                                             <th onclick="ordenarTablaKardex(10, 'texto')" style="min-width: 200px; cursor: pointer; user-select: none;" onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='inherit'">Empleado (Retorno) <i class="fas fa-sort kardex-sort-icon" style="color: #94a3b8; margin-left: 4px;"></i></th>
@@ -3159,7 +3170,7 @@
 
                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background-color: #ffffff; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px;">
                                 <div id="hist-pag-info" style="color: #64748b; font-size: 0.9rem;">
-                                    Mostrando 0 a 0 de 0 registros
+                                   
                                 </div>
                                 <div class="alm-action-group" id="hist-pag-controles">
                                     </div>
