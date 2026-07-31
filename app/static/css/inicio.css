@@ -8437,6 +8437,203 @@ select.form-control {
     cursor: not-allowed;
 }
 
+/* ==========================================
+   TRUNCADO DE TEXTOS (Puntos suspensivos)
+========================================== */
+#almacen .alm-truncate-obs {
+    max-width: 150px; /* Ancho máximo para la columna de observación */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: help; /* Cambia el cursor para indicar que hay más texto */
+}
+
+#almacen .alm-truncate-prod {
+    max-width: 250px; /* Ancho máximo para el nombre del producto */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ==========================================
+   1. CABECERAS FLEXIBLES Y CELDAS COMPACTAS
+========================================== */
+#almacen table th {
+    white-space: normal !important; 
+    text-align: left !important; /* <-- Alineamos a la IZQUIERDA para armonía visual */
+    line-height: 1.1 !important; 
+    padding: 4px !important; 
+    vertical-align: middle !important;
+}
+
+#almacen table td {
+    padding: 4px !important;
+    vertical-align: middle !important;
+    text-align: left !important; /* <-- Refuerza la IZQUIERDA en los datos */
+}
+
+/* Centrar ÚNICAMENTE la columna de Acciones (la última) */
+#almacen table th:last-child,
+#almacen table td:last-child {
+    text-align: center !important;
+}
+
+/* ==========================================
+   2. RESPIRACIÓN PARA LOS BORDES DE LA TABLA
+========================================== */
+/* Despega la primera columna del borde izquierdo */
+#almacen table th:first-child,
+#almacen table td:first-child {
+    padding-left: 16px !important; 
+}
+
+/* Despega la última columna (Acciones) del borde derecho */
+#almacen table th:last-child,
+#almacen table td:last-child {
+    padding-right: 16px !important;
+}
+
+/* ==========================================
+   3. TRUNCADOS SÚPER ESTRICTOS
+========================================== */
+#almacen .alm-truncate-obs {
+    max-width: 80px !important; /* Muy angosto para la observación */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: help;
+}
+
+#almacen .alm-truncate-prod {
+    max-width: 130px !important; /* Nombre del producto más estrecho */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ==========================================
+   4. ALINEACIÓN PERFECTA: INPUTS = COLUMNAS
+========================================== */
+#almacen table input,
+#almacen table select {
+    width: 100% !important; 
+    max-width: none !important; 
+    min-width: 0 !important;
+    height: 28px !important; 
+    padding: 2px 6px !important; /* Un poco más de respiro lateral */
+    font-size: 0.80rem !important;
+    box-sizing: border-box !important;
+    text-align: left; /* <-- MATCH EXACTO con la cabecera y el dato */
+}
+
+/* ==========================================
+   5. SELECT2 ADAPTADO A LAS CELDAS
+========================================== */
+#almacen table .select2-container {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 80px !important; 
+    font-size: 0.80rem !important;
+    text-align: left !important; /* <-- Izquierda para los buscadores también */
+}
+
+#almacen table .select2-selection--single {
+    height: 28px !important;
+    padding: 0 6px !important; /* Igualamos el padding al de los inputs normales */
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+}
+
+#almacen table .select2-selection__rendered {
+    line-height: normal !important;
+    padding-left: 0 !important;
+    width: 100%;
+}
+
+#almacen table .select2-selection__arrow {
+    height: 26px !important;
+}
+
+/* ==========================================
+   6. CORRECCIÓN DEFINITIVA DE CABECERAS FIJAS (THEAD COMPLETO)
+========================================== */
+
+/* 1. Quitamos los huecos fantasma de las tablas (Bug de Chrome con sticky) */
+#almacen table {
+    border-collapse: separate !important; 
+    border-spacing: 0 !important; 
+}
+
+/* 2. Hacemos que TODO EL THEAD (Títulos + Inputs) sea un solo bloque fijo */
+#almacen table thead {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10 !important;
+    background-color: #ffffff !important;
+}
+
+/* 3. Aseguramos que los títulos e inputs tengan fondo sólido y bordes limpios */
+#almacen table thead th,
+#almacen table thead td {
+    background-color: #ffffff !important;
+    border-bottom: 1px solid var(--border) !important;
+    position: relative; 
+    background-clip: padding-box !important;
+}
+
+/* 4. Sombra para marcar el límite elegante al hacer scroll */
+#almacen table thead tr:last-child th,
+#almacen table thead tr:last-child td {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* ==========================================
+   7. TAMAÑO DE TEXTO EXCLUSIVO PARA LOS DATOS (FILAS DE REGISTROS)
+========================================== */
+
+/* Ahora sí: Entradas, Salidas e HISTÓRICO */
+#body-tabla-entradas td,
+#body-tabla-salidas td,
+#body-tabla-historico td,
+#body-tabla-inventario td {
+    font-size: 0.75rem !important; /* Ajusta a 0.70rem si lo quieres aún más pequeño */
+}
+
+/* Reducimos también las etiquetas de colores (badges) para que no se vean gigantes al lado del texto pequeño */
+#body-tabla-entradas .alm-badge,
+#body-tabla-salidas .alm-badge,
+#body-tabla-historico .alm-badge,
+#body-tabla-historico .alm-badge-entrada, /* Badge verde de entrada en histórico */
+#body-tabla-historico .alm-badge-salida,
+#body-tabla-inventario .alm-badge { /* Badge rojo de salida en histórico */
+    font-size: 0.70rem !important;
+    padding: 2px 6px !important;
+}
+
+/* ==========================================
+   8. ÍCONOS DE ACCIÓN COMPACTOS EN LAS TABLAS
+========================================== */
+
+/* Reducimos el tamaño de los botones de Editar/Eliminar en las filas de datos */
+#body-tabla-entradas .alm-icon-btn,
+#body-tabla-salidas .alm-icon-btn,
+#body-tabla-historico .alm-icon-btn {
+    font-size: 0.85rem !important; /* El original era 1.1rem */
+    /* Opcional: reducir un poco la separación entre ellos si los ves muy separados */
+    margin: 0 2px !important; 
+}
+
+/* ==========================================
+   9. TAMAÑO DE TEXTO DE LAS CABECERAS
+========================================== */
+
+#almacen table thead th {
+    font-size: 0.65rem !important; /* El original era 0.75rem. Lo bajamos para que sea más sutil */
+    letter-spacing: 0px !important; /* Quitamos el espaciado entre letras para ahorrar más espacio horizontal */
+}
+
+
 
 /* =========================================
    REVALIDACIÓN DE LECTURAS
