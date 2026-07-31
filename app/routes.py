@@ -8554,6 +8554,9 @@ def api_listar_datos():
         # ==========================================
         ultimas_entradas = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
 
+        # ==========================================
+        # 🚨 NUEVO: LOTES DISPONIBLES (CON STOCK) PARA EL SELECT DE SALIDAS 🚨
+        # ==========================================
         #lotes_vivos = MovimientoDetalle.query.filter(
             #MovimientoDetalle.tipo_movimiento == 'ENTRADA',
             #MovimientoDetalle.stock_restante > 0,
@@ -8993,10 +8996,10 @@ def api_historico_kardex():
             ))
 
         # 5. ORDENAR Y PAGINAR
-        movimientos_paginados = query.order_by(MovimientoDetalle.id_movimiento.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        movimientos = query.order_by(MovimientoDetalle.id_movimiento.desc()).all()
         
         lista_historial = []
-        for m in movimientos_paginados.items:
+        for m in movimientos:
             es_entrada = m.tipo_movimiento == 'ENTRADA'
             
             # 🚨 INICIAMOS LA VARIABLE TALLA
@@ -9009,6 +9012,7 @@ def api_historico_kardex():
                 doc_ref = m.entrada_rel.nro_factura or "-"
                 guia = m.entrada_rel.nro_guia or "-"
                 prov = m.entrada_rel.proveedor.razon_social if m.entrada_rel.proveedor else "-"
+                
                 
                 # 🚨 CAPTURAMOS EL EMPLEADO DE RECUPERO SI EXISTE
                 emp_retorno = Empleado.query.get(m.id_empleado_recupero).nombres if m.id_empleado_recupero else "-"
@@ -9029,6 +9033,8 @@ def api_historico_kardex():
                 
                 # 🚨 LAS SALIDAS NORMALES NO TIENEN EMPLEADO DE RECUPERO
                 emp_retorno = "-" 
+                
+                
 
             # Datos del Empleado Solicitante (El que se lleva la salida)
             emp = m.salida_rel.empleado.nombres if (not es_entrada and m.salida_rel.empleado) else "-"
@@ -9056,19 +9062,14 @@ def api_historico_kardex():
                 "documento": doc_ref,
                 "fecha_factura": f_fac,
                 "guia": guia,
-                "obs": m.observaciones if m.observaciones else "-"
+                "obs": m.observaciones if m.observaciones else "-",
+                "precio": float(m.precio_unitario) if hasattr(m, 'precio_unitario') and m.precio_unitario else 0.0
             })
 
         # 6. Devolver el JSON con metadata de paginación
         return jsonify({
             "success": True,
-            "data": lista_historial,
-            "pagination": {
-                "total_records": movimientos_paginados.total,
-                "current_page": movimientos_paginados.page,
-                "total_pages": movimientos_paginados.pages,
-                "per_page": movimientos_paginados.per_page
-            }
+            "data": lista_historial
         })
 
     except Exception as e:
@@ -9461,6 +9462,88 @@ def exportar_excel_inventario():
         as_attachment=True, 
         download_name="Reporte_Inventario_Fisico.xlsx"
     )
+
+
+@app.route('/almacen/editar-movimiento', methods=['POST'])
+def editar_movimiento():
+    data = request.get_json()
+    id_mov = data.get('id_mov')
+    nueva_cantidad = float(data.get('cantidad', 0))
+    nueva_talla = data.get('talla', '')
+    nueva_obs = data.get('obs', '')
+
+    movimiento = MovimientoDetalle.query.get(id_mov)
+    if not movimiento:
+        return jsonify({"success": False, "message": "Movimiento no encontrado."}), 404
+
+    producto = Producto.query.get(movimiento.id_producto)
+    cantidad_anterior = float(movimiento.cantidad)
+    diferencia_cantidad = nueva_cantidad - cantidad_anterior
+
+    try:
+        # --- 1. ACTUALIZAR CANTIDADES Y STOCK ---
+        if diferencia_cantidad != 0:
+            if movimiento.tipo_movimiento == 'ENTRADA':
+                stock_restante_actual = float(movimiento.stock_restante or 0)
+                nuevo_stock_restante = stock_restante_actual + diferencia_cantidad
+
+                if nuevo_stock_restante < 0:
+                    return jsonify({"success": False, "message": "Stock insuficiente. Ya se despacharon productos de este lote."}), 400
+
+                movimiento.stock_restante = nuevo_stock_restante
+                producto.stock = float(producto.stock or 0) + diferencia_cantidad
+
+            elif movimiento.tipo_movimiento == 'SALIDA':
+                if float(producto.stock or 0) - diferencia_cantidad < 0:
+                    return jsonify({"success": False, "message": "Stock global insuficiente."}), 400
+                
+                producto.stock = float(producto.stock or 0) - diferencia_cantidad
+
+                if movimiento.id_lote_origen:
+                    lote_origen = MovimientoDetalle.query.get(movimiento.id_lote_origen)
+                    if lote_origen:
+                        if float(lote_origen.stock_restante or 0) - diferencia_cantidad < 0:
+                            return jsonify({"success": False, "message": "El lote de origen no tiene saldo suficiente."}), 400
+                        lote_origen.stock_restante = float(lote_origen.stock_restante or 0) - diferencia_cantidad
+
+        # --- 2. ACTUALIZAR CAMPOS COMUNES (Módulo MovimientoDetalle) ---
+        movimiento.cantidad = nueva_cantidad
+        movimiento.observaciones = nueva_obs
+        movimiento.talla = nueva_talla if nueva_talla else None
+        
+        # --- 3. ACTUALIZAR CAMPOS EXCLUSIVOS DE ENTRADA ---
+        if movimiento.tipo_movimiento == 'ENTRADA':
+            movimiento.precio_unitario = float(data.get('precio', 0))
+            
+            entrada_cabecera = Entrada.query.get(movimiento.id_entrada)
+            if entrada_cabecera:
+                entrada_cabecera.nro_factura = data.get('factura', '').strip().upper()
+                entrada_cabecera.nro_guia = data.get('guia', '').strip().upper()
+                
+                fecha_fac_str = data.get('fecha_fac')
+                fecha_ing_str = data.get('fecha_ing')
+                
+                if fecha_fac_str:
+                    entrada_cabecera.fecha_factura = datetime.strptime(fecha_fac_str, '%Y-%m-%d').date()
+                if fecha_ing_str:
+                    entrada_cabecera.fecha_ingreso = datetime.strptime(fecha_ing_str, '%Y-%m-%d')
+
+        # --- 4. ACTUALIZAR CAMPOS EXCLUSIVOS DE SALIDA ---
+        elif movimiento.tipo_movimiento == 'SALIDA':
+            fecha_sal_str = data.get('fecha_salida')
+            
+            if fecha_sal_str:
+                salida_cabecera = Salida.query.get(movimiento.id_salida) 
+                if salida_cabecera:
+                    # Lo guarda como DateTime gracias a strptime
+                    salida_cabecera.fecha_salida = datetime.strptime(fecha_sal_str, '%Y-%m-%d')
+
+        db.session.commit()
+        return jsonify({"success": True, "message": "Movimiento editado correctamente."})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
 
 ##### MODULO DE REVALIDACION DE LECTURAS #####
 @app.route('/subir_matriz_csv', methods=['POST'])
