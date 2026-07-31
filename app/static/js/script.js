@@ -14461,40 +14461,67 @@ function cargarDatosMaestros() {
             if(tbodyEntradas && data.entradas) {
                 tbodyEntradas.innerHTML = '';
                 
-                // Aseguramos el colspan de 13 para el mensaje de vacío
                 if(data.entradas.length === 0) {
                     tbodyEntradas.innerHTML = `<tr><td colspan="13" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay entradas registradas.</td></tr>`;
                 } else {
                     data.entradas.forEach(e => {
                         const precioFormateado = e.precio ? parseFloat(e.precio).toFixed(2) : '0.00';
                         
+                        // 🚨 Guardamos TODOS los datos originales en los data-attributes
                         tbodyEntradas.insertAdjacentHTML('beforeend', `
-                            <tr>
-                                <td>${e.fecha_fac}</td> <td>${e.fecha_ing}</td>
-                                <td>${e.factura}</td>
-                                <td>${e.guia}</td>
+                            <tr id="fila-mov-${e.id_mov}" 
+                                data-fechafac="${e.fecha_fac}" 
+                                data-fechaing="${e.fecha_ing}" 
+                                data-factura="${e.factura}" 
+                                data-guia="${e.guia}" 
+                                data-talla="${e.talla}" 
+                                data-cant="${e.cantidad}" 
+                                data-precio="${e.precio || 0}" 
+                                data-obs="${e.obs || ''}">
+                                
+                                <td id="td-fechafac-${e.id_mov}">${e.fecha_fac}</td> 
+                                <td id="td-fechaing-${e.id_mov}">${e.fecha_ing}</td>
+                                <td id="td-factura-${e.id_mov}">${e.factura}</td>
+                                <td id="td-guia-${e.id_mov}">${e.guia}</td>
+                                
                                 <td><span class="alm-badge alm-badge-outline">${e.codigo}</span></td>
                                 <td style="color: #475569; font-weight: 600;">${e.producto}</td>
                                 
-                                <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${e.talla ? e.talla : '-'}</td>
+                                <td id="td-talla-${e.id_mov}" style="color: #8b5cf6; font-weight: bold; text-align: center;">${e.talla ? e.talla : '-'}</td>
                                 
                                 <td style="font-size: 0.85rem; color: #475569;">${e.empleado_recupero ? e.empleado_recupero : '-'}</td>
                                 
-                                <td class="alm-text-green alm-bold">+${e.cantidad}</td>
-                                <td class="alm-bold">S/ ${precioFormateado}</td>
+                                <td class="alm-text-green alm-bold" id="td-cant-${e.id_mov}">+${e.cantidad}</td>
+                                <td class="alm-bold" id="td-precio-${e.id_mov}">S/ ${precioFormateado}</td>
                                 <td>${e.proveedor}</td>
-                                <td>${e.obs}</td>
+                                <td id="td-obs-${e.id_mov}" class="alm-truncate-obs" title="${e.obs && e.obs !== '-' ? e.obs : 'Sin observaciones'}">
+                                    ${e.obs && e.obs !== '-' ? e.obs : '-'}
+                                </td>
+                                
                                 <td class="alm-text-center">
-                                    <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${e.id_mov})">
-                                        <i class="fas fa-trash-alt"></i>
-                                    </button>
+                                    <div class="alm-action-group" id="btn-normal-${e.id_mov}">
+                                        <button type="button" class="alm-icon-btn" style="color: #3b82f6;" title="Editar Movimiento" onclick="habilitarEdicionInline(${e.id_mov}, 'ENTRADA')">
+                                            <i class="fas fa-pencil-alt"></i>
+                                        </button>
+                                        <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${e.id_mov})">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="alm-action-group" id="btn-edit-${e.id_mov}" style="display: none; justify-content: center; gap: 8px;">
+                                        <button type="button" class="alm-icon-btn" style="color: #10b981;" title="Guardar Cambios" onclick="guardarEdicionInline(${e.id_mov}, 'ENTRADA')">
+                                            <i class="fas fa-save"></i>
+                                        </button>
+                                        <button type="button" class="alm-icon-btn" style="color: #64748b;" title="Cancelar" onclick="cancelarEdicionInline(${e.id_mov})">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         `);
                     });
                 }
             }
-
             // 1. Llenar Select de Productos para Salidas
             const salSelProducto = document.getElementById('sal-sel-producto');
             if(salSelProducto && data.lotes_disponibles) {
@@ -14538,21 +14565,42 @@ function cargarDatosMaestros() {
                     tbodySalidas.innerHTML = `<tr><td colspan="8" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay salidas registradas.</td></tr>`;
                 } else {
                     data.salidas.forEach(s => {
-                        // MODIFICACIÓN AQUÍ: Añadimos el botón de eliminar a la columna de acción
                         tbodySalidas.insertAdjacentHTML('beforeend', `
-                            <tr>
-                                <td>${s.fecha_salida}</td>
-                                <td class="alm-text-red alm-bold">-${s.cantidad}</td>
+                            <!-- 🚨 AGREGAMOS data-talla AQUÍ -->
+                            <tr id="fila-mov-${s.id_mov}" data-cant="${s.cantidad}" data-obs="${s.obs || ''}" data-talla="${s.talla || '-'}" data-fecha="${s.fecha_salida}">
+                                <td id="td-fecha-${s.id_mov}">${s.fecha_salida}</td>
+                                
+                                <td class="alm-text-red alm-bold" id="td-cant-${s.id_mov}">-${s.cantidad}</td>
+                                
                                 <td><span class="alm-badge alm-badge-outline">${s.codigo}</span></td>
                                 <td style="color: #475569; font-weight: 600;">${s.producto}</td>
+                                
                                 <td>${s.empleado}</td>
                                 <td>${s.area}</td>
-                                <td>${s.obs}</td>
+
+                                <td id="td-talla-${s.id_mov}">${s.talla ? s.talla : '-'}</td>
+                                
+                                <td id="td-obs-${s.id_mov}" class="alm-truncate-obs" title="${s.obs && s.obs !== '-' ? s.obs : 'Sin observaciones'}">
+                                    ${s.obs && s.obs !== '-' ? s.obs : '-'}
+                                </td>
+                                
                                 <td class="alm-text-center">
-                                    <div class="alm-action-group">
+                                    <div class="alm-action-group" id="btn-normal-${s.id_mov}">
                                         <a href="#" class="alm-icon-btn" title="Ver Adjunto"><i class="fas fa-paperclip"></i></a>
+                                        <button type="button" class="alm-icon-btn" style="color: #3b82f6;" title="Editar Movimiento" onclick="habilitarEdicionInline(${s.id_mov}, 'SALIDA')">
+                                            <i class="fas fa-pencil-alt"></i>
+                                        </button>
                                         <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${s.id_mov})">
                                             <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="alm-action-group" id="btn-edit-${s.id_mov}" style="display: none; justify-content: center; gap: 8px;">
+                                        <button type="button" class="alm-icon-btn" style="color: #10b981;" title="Guardar Cambios" onclick="guardarEdicionInline(${s.id_mov}, 'SALIDA')">
+                                            <i class="fas fa-save"></i>
+                                        </button>
+                                        <button type="button" class="alm-icon-btn" style="color: #64748b;" title="Cancelar" onclick="cancelarEdicionInline(${s.id_mov})">
+                                            <i class="fas fa-times"></i>
                                         </button>
                                     </div>
                                 </td>
@@ -14578,6 +14626,124 @@ function cargarDatosMaestros() {
                 tbodyProductos.innerHTML = `<tr><td colspan="6" class="alm-text-center" style="color: #ef4444; padding: 20px;">Error al cargar los datos.</td></tr>`;
             }
         });
+}
+
+
+// ==================================================
+// LÓGICA DE EDICIÓN EN LÍNEA (INLINE EDITING)
+// ==================================================
+
+function formatearFechaParaInput(fechaStr) {
+    if (!fechaStr || fechaStr === '-') return '';
+    const partes = fechaStr.split('-');
+    if (partes.length === 3) return `${partes[2]}-${partes[1]}-${partes[0]}`;
+    return '';
+}
+
+function habilitarEdicionInline(idMov, tipo) {
+    const fila = document.getElementById(`fila-mov-${idMov}`);
+    
+    // 1. Extraemos los valores originales de los atributos data-*
+    const cantActual = fila.getAttribute('data-cant');
+    const obsActual = fila.getAttribute('data-obs') === '-' ? '' : fila.getAttribute('data-obs');
+    const tallaActual = fila.getAttribute('data-talla') === '-' ? '' : fila.getAttribute('data-talla');
+
+    // 2. Transformamos Cantidad, Observaciones y Talla
+    document.getElementById(`td-cant-${idMov}`).innerHTML = `<input type="number" id="edit-cant-${idMov}" value="${cantActual}" class="alm-input" style="width: 70px; text-align: center; padding: 4px;" step="0.01">`;
+    document.getElementById(`td-obs-${idMov}`).innerHTML = `<input type="text" id="edit-obs-${idMov}" value="${obsActual}" class="alm-input" style="width: 100px; padding: 4px;" placeholder="Obs...">`;
+    document.getElementById(`td-talla-${idMov}`).innerHTML = `<input type="text" id="edit-talla-${idMov}" value="${tallaActual}" class="alm-input" style="width: 50px; text-align: center; padding: 4px;">`;
+
+    // 3. Transformamos los datos que solo existen en ENTRADAS
+    if (tipo === 'ENTRADA') {
+        const precioActual = fila.getAttribute('data-precio');
+        const facturaActual = fila.getAttribute('data-factura') === '-' ? '' : fila.getAttribute('data-factura');
+        const guiaActual = fila.getAttribute('data-guia') === '-' ? '' : fila.getAttribute('data-guia');
+        
+        const fechaFacFormateada = formatearFechaParaInput(fila.getAttribute('data-fechafac'));
+        const fechaIngFormateada = formatearFechaParaInput(fila.getAttribute('data-fechaing'));
+
+        document.getElementById(`td-fechafac-${idMov}`).innerHTML = `<input type="date" id="edit-fechafac-${idMov}" value="${fechaFacFormateada}" class="alm-input" style="width: 110px; padding: 2px;" onblur="this.value = this.value">`;
+        document.getElementById(`td-fechaing-${idMov}`).innerHTML = `<input type="date" id="edit-fechaing-${idMov}" value="${fechaIngFormateada}" class="alm-input" style="width: 110px; padding: 2px;" onblur="this.value = this.value">`;
+        document.getElementById(`td-factura-${idMov}`).innerHTML = `<input type="text" id="edit-factura-${idMov}" value="${facturaActual}" class="alm-input" style="width: 80px; padding: 4px;">`;
+        document.getElementById(`td-guia-${idMov}`).innerHTML = `<input type="text" id="edit-guia-${idMov}" value="${guiaActual}" class="alm-input" style="width: 80px; padding: 4px;">`;
+        document.getElementById(`td-precio-${idMov}`).innerHTML = `<input type="number" id="edit-precio-${idMov}" value="${precioActual}" class="alm-input" style="width: 70px; text-align: center; padding: 4px;" step="0.01">`;
+    }
+
+    else if (tipo === 'SALIDA') {
+        const fechaActual = fila.getAttribute('data-fecha');
+        const fechaFormateada = formatearFechaParaInput(fechaActual);
+        
+        document.getElementById(`td-fecha-${idMov}`).innerHTML = `<input type="date" id="edit-fecha-${idMov}" value="${fechaFormateada}" class="alm-input" style="width: 110px; padding: 2px;" onblur="this.value = this.value">`;
+    }
+
+    // Ocultar botones normales, mostrar botones de edición
+    document.getElementById(`btn-normal-${idMov}`).style.display = 'none';
+    document.getElementById(`btn-edit-${idMov}`).style.display = 'flex';
+}
+
+function cancelarEdicionInline(idMov) {
+    if (typeof cargarDatosMaestros === 'function') {
+        cargarDatosMaestros(); 
+    }
+}
+
+function guardarEdicionInline(idMov, tipo) {
+    const inputCant = document.getElementById(`edit-cant-${idMov}`);
+    
+    if (!inputCant || parseFloat(inputCant.value) <= 0) {
+        alert("La cantidad debe ser mayor a 0");
+        return;
+    }
+
+    // Preparamos el paquete de datos a enviar
+    const payload = {
+        id_mov: idMov,
+        tipo: tipo,
+        cantidad: parseFloat(inputCant.value),
+        obs: document.getElementById(`edit-obs-${idMov}`).value.trim(),
+        talla: document.getElementById(`edit-talla-${idMov}`).value.trim().toUpperCase()
+    };
+
+    // Si es ENTRADA, adjuntamos todos los campos nuevos
+    if (tipo === 'ENTRADA') {
+        payload.precio = parseFloat(document.getElementById(`edit-precio-${idMov}`).value) || 0;
+        payload.fecha_fac = document.getElementById(`edit-fechafac-${idMov}`).value;
+        payload.fecha_ing = document.getElementById(`edit-fechaing-${idMov}`).value;
+        payload.factura = document.getElementById(`edit-factura-${idMov}`).value.trim().toUpperCase();
+        payload.guia = document.getElementById(`edit-guia-${idMov}`).value.trim().toUpperCase();
+    }
+
+    else if (tipo === 'SALIDA') {
+        // Extraemos la fecha del input y la agregamos al paquete
+        payload.fecha_salida = document.getElementById(`edit-fecha-${idMov}`).value;
+    }
+
+    // Efecto de carga
+    document.getElementById(`btn-edit-${idMov}`).innerHTML = '<i class="fas fa-spinner fa-spin" style="color: #3b82f6;"></i>';
+
+    fetch('/almacen/editar-movimiento', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            // 1. Actualizamos Entradas y Salidas
+            cargarDatosMaestros(); 
+            
+            // 2. 🚨 NUEVO: Actualizamos el Kardex manteniendo la página actual
+            if (typeof historialCurrentPage !== 'undefined') {
+                cargarHistorialKardex(historialCurrentPage);
+            } else {
+                cargarHistorialKardex(1); // Por si la variable global no existe
+            }
+            
+        } else {
+            alert("Error al guardar: " + data.message);
+            cancelarEdicionInline(idMov);
+        }
+    })
 }
 
 // Variables globales para la tabla de Inventario Físico
@@ -15491,7 +15657,7 @@ function renderizarTablaTemporales() {
                     <td class="alm-text-green alm-bold">+${item.cantidad}</td>
                     <td class="alm-bold">S/ ${item.precio.toFixed(2)}</td>
                     <td>${item.proveedor_nombre}</td>
-                    <td>${item.obs}</td>
+                    <td class="alm-truncate-obs" title="${obsTexto !== '-' ? obsTexto : 'Sin observaciones'}">${obsTexto}</td>
                     <td class="alm-text-center">
                         <button class="alm-icon-btn" style="color: #ef4444;" onclick="eliminarFilaTemporal(${item.idTemporal})" title="Eliminar fila (Temporal)"><i class="fas fa-trash-alt"></i></button>
                     </td>
@@ -15522,7 +15688,7 @@ function renderizarTablaTemporales() {
                         <td class="alm-text-green alm-bold">+${e.cantidad}</td>
                         <td>S/ ${e.precio ? e.precio.toFixed(2) : '0.00'}</td>
                         <td>${e.proveedor}</td>
-                        <td>${e.obs ? e.obs : '-'}</td>
+                        <td id="td-obs-${e.id_mov}" class="alm-truncate-obs" title="${obsTexto !== '-' ? obsTexto : 'Sin observaciones'}">${obsTexto}</td>
                         <td class="alm-text-center">
                             <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${e.id_mov})">
                                 <i class="fas fa-trash-alt"></i>
@@ -15693,6 +15859,9 @@ function agregarFilaTemporalSalida() {
         //return;
     //}
 
+    const loteRef = window.lotesData.find(l => l.id_lote == idLote);
+    const tallaProd = loteRef && loteRef.talla ? loteRef.talla : '-'
+
     // Bloquear los datos de cabecera en el primer item ingresado
     if (listaSalidasTemporales.length === 0) {
         document.querySelectorAll('.alm-input-lock-sal').forEach(input => {
@@ -15711,6 +15880,7 @@ function agregarFilaTemporalSalida() {
         id_lote: idLote, // Guardamos el ID combinado (ej: "1,4,5")
         producto_nombre: prodTexto,
         codigo: codigoProd,
+        talla: tallaProd,
         cantidad: cantidad,
         obs: obs
     });
@@ -15724,46 +15894,73 @@ function agregarFilaTemporalSalida() {
     renderizarTablaTemporalesSalida();
 }
 
+// ==================================================
+// RENDERIZAR TABLA TEMPORAL DE SALIDAS
+// ==================================================
 function renderizarTablaTemporalesSalida() {
-    const tbody = document.getElementById('body-tabla-salidas');
+    const tbody = document.getElementById('body-tabla-salidas'); // 🚨 Apunta a la tabla correcta
     tbody.innerHTML = '';
 
-    // 1. Mostrar la lista en memoria (lo que se está digitando)
+    // 1. Si el usuario ESTÁ DIGITANDO (Temporales)
     if (listaSalidasTemporales.length > 0) {
         listaSalidasTemporales.forEach(item => {
+            const obsTexto = item.obs && item.obs.trim() !== '' ? item.obs : '-';
             const fila = `
-                <tr style="background-color: #fef2f2;"> <td>${item.fecha}</td>
+                <tr style="background-color: #fef2f2;"> <!-- Fondo rojito sutil para temporales -->
+                    <td>${item.fecha}</td>
                     <td class="alm-text-red alm-bold">-${item.cantidad}</td>
                     <td><span class="alm-badge alm-badge-outline">${item.codigo}</span></td>
-                    <td style="color: #475569; font-weight: 600;">${item.producto_nombre}</td>
+                    <td class="alm-truncate-prod" title="${item.producto_nombre}" style="color: #475569; font-weight: 600;">${item.producto_nombre}</td>
                     <td>${item.empleado_nombre}</td>
                     <td>${item.area}</td>
-                    <td>${item.obs}</td>
+                    <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${item.talla}</td>
+                    <td class="alm-truncate-obs" title="${obsTexto !== '-' ? obsTexto : 'Sin observaciones'}">${obsTexto}</td>
                     <td class="alm-text-center">
-                        <button class="alm-icon-btn" style="color: #ef4444;" onclick="eliminarFilaTemporalSalida(${item.idTemporal})" title="Eliminar fila"><i class="fas fa-trash-alt"></i></button>
+                        <button class="alm-icon-btn" style="color: #ef4444;" onclick="eliminarFilaTemporalSalida(${item.idTemporal})" title="Eliminar fila (Temporal)">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
                     </td>
                 </tr>
             `;
             tbody.insertAdjacentHTML('beforeend', fila);
         });
     } 
-    // 2. Si no hay temporales, mostrar el historial de BD
+    // 2. Si la memoria está VACÍA (Cargamos el HISTÓRICO BD)
     else {
         if (!window.historicoSalidas || window.historicoSalidas.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay salidas registradas.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay historial de salidas. Agregue productos a la lista con el botón (+).</td></tr>`;
         } else {
             window.historicoSalidas.forEach(s => {
+                const obsTexto = s.obs && s.obs !== '-' ? s.obs : '-';
                 const fila = `
-                    <tr>
-                        <td>${s.fecha_salida}</td>
-                        <td class="alm-text-red alm-bold">-${s.cantidad}</td>
+                    <tr id="fila-mov-${s.id_mov}" data-cant="${s.cantidad}" data-obs="${s.obs || ''}" data-talla="${s.talla || '-'}" data-fecha="${s.fecha_salida}">
+                        <td id="td-fecha-${s.id_mov}">${s.fecha_salida}</td>
+                        <td class="alm-text-red alm-bold" id="td-cant-${s.id_mov}">-${s.cantidad}</td>
                         <td><span class="alm-badge alm-badge-outline">${s.codigo}</span></td>
                         <td style="color: #475569; font-weight: 600;">${s.producto}</td>
                         <td>${s.empleado}</td>
                         <td>${s.area}</td>
-                        <td>${s.obs}</td>
+                        <td id="td-talla-${s.id_mov}" style="color: #8b5cf6; font-weight: bold; text-align: center;">${s.talla ? s.talla : '-'}</td>
+                        <td id="td-obs-${s.id_mov}" class="alm-truncate-obs" title="${obsTexto !== '-' ? obsTexto : 'Sin observaciones'}">${obsTexto}</td>
                         <td class="alm-text-center">
-                            <a href="#" class="alm-icon-btn" title="Ver Adjunto"><i class="fas fa-paperclip"></i></a>
+                            <div class="alm-action-group" id="btn-normal-${s.id_mov}">
+                                <a href="#" class="alm-icon-btn" title="Ver Adjunto"><i class="fas fa-paperclip"></i></a>
+                                <button type="button" class="alm-icon-btn" style="color: #3b82f6;" title="Editar Movimiento" onclick="habilitarEdicionInline(${s.id_mov}, 'SALIDA')">
+                                    <i class="fas fa-pencil-alt"></i>
+                                </button>
+                                <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${s.id_mov})">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+                            
+                            <div class="alm-action-group" id="btn-edit-${s.id_mov}" style="display: none; justify-content: center; gap: 8px;">
+                                <button type="button" class="alm-icon-btn" style="color: #10b981;" title="Guardar Cambios" onclick="guardarEdicionInline(${s.id_mov}, 'SALIDA')">
+                                    <i class="fas fa-save"></i>
+                                </button>
+                                <button type="button" class="alm-icon-btn" style="color: #64748b;" title="Cancelar" onclick="cancelarEdicionInline(${s.id_mov})">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -15771,7 +15968,7 @@ function renderizarTablaTemporalesSalida() {
             });
         }
 
-        // Desbloquear cabeceras al volver a cero
+        // Desbloquear cabeceras cuando se queda vacío
         document.querySelectorAll('.alm-input-lock-sal').forEach(input => {
             input.disabled = false;
             input.style.backgroundColor = '#ffffff';
@@ -15866,7 +16063,7 @@ function ejecutarBusquedaHistorial() {
     }, 400); // 400ms de retraso para no saturar el servidor mientras tipea
 }
 
-function cargarHistorialKardex(page = 1) {
+function cargarHistorialKardex() {
     const tbody = document.getElementById('body-tabla-historico');
     const search = document.getElementById('filtro-hist-texto').value;
     
@@ -15874,15 +16071,15 @@ function cargarHistorialKardex(page = 1) {
     const fechaInicio = document.getElementById('filtro-hist-inicio').value;
     const fechaFin = document.getElementById('filtro-hist-fin').value;
     
-    tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="padding: 30px;"><i class="fas fa-spinner fa-spin fa-lg"></i> Actualizando...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="padding: 30px;"><i class="fas fa-spinner fa-spin fa-lg"></i> Cargando todos los movimientos...</td></tr>`;
 
-    // 2. CONSTRUIMOS LA URL
-    let url = `/almacen/api/historico-kardex?page=${page}&limit=20&tipo=${historialCurrentTipo}&search=${encodeURIComponent(search)}`;
+    // 2. CONSTRUIMOS LA URL (Sin page ni limit)
+    let url = `/almacen/api/historico-kardex?tipo=${historialCurrentTipo}&search=${encodeURIComponent(search)}`;
     
     if (fechaInicio) url += `&fecha_inicio=${fechaInicio}`;
     if (fechaFin) url += `&fecha_fin=${fechaFin}`;
     
-    // 🚨 LA SOLUCIÓN: Deshabilitamos el caché en los headers
+    // Deshabilitamos el caché en los headers
     fetch(url, {
         method: 'GET',
         headers: {
@@ -15890,60 +16087,190 @@ function cargarHistorialKardex(page = 1) {
             'Pragma': 'no-cache',
             'Expires': '0'
         },
-        cache: 'no-store' // Obliga al navegador a ir siempre a la BD
+        cache: 'no-store'
     })
-        .then(res => res.json())
-        .then(response => {
-            if(!response.success) throw new Error(response.error);
+    .then(res => res.json())
+    .then(response => {
+        if(!response.success) throw new Error(response.error);
+        
+        tbody.innerHTML = '';
+        
+        if(response.data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="color: #94a3b8; padding: 30px;">No se encontraron movimientos.</td></tr>`;
+            return;
+        }
+
+        // Renderizamos todas las filas completas
+        response.data.forEach(m => {
+            const isEntrada = m.tipo === 'ENTRADA';
+            const badgeTipo = isEntrada ? `<span class="alm-badge alm-badge-entrada"><i class="fas fa-arrow-down"></i> ENTRADA</span>` : `<span class="alm-badge alm-badge-salida"><i class="fas fa-arrow-up"></i> SALIDA</span>`;
+            const colorCant = isEntrada ? '#16a34a' : '#ef4444';
+            const signoCant = isEntrada ? '+' : '-';
             
-            tbody.innerHTML = '';
-            
-            if(response.data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="color: #94a3b8; padding: 30px;">No se encontraron movimientos.</td></tr>`;
-                actualizarPaginacionUI({ total_records: 0, current_page: 1, total_pages: 1, per_page: 20 });
-                return;
-            }
+            // 🚨 Preparamos el texto de la observación para el tooltip
+            const obsTexto = m.obs && m.obs !== '-' ? m.obs : '-';
 
-            // Renderizar Filas
-            response.data.forEach(m => {
-                const isEntrada = m.tipo === 'ENTRADA';
-                const badgeTipo = isEntrada ? `<span class="alm-badge alm-badge-entrada"><i class="fas fa-arrow-down"></i> ENTRADA</span>` : `<span class="alm-badge alm-badge-salida"><i class="fas fa-arrow-up"></i> SALIDA</span>`;
-                const colorCant = isEntrada ? '#16a34a' : '#ef4444';
-                const signoCant = isEntrada ? '+' : '-';
-
-                tbody.insertAdjacentHTML('beforeend', `
-                    <tr>
-                        <td class="alm-bold">${m.fecha}</td>
-                        <td class="alm-text-center">${badgeTipo}</td>
-                        <td><span class="alm-badge alm-badge-outline">${m.codigo}</span></td>
-                        <td style="color: #475569; font-weight: 600;">${m.producto}</td>
-                        <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${m.talla ? m.talla : '-'}</td>
-                        <td>${m.unidad}</td>
-                        <td>${m.categoria}</td>
-                        <td class="alm-text-center alm-bold" style="color: ${colorCant}; font-size:1.1rem;">${signoCant}${m.cantidad}</td>
-                        <td class="alm-bold">${m.stock_actual}</td>
-                        <td>${m.proveedor}</td>
-                        <td style="color: #0369a1; font-weight: 500;">${m.empleado_recupero ? m.empleado_recupero : '-'}</td>
-                        <td>${m.empleado}</td>
-                        <td>${m.area}</td>
-                        <td>${m.cargo}</td>
-                        <td>${m.documento}</td>
-                        <td>${m.fecha_factura}</td>
-                        <td>${m.guia}</td>
-                        <td>${m.obs}</td>
-                        <td class="alm-text-center"><a href="#" class="alm-icon-btn"><i class="fas fa-paperclip"></i></a></td>
-                    </tr>
-                `);
-            });
-
-            actualizarPaginacionUI(response.pagination);
-        })
-        .catch(err => {
-            console.error("Error cargando historial:", err);
-            tbody.innerHTML = `<tr><td colspan="17" class="alm-text-center" style="color: #ef4444; padding: 20px;">Error al cargar los datos.</td></tr>`;
+            tbody.insertAdjacentHTML('beforeend', `
+                <tr id="fila-kardex-${m.id_mov}" 
+                    data-tipo="${m.tipo}"
+                    data-cant="${m.cantidad}"
+                    data-talla="${m.talla || '-'}"
+                    data-obs="${m.obs || '-'}"
+                    data-fecha="${m.fecha}"
+                    data-factura="${m.documento || '-'}"
+                    data-fechafac="${m.fecha_factura || '-'}"
+                    data-guia="${m.guia || '-'}"
+                    data-precio="${m.precio || 0}"> 
+                    
+                    <td class="alm-bold" id="k-td-fecha-${m.id_mov}">${m.fecha}</td>
+                    <td class="alm-text-center">${badgeTipo}</td>
+                    <td><span class="alm-badge alm-badge-outline">${m.codigo}</span></td>
+                    
+                    <!-- 🚨 Aplicamos truncado al Producto -->
+                    <td class="alm-truncate-prod" title="${m.producto}" style="color: #475569; font-weight: 600;">${m.producto}</td>
+                    
+                    <td id="k-td-talla-${m.id_mov}" style="color: #8b5cf6; font-weight: bold; text-align: center;">${m.talla ? m.talla : '-'}</td>
+                    <td>${m.unidad}</td>
+                    <td>${m.categoria}</td>
+                    
+                    <td class="alm-text-center alm-bold" id="k-td-cant-${m.id_mov}" style="color: ${colorCant}; font-size:1.1rem;">${signoCant}${m.cantidad}</td>
+                    
+                    <td class="alm-bold">${m.stock_actual}</td>
+                    <td>${m.proveedor}</td>
+                    <td style="color: #0369a1; font-weight: 500;">${m.empleado_recupero ? m.empleado_recupero : '-'}</td>
+                    <td>${m.empleado}</td>
+                    <td>${m.area}</td>
+                    <td>${m.cargo}</td>
+                    
+                    <td id="k-td-factura-${m.id_mov}">${m.documento ? m.documento : '-'}</td>
+                    <td id="k-td-fechafac-${m.id_mov}">${m.fecha_factura ? m.fecha_factura : '-'}</td>
+                    <td id="k-td-guia-${m.id_mov}">${m.guia ? m.guia : '-'}</td>
+                    
+                    <!-- 🚨 Aplicamos truncado a la Observación -->
+                    <td id="k-td-obs-${m.id_mov}" class="alm-truncate-obs" title="${obsTexto !== '-' ? obsTexto : 'Sin observaciones'}">${obsTexto}</td>
+                    
+                    <td class="alm-text-center">
+                        <div class="alm-action-group" id="k-btn-normal-${m.id_mov}">
+                            <a href="#" class="alm-icon-btn" title="Ver Adjunto"><i class="fas fa-paperclip"></i></a>
+                            <button type="button" class="alm-icon-btn" style="color: #3b82f6;" title="Editar Movimiento" onclick="habilitarEdicionKardex(${m.id_mov})">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
+                            <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${m.id_mov})">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="alm-action-group" id="k-btn-edit-${m.id_mov}" style="display: none; justify-content: center; gap: 8px;">
+                            <button type="button" class="alm-icon-btn" style="color: #10b981;" title="Guardar Cambios" onclick="guardarEdicionKardex(${m.id_mov})">
+                                <i class="fas fa-save"></i>
+                            </button>
+                            <button type="button" class="alm-icon-btn" style="color: #64748b;" title="Cancelar" onclick="cargarHistorialKardex()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `);
         });
+    })
+    .catch(err => {
+        console.error("Error cargando historial:", err);
+        tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="color: #ef4444; padding: 20px;">Error al cargar los datos.</td></tr>`;
+    });
 }
 
+function habilitarEdicionKardex(idMov) {
+    const fila = document.getElementById(`fila-kardex-${idMov}`);
+    const tipo = fila.getAttribute('data-tipo');
+
+    // Extraer datos comunes
+    const cant = fila.getAttribute('data-cant');
+    const obs = fila.getAttribute('data-obs') === '-' ? '' : fila.getAttribute('data-obs');
+    const talla = fila.getAttribute('data-talla') === '-' ? '' : fila.getAttribute('data-talla');
+    
+    // Limpiamos la fecha principal (ingreso o salida)
+    const fecha = (fila.getAttribute('data-fecha') || '').split(' ')[0];
+    const fechaFormat = formatearFechaParaInput(fecha);
+
+    // Convertir celdas comunes a Inputs
+    document.getElementById(`k-td-cant-${idMov}`).innerHTML = `<input type="number" id="k-edit-cant-${idMov}" value="${cant}" class="alm-input" style="width: 70px; text-align: center; padding: 4px;" step="0.01">`;
+    document.getElementById(`k-td-talla-${idMov}`).innerHTML = `<input type="text" id="k-edit-talla-${idMov}" value="${talla}" class="alm-input" style="width: 50px; text-align: center; padding: 4px;">`;
+    document.getElementById(`k-td-obs-${idMov}`).innerHTML = `<input type="text" id="k-edit-obs-${idMov}" value="${obs}" class="alm-input" style="width: 100px; padding: 4px;">`;
+    document.getElementById(`k-td-fecha-${idMov}`).innerHTML = `<input type="date" id="k-edit-fecha-${idMov}" value="${fechaFormat || fecha}" class="alm-input" style="width: 110px; padding: 2px;" onblur="this.value = this.value">`;
+
+    // Si es entrada, también abrimos los datos de la factura
+    if (tipo === 'ENTRADA') {
+        const fac = fila.getAttribute('data-factura') === '-' ? '' : fila.getAttribute('data-factura');
+        const guia = fila.getAttribute('data-guia') === '-' ? '' : fila.getAttribute('data-guia');
+        const fechafac = (fila.getAttribute('data-fechafac') || '').split(' ')[0];
+        const fechafacFormat = formatearFechaParaInput(fechafac);
+
+        document.getElementById(`k-td-factura-${idMov}`).innerHTML = `<input type="text" id="k-edit-factura-${idMov}" value="${fac}" class="alm-input" style="width: 80px; padding: 4px;">`;
+        document.getElementById(`k-td-fechafac-${idMov}`).innerHTML = `<input type="date" id="k-edit-fechafac-${idMov}" value="${fechafacFormat || fechafac}" class="alm-input" style="width: 110px; padding: 2px;" onblur="this.value = this.value">`;
+        document.getElementById(`k-td-guia-${idMov}`).innerHTML = `<input type="text" id="k-edit-guia-${idMov}" value="${guia}" class="alm-input" style="width: 80px; padding: 4px;">`;
+    }
+
+    // Intercambiar botones
+    document.getElementById(`k-btn-normal-${idMov}`).style.display = 'none';
+    document.getElementById(`k-btn-edit-${idMov}`).style.display = 'flex';
+}
+
+function guardarEdicionKardex(idMov) {
+    const fila = document.getElementById(`fila-kardex-${idMov}`);
+    const tipo = fila.getAttribute('data-tipo');
+    const inputCant = document.getElementById(`k-edit-cant-${idMov}`);
+
+    if (!inputCant || parseFloat(inputCant.value) <= 0) {
+        alert("La cantidad debe ser mayor a 0");
+        return;
+    }
+
+    // Armar el paquete base
+    const payload = {
+        id_mov: idMov,
+        tipo: tipo,
+        cantidad: parseFloat(inputCant.value),
+        obs: document.getElementById(`k-edit-obs-${idMov}`).value.trim(),
+        talla: document.getElementById(`k-edit-talla-${idMov}`).value.trim().toUpperCase()
+    };
+
+    const fechaIngresada = document.getElementById(`k-edit-fecha-${idMov}`).value;
+
+    // Agregar datos específicos según el tipo
+    if (tipo === 'ENTRADA') {
+        payload.precio = parseFloat(fila.getAttribute('data-precio')) || 0; 
+        payload.fecha_ing = fechaIngresada;
+        payload.factura = document.getElementById(`k-edit-factura-${idMov}`).value.trim().toUpperCase();
+        payload.fecha_fac = document.getElementById(`k-edit-fechafac-${idMov}`).value;
+        payload.guia = document.getElementById(`k-edit-guia-${idMov}`).value.trim().toUpperCase();
+    } else {
+        payload.fecha_salida = fechaIngresada;
+    }
+
+    document.getElementById(`k-btn-edit-${idMov}`).innerHTML = '<i class="fas fa-spinner fa-spin" style="color: #3b82f6;"></i>';
+
+    // Enviar al Backend
+    fetch('/almacen/editar-movimiento', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            cargarDatosMaestros(); 
+            cargarHistorialKardex(); // 🚨 Corregido: Sin variable de paginación
+        } else {
+            alert("Error al guardar: " + data.message);
+            cargarHistorialKardex(); // 🚨 Corregido: Sin variable de paginación
+        }
+    })
+    .catch(error => {
+        console.error("Error:", error);
+        alert("Error de red al guardar.");
+        cargarHistorialKardex(); // 🚨 Corregido: Sin variable de paginación
+    });
+}
 // Variables globales para guardar el estado del ordenamiento
 let kardexSortCol = -1;
 let kardexSortAsc = true;
@@ -16090,7 +16417,6 @@ function exportarExcelKardex() {
     // 3. Redirigimos al usuario (esto fuerza la descarga del archivo)
     window.open(url, '_blank');
 }
-
 
 
 /* =========================================
