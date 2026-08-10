@@ -126,18 +126,63 @@
                 TECH<span class="logo-accent">DITO</span>
             </a>
         </div>
-        
-        <div class="user-profile-header">
-            <div class="user-details">
-                <span class="header-user-name">{{ nombre_completo }}</span>
-                <span class="user-role">Panel Operativo</span>
+
+        <!-- CONTENEDOR DERECHO AGRUPADO (Campana + Perfil) -->
+        <div class="header-right">
+            
+            <!-- SISTEMA DE NOTIFICACIONES -->
+            <div id="campana-noti" class="notificaciones-container" onclick="toggleAlertas(event)">
+                <i class="fa-solid fa-bell bell-icon"></i>
+                
+                {% if alertas|length > 0 %}
+                    <span class="badge-alerta">{{ alertas|length if alertas|length <= 99 else '99+' }}</span>
+                {% endif %}
+
+                <!-- Menú desplegable de alertas -->
+                <div id="panel-alertas" class="panel-alertas" style="display: none;">
+                    <div class="panel-header">
+                        <span class="panel-header-title">
+                            <i class="fas fa-bolt" style="color: #f59e0b; margin-right: 5px;"></i> Alertas Hoy
+                        </span>
+                        <span class="panel-header-count">{{ alertas|length }} pendientes</span>
+                    </div>
+                    
+                    <div class="panel-body">
+                        {% if alertas %}
+                            {% for alerta in alertas %}
+                                <!-- AQUÍ INYECTAMOS EL CLIC Y EL CURSOR -->
+                                <div class="alerta-item" onclick="abrirDetalleAlerta('{{ alerta.id_empleado }}', '{{ alerta.fecha_cruda }}')" style="cursor: pointer; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='rgba(0,0,0,0.05)'" onmouseout="this.style.backgroundColor='transparent'">
+                                    <div style="margin-top: 3px;">
+                                        <i class="fas fa-circle-exclamation" style="color: #ef4444; font-size: 1rem;"></i>
+                                    </div>
+                                    <div class="alerta-mensaje">
+                                        {{ alerta.mensaje }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="alerta-vacia">
+                                <i class="fas fa-clipboard-check" style="font-size: 2.5rem; color: #10b981; margin-bottom: 12px; display: block; opacity: 0.8;"></i>
+                                <span style="font-size: 0.9rem; font-weight: 500;">Asistencia completa</span>
+                                <p style="font-size: 0.8rem; margin-top: 4px;">No hay personal pendiente hoy.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
-            <div class="user-avatar">
-                <i class="fas fa-user-shield"></i>
+
+            <!-- PERFIL DE USUARIO (TU CÓDIGO INTACTO) -->
+            <div class="user-profile-header">
+                <div class="user-details">
+                    <span class="header-user-name">{{ nombre_completo }}</span>
+                    <span class="user-role">Panel Operativo</span>
+                </div>
+                <div class="user-avatar">
+                    <i class="fas fa-user-shield"></i>
+                </div>
             </div>
         </div>
     </header>
-
     <!-- Contenedor principal -->
     <div class="main-container">
         <!-- Barra lateral (Menú) -->
@@ -4808,6 +4853,50 @@
 
         </div>
     </div>
+
+    <!-- HTML DEL MODAL GLASSMORPHISM ACTUALIZADO -->
+    <div id="modalDetalleAlerta" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); backdrop-filter: blur(5px); justify-content: center; align-items: center;">
+        
+        <div style="background: rgba(255, 255, 255, 0.1); border-radius: 16px; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); width: 90%; max-width: 450px; padding: 25px; color: #fff; font-family: sans-serif; position: relative;">
+            
+            <span onclick="cerrarModalAlerta()" style="position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: rgba(255,255,255,0.7);">&times;</span>
+            
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                <div style="width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #ff4b2b, #ff416c); display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold;" id="modalAvatar">X</div>
+                <div>
+                    <h3 id="modalNombre" style="margin: 0; font-size: 1.2rem; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Cargando...</h3>
+                    <p id="modalArea" style="margin: 5px 0 0 0; font-size: 0.9rem; color: rgba(255,255,255,0.7);">Cargando...</p>
+                </div>
+            </div>
+            
+            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                <p style="margin: 0 0 10px 0;"><strong>Fecha de incidencia:</strong> <span id="modalFecha">...</span></p>
+                <p style="margin: 0; color: #ff6b6b;"><strong>Diagnóstico:</strong> <span id="modalEstado">...</span></p>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <!-- BOTÓN DE WHATSAPP ABARCANDO EL 100% -->
+                <a id="modalWhatsApp" href="#" target="_blank" style="width: 100%; padding: 12px; border: none; border-radius: 8px; background: rgba(37, 211, 102, 0.8); color: white; cursor: pointer; text-decoration: none; text-align: center; font-weight: bold; backdrop-filter: blur(5px); transition: 0.3s;" onmouseover="this.style.background='rgba(37, 211, 102, 1)'" onmouseout="this.style.background='rgba(37, 211, 102, 0.8)'">Contactar por WhatsApp</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor vacío donde aparecerán las notificaciones flotantes -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- 1. PUENTE JINJA2 -> JAVASCRIPT -->
+    <script>
+        // Creamos una variable global en el navegador con los OBJETOS de alerta
+        window.alertasSistema = [
+            {% for alerta in alertas %}
+                {
+                    mensaje: "{{ alerta.mensaje }}",
+                    id_empleado: "{{ alerta.id_empleado }}",
+                    fecha_cruda: "{{ alerta.fecha_cruda }}"
+                },
+            {% endfor %}
+        ];
+    </script>
 
 
 
