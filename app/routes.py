@@ -342,11 +342,20 @@ def inicio():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
+    # Capturamos el usuario actual
+    user_name = session.get('user_name')
+    
+    # ---> 1. GENERAMOS LAS ALERTAS AQUÍ <---
+    # Llamamos a la función y le pasamos el usuario logueado
+    alertas_hoy = generar_alertas_asistencia(user_name)
+
     return render_template(
         'inicio.html',
-        user_name=session.get('user_name'),
-        nombre_completo=session.get('nombre_completo')
+        user_name=user_name,
+        nombre_completo=session.get('nombre_completo'),
+        alertas=alertas_hoy  # ---> 2. ENVIAMOS LAS ALERTAS AL HTML <---
     )
+
 
 
 # Ruta para cerrar sesión
