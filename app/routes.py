@@ -8521,33 +8521,62 @@ def api_listar_datos():
             })
 
         # ==========================================
-        # NUEVA LISTA PARA EL INVENTARIO SIN SUMAR (POR LOTES)
+        # NUEVA LISTA PARA EL INVENTARIO FÍSICO (AGRUPADO)
         # ==========================================
-        movimientos = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).all()
+        # Filtramos solo los lotes que tienen stock disponible
+        movimientos = MovimientoDetalle.query.filter(
+            MovimientoDetalle.tipo_movimiento == 'ENTRADA',
+            MovimientoDetalle.stock_restante > 0,
+            MovimientoDetalle.estado == 'ACTIVO'
+        ).order_by(MovimientoDetalle.id_movimiento.desc()).all()
+        
+        inventario_agrupado = {}
+        
+        for m in movimientos:
+            id_prod = m.id_producto
+            talla_str = m.talla if m.talla else "-"
+            prov_nombre = m.entrada_rel.proveedor.razon_social if (m.entrada_rel and m.entrada_rel.proveedor) else "-"
+            precio_val = float(m.precio_unitario or m.producto_rel.precio_igv or 0.00)
+            
+            # Clave de agrupación: Mismo producto, talla, proveedor y precio = Misma fila
+            clave = (id_prod, talla_str, prov_nombre, precio_val)
+            
+            if clave not in inventario_agrupado:
+                inventario_agrupado[clave] = {
+                    "codigo": m.producto_rel.codigo_identificador,
+                    "nombre": m.producto_rel.nombre_prod,
+                    "talla": talla_str,
+                    "categoria": m.producto_rel.categoria.tipo_categoria,
+                    "unidad": m.producto_rel.unidad_medida,
+                    "precio_igv": precio_val,
+                    "cantidad": float(m.stock_restante or 0),
+                    "fecha_ingreso": m.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_ingreso else "-",
+                    "proveedor": prov_nombre,
+                    "ids_agrupados": [m.id_movimiento]
+                }
+            else:
+                # Si ya existe en el diccionario, ACUMULAMOS el stock
+                inventario_agrupado[clave]["cantidad"] += float(m.stock_restante or 0)
+                inventario_agrupado[clave]["ids_agrupados"].append(m.id_movimiento)
         
         lista_inventario = []
-        for m in movimientos:
-            # 🚨 NUEVO: Buscamos el último conteo físico registrado para este lote específico
+        for val in inventario_agrupado.values():
+            # Creamos un ID compuesto para que el frontend lo reconozca (Ej: "12_15_18")
+            id_grupo = "_".join(map(str, val["ids_agrupados"]))
+            
+            # Buscamos si ya se auditó este grupo de lotes exacto
+            texto_busqueda = f"%Lotes IDs: {', '.join(map(str, val['ids_agrupados']))}%"
             ultimo_conteo = InventarioAuditoria.query.filter(
-                InventarioAuditoria.observaciones.like(f"%Lote ID: {m.id_movimiento}%")
+                InventarioAuditoria.observaciones.like(texto_busqueda)
             ).order_by(InventarioAuditoria.id_auditoria.desc()).first()
             
-            # Si hay conteo, lo pasamos como float. Si no, lo mandamos vacío.
             conteo_val = float(ultimo_conteo.conteo_fisico) if ultimo_conteo else ""
-
-            lista_inventario.append({
-                "id_movimiento": m.id_movimiento,
-                "codigo": m.producto_rel.codigo_identificador,
-                "nombre": m.producto_rel.nombre_prod,
-                "talla": m.talla if m.talla else "-",
-                "categoria": m.producto_rel.categoria.tipo_categoria,
-                "unidad": m.producto_rel.unidad_medida,
-                "precio_igv": float(m.precio_unitario or m.producto_rel.precio_igv or 0.00),
-                "cantidad": float(m.stock_restante or 0),
-                "fecha_ingreso": m.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_ingreso else "-",
-                "proveedor": m.entrada_rel.proveedor.razon_social if (m.entrada_rel and m.entrada_rel.proveedor) else "-",
-                "conteo_fisico": conteo_val
-            })
+            
+            val["id_movimiento"] = id_grupo
+            val["conteo_fisico"] = conteo_val
+            
+            del val["ids_agrupados"] # Limpiamos antes de enviar al frontend
+            lista_inventario.append(val)
 
         # ==========================================
         # LISTA HISTÓRICA DE ENTRADAS
@@ -8727,32 +8756,34 @@ def guardar_inventario():
 @app.route('/almacen/guardar-conteo-fisico', methods=['POST'])
 def guardar_conteo_fisico():
     data = request.get_json()
-    # El JS envía el 'idMov' bajo el key 'id_producto'
-    id_mov = data.get('id_producto') 
+    id_grupo = str(data.get('id_producto')) # El JS envía '14_15_16'
     conteo = data.get('conteo_fisico')
     
-    if not id_mov or conteo is None:
+    if not id_grupo or conteo is None:
         return jsonify({"success": False, "message": "Datos incompletos."}), 400
         
-    # 🚨 LA CORRECCIÓN CLAVE: Buscamos en MovimientoDetalle, NO en Producto
-    movimiento = MovimientoDetalle.query.get(id_mov)
-    if not movimiento:
-        return jsonify({"success": False, "message": "Lote no encontrado."}), 404
-
     try:
         conteo_float = float(conteo)
-        # Comparamos contra el stock de ESTE lote específico
-        stock_actual = float(movimiento.stock_restante or 0)
+        
+        # Extraer todos los IDs de los lotes que fueron agrupados en pantalla
+        lotes_ids = [int(x) for x in id_grupo.split('_')]
+        
+        lotes = MovimientoDetalle.query.filter(MovimientoDetalle.id_movimiento.in_(lotes_ids)).all()
+        if not lotes:
+            return jsonify({"success": False, "message": "Lotes no encontrados."}), 404
+            
+        # Sumar el stock real de todos los lotes del grupo para compararlo
+        stock_actual = sum(float(l.stock_restante or 0) for l in lotes)
         diferencia = conteo_float - stock_actual
         
-        # Guardamos la auditoría
+        # Guardamos la auditoría general
         nueva_auditoria = InventarioAuditoria(
-            id_producto=movimiento.id_producto, # Ahora sí sacamos el ID del producto real
-            id_empleado_auditor=1, # Ojo: Asegúrate de poner tu session['user_id'] si tienes login
+            id_producto=lotes[0].id_producto, 
+            id_empleado_auditor=1, # Reemplazar con session['user_id'] si usas login
             stock_sistema=stock_actual,
             conteo_fisico=conteo_float,
             diferencia=diferencia,
-            observaciones=f"Conteo físico desde tabla interactiva (Lote ID: {id_mov})"
+            observaciones=f"Conteo físico agrupado (Lotes IDs: {', '.join(map(str, lotes_ids))})"
         )
         db.session.add(nueva_auditoria)
         db.session.commit()
@@ -9324,16 +9355,48 @@ def exportar_excel_kardex():
 
 @app.route('/almacen/api/exportar-excel-inventario', methods=['GET'])
 def exportar_excel_inventario():
-    # 1. Recibimos la búsqueda, limpiamos espacios extra y convertimos a mayúsculas
     search = request.args.get('search', '', type=str).strip().upper()
-    
-    # 2. Separamos la búsqueda en palabras individuales (ej: ["CINTA", "NEGRA"])
     palabras_busqueda = search.split() if search else []
 
-    # Traemos todos los lotes de entrada
-    movimientos = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).all()
+    # Extraemos solo lotes activos y con stock
+    movimientos = MovimientoDetalle.query.filter(
+        MovimientoDetalle.tipo_movimiento == 'ENTRADA',
+        MovimientoDetalle.stock_restante > 0,
+        MovimientoDetalle.estado == 'ACTIVO'
+    ).order_by(MovimientoDetalle.id_movimiento.desc()).all()
+
+    # Mismo algoritmo de agrupación
+    inventario_agrupado = {}
+    for m in movimientos:
+        id_prod = m.id_producto
+        talla_str = m.talla if m.talla else "-"
+        prov_nombre = m.entrada_rel.proveedor.razon_social if (m.entrada_rel and m.entrada_rel.proveedor) else "-"
+        precio_val = float(m.precio_unitario or m.producto_rel.precio_igv or 0.00)
+        
+        clave = (id_prod, talla_str, prov_nombre, precio_val)
+        
+        if clave not in inventario_agrupado:
+            inventario_agrupado[clave] = {
+                "codigo": m.producto_rel.codigo_identificador or "-",
+                "nombre": m.producto_rel.nombre_prod or "-",
+                "talla": talla_str,
+                "proveedor": prov_nombre,
+                "categoria": m.producto_rel.categoria.tipo_categoria or "-",
+                "unidad": m.producto_rel.unidad_medida or "-",
+                "stock": float(m.stock_restante or 0),
+                "precio": precio_val,
+                "fecha_ingreso": m.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_ingreso else "-",
+                "ids_agrupados": [m.id_movimiento]
+            }
+        else:
+            inventario_agrupado[clave]["stock"] += float(m.stock_restante or 0)
+            inventario_agrupado[clave]["ids_agrupados"].append(m.id_movimiento)
 
     # Configurar Excel
+    import openpyxl
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    from io import BytesIO
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Inventario Físico"
@@ -9344,7 +9407,6 @@ def exportar_excel_inventario():
     align_left = Alignment(horizontal="left", vertical="center")
     border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-    # Cabeceras (🚨 12 columnas en total ahora)
     headers = [
         "Fecha Ingreso", "Cód. Identificador", "Nombre Producto", "Talla", "Proveedor", 
         "Categoría", "Unidad", "Stock", "Precio (S/)", "Total (S/)", 
@@ -9361,89 +9423,64 @@ def exportar_excel_inventario():
     suma_precio = 0
     suma_total = 0
 
-    # Llenar datos
-    for m in movimientos:
-        fecha = m.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_ingreso else "-"
-        codigo = m.producto_rel.codigo_identificador or "-"
-        nombre = m.producto_rel.nombre_prod or "-"
-        
-        # 🚨 EXTRAEMOS LA TALLA AQUÍ
-        talla_val = m.talla if m.talla else "-"
-        
-        proveedor = m.entrada_rel.proveedor.razon_social if m.entrada_rel and m.entrada_rel.proveedor else "-"
-        categoria = m.producto_rel.categoria.tipo_categoria or "-"
-        unidad = m.producto_rel.unidad_medida or "-"
-        
-        stock = float(m.stock_restante or 0)
-        precio = float(m.precio_unitario or m.producto_rel.precio_igv or 0)
-        total = stock * precio
-
-        # Buscar el último conteo físico
+    for val in inventario_agrupado.values():
+        # Buscar auditoría para el grupo
+        texto_busqueda = f"%Lotes IDs: {', '.join(map(str, val['ids_agrupados']))}%"
         ultimo_conteo = InventarioAuditoria.query.filter(
-            InventarioAuditoria.observaciones.like(f"%Lote ID: {m.id_movimiento}%")
+            InventarioAuditoria.observaciones.like(texto_busqueda)
         ).order_by(InventarioAuditoria.id_auditoria.desc()).first()
         
         conteo_val = float(ultimo_conteo.conteo_fisico) if ultimo_conteo else ""
-        diferencia = (conteo_val - stock) if conteo_val != "" else ""
+        stock_fila = val["stock"]
+        precio_fila = val["precio"]
+        total_fila = stock_fila * precio_fila
+        diferencia = (conteo_val - stock_fila) if conteo_val != "" else ""
 
-        # ==============================================================
-        # 🚨 NUEVO FILTRO INTELIGENTE: Búsqueda por múltiples palabras
-        # ==============================================================
+        # FILTRO INTELIGENTE
         if palabras_busqueda:
-            fila_texto = f"{fecha} {codigo} {nombre} {talla_val} {proveedor} {categoria}".upper()
-            # Validamos que TODAS las palabras buscadas existan en la fila
-            # Si alguna falta, saltamos a la siguiente fila sin procesarla
+            fila_texto = f"{val['fecha_ingreso']} {val['codigo']} {val['nombre']} {val['talla']} {val['proveedor']} {val['categoria']}".upper()
             if not all(palabra in fila_texto for palabra in palabras_busqueda):
                 continue 
 
-        # Sumatorias
-        suma_precio += precio
-        suma_total += total
+        suma_precio += precio_fila
+        suma_total += total_fila
         
-        # Formato de la diferencia visual
         dif_str = ""
-        dif_color = "475569" # Gris
+        dif_color = "475569"
         if diferencia != "":
             dif_str = f"+{diferencia}" if diferencia >= 0 else str(diferencia)
-            if diferencia > 0: dif_color = "10B981" # Verde
-            elif diferencia < 0: dif_color = "EF4444" # Rojo
+            if diferencia > 0: dif_color = "10B981"
+            elif diferencia < 0: dif_color = "EF4444"
 
-        # 🚨 AGREGAMOS LA TALLA EN EL ARRAY (Es el índice 3)
-        row_data = [fecha, codigo, nombre, talla_val, proveedor, categoria, unidad, stock, precio, total, conteo_val, dif_str]
+        row_data = [
+            val["fecha_ingreso"], val["codigo"], val["nombre"], val["talla"], 
+            val["proveedor"], val["categoria"], val["unidad"], stock_fila, 
+            precio_fila, total_fila, conteo_val, dif_str
+        ]
         ws.append(row_data)
 
-        # Aplicar estilos a la fila recién agregada
         current_row = ws[ws.max_row]
         for idx, cell in enumerate(current_row):
             cell.border = border_thin
-            
-            # 🚨 Los índices se movieron. 2 es Nombre, 4 es Proveedor
             cell.alignment = align_left if idx in [2, 4] else align_center 
             
-            # 🚨 Precio y Total ahora son índices 8 y 9
             if idx in [8, 9]: 
                 cell.number_format = '"S/" #,##0.00'
-                
-            # 🚨 Diferencia ahora es índice 11
             if idx == 11 and dif_str != "":
                 cell.font = Font(color=dif_color, bold=True)
 
-    # Agregar fila de Totales Generales al final (🚨 Ahora son 12 casilleros, se movieron los totales a la derecha)
+    # Totales Generales
     ws.append(["", "", "", "", "", "", "", "TOTALES:", suma_precio, suma_total, "", ""])
     last_row = ws[ws.max_row]
-    
-    # Índice 7 es la palabra "TOTALES:"
     last_row[7].font = Font(bold=True) 
     last_row[7].alignment = Alignment(horizontal="right")
     
-    # Índices 8 y 9 son los números de los totales
     for idx in [8, 9]:
         last_row[idx].font = Font(color="0369A1", bold=True)
         last_row[idx].number_format = '"S/" #,##0.00'
         last_row[idx].border = border_thin
         last_row[idx].alignment = align_center
 
-    # Autoajuste de columnas (🚨 Agregada la letra L y ajustados todos los anchos)
     column_widths = {
         'A': 15, 'B': 15, 'C': 40, 'D': 10, 'E': 35, 'F': 20, 
         'G': 10, 'H': 10, 'I': 15, 'J': 15, 'K': 15, 'L': 15
@@ -9451,7 +9488,6 @@ def exportar_excel_inventario():
     for col, width in column_widths.items():
         ws.column_dimensions[col].width = width
 
-    # Preparar archivo para descarga
     output = BytesIO()
     wb.save(output)
     output.seek(0)
@@ -9460,7 +9496,7 @@ def exportar_excel_inventario():
         output, 
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
         as_attachment=True, 
-        download_name="Reporte_Inventario_Fisico.xlsx"
+        download_name="Reporte_Inventario_Fisico_Agrupado.xlsx"
     )
 
 
