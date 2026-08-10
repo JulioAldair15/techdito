@@ -10855,7 +10855,7 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
                 if cont['DT'] >= 2: 
                     motivos.append(f"{cont['DT']} Domingos Trabajados")
                 if cont['DC'] >= 2: 
-                    motivos.append(f"{cont['DC']} Descansos Compensatorios") # Cambié el string porque tenías DT aquí repetido
+                    motivos.append(f"{cont['DC']} Descansos Compensatorios") 
                 
                 if motivos:
                     emp = Empleado.query.filter_by(id_empleado=id_emp).first()
@@ -10879,9 +10879,11 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
         # ---------------------------------------------------------
         # 2. LÓGICA ORIGINAL SUPERVISORES (10 días útiles hacia atrás)
         # ---------------------------------------------------------
-        print("🧑‍💼 [ALERTAS - SUPERVISOR] Preparando evaluación de 10 días útiles.")
+        print("🧑‍💼 [ALERTAS - SUPERVISOR] Preparando evaluación de 10 días útiles (omitiendo hoy).")
         fechas_a_evaluar = []
-        dias_atras = 0
+        
+        # 👇 CAMBIO AQUI 👇: Empezamos en 1 para saltarnos la fecha actual (hoy)
+        dias_atras = 1  
         dias_agregados = 0
         
         while dias_agregados < 10:
