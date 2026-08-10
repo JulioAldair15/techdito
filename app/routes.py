@@ -10756,14 +10756,14 @@ def obtener_detalle_carta(carta_id):
 
 ########## SISTEMA DE ALERTAS ###########
 def obtener_areas_por_usuario(user_name):
-    print(f"--- DEBUG ALERTAS: Obteniendo áreas para usuario: {user_name} ---")
+    print(f"🔍 [ALERTAS] Iniciando obtener_areas_por_usuario para: '{user_name}'")
     
     if user_name in ('supervisor1', 'administrativo_yta'):
         areas = [
             'ADMINISTRATIVO', 'CATASTRO', 'DISTRIBUCION', 'INSPECCIONES', 
             'MEDICION', 'NORTE', 'PERSUASIVAS', 'RECAUDACION', 'TOMA DE ESTADO'
         ]
-        print(f"DEBUG ALERTAS: Usuario {user_name} autorizando áreas: {areas}")
+        print(f"✅ [ALERTAS] Usuario general ({user_name}) autorizado para todas las áreas: {len(areas)} áreas.")
         return areas
 
     mapeo_areas = {
@@ -10782,29 +10782,120 @@ def obtener_areas_por_usuario(user_name):
     }
     
     areas = mapeo_areas.get(user_name, [])
-    print(f"DEBUG ALERTAS: Áreas encontradas en mapeo: {areas}")
+    print(f"✅ [ALERTAS] Áreas encontradas en mapeo para '{user_name}': {areas}")
     return areas
 
 
 def generar_alertas_asistencia(user_name, fecha_consulta=None):
-    print(f"--- DEBUG ALERTAS: Iniciando generación de alertas para {user_name} ---")
-    
-    if not fecha_consulta:
-        fecha_consulta = datetime.now().date() 
-    
+    print(f"🚀 [ALERTAS] Iniciando generación de alertas para '{user_name}'")
     alertas = []
     
-    # ---------------------------------------------------------
-    # 1. LÓGICA RRHH: VENTANA MÓVIL DE LOS ÚLTIMOS 25 DÍAS
-    # ---------------------------------------------------------
-    if user_name == 'administrativo_yta':
-        print("DEBUG ALERTAS: Usuario es RRHH. Evaluando acumulados de los últimos 25 días.")
+    try:
+        if not fecha_consulta:
+            fecha_consulta = datetime.now().date() 
+            print(f"📅 [ALERTAS] Fecha de consulta no provista, usando la actual: {fecha_consulta}")
+        else:
+            print(f"📅 [ALERTAS] Fecha de consulta recibida: {fecha_consulta}")
+
+        # ---------------------------------------------------------
+        # 1. LÓGICA RRHH: VENTANA MÓVIL DE LOS ÚLTIMOS 25 DÍAS
+        # ---------------------------------------------------------
+        if user_name == 'administrativo_yta':
+            print("👥 [ALERTAS - RRHH] Evaluando acumulados de los últimos 25 días.")
+            
+            fecha_inicio_rrhh = fecha_consulta - timedelta(days=25)
+            print(f"🕒 [ALERTAS - RRHH] Rango de evaluación: {fecha_inicio_rrhh} hasta {fecha_consulta}")
+            
+            acumulados = {}
+            siglas_rrhh = ['F', 'LSG', 'V', 'DM', 'DC', 'DT', 'LG', 'FG', 'LP']
+            
+            modelos_asistencia = [
+                EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
+                EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, 
+                EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
+            ]
+            
+            for modelo in modelos_asistencia:
+                print(f"📊 [ALERTAS - RRHH] Consultando base de datos: {modelo.__name__}")
+                registros = db.session.query(modelo.id_empleado, modelo.estado).filter(
+                    modelo.fec_asist >= fecha_inicio_rrhh,
+                    modelo.fec_asist <= fecha_consulta,
+                    modelo.estado.isnot(None)
+                ).all()
+                
+                print(f"   -> Encontrados {len(registros)} registros evaluables en {modelo.__name__}")
+                
+                for id_emp, estado in registros:
+                    estado_limpio = str(estado).strip().upper()
+                    if estado_limpio in siglas_rrhh:
+                        if id_emp not in acumulados:
+                            acumulados[id_emp] = {s: 0 for s in siglas_rrhh}
+                        acumulados[id_emp][estado_limpio] += 1
+                        
+            print(f"📈 [ALERTAS - RRHH] Empleados con acumulados detectados: {len(acumulados)}")
+
+            for id_emp, cont in acumulados.items():
+                motivos = []
+                
+                if cont['F'] >= 3: 
+                    motivos.append(f"{cont['F']} Faltas")
+                if cont['DM'] >= 4: 
+                    motivos.append(f"{cont['DM']} días de Desc. Médico")
+                if cont['LSG'] >= 3: 
+                    motivos.append(f"{cont['LSG']} Lic. Sin Goce")
+                if cont['DT'] >= 2: 
+                    motivos.append(f"{cont['DT']} Domingos Trabajados")
+                if cont['DC'] >= 2: 
+                    motivos.append(f"{cont['DC']} Descansos Compensatorios") # Cambié el string porque tenías DT aquí repetido
+                
+                if motivos:
+                    emp = Empleado.query.filter_by(id_empleado=id_emp).first()
+                    if emp:
+                        nombres = emp.nombres or ''
+                        apellidos = getattr(emp, 'apellidos', '') or ''
+                        nombre_completo = f"{apellidos} {nombres}".strip()
+                        
+                        motivos_str = " y ".join(motivos)
+                        print(f"⚠️ [ALERTAS - RRHH] Generando alerta para {nombre_completo} (ID: {id_emp}) - Motivo: {motivos_str}")
+                        
+                        alertas.append({
+                            "tipo": "rrhh",
+                            "id_empleado": id_emp,
+                            "fecha_cruda": f"Últimos 25 días", 
+                            "mensaje": f"⚠️ ALERTA: {nombre_completo} acumula {motivos_str}."
+                        })
+                    else:
+                        print(f"❌ [ALERTAS - RRHH] Empleado con ID {id_emp} no encontrado en la tabla maestra.")
+
+        # ---------------------------------------------------------
+        # 2. LÓGICA ORIGINAL SUPERVISORES (10 días útiles hacia atrás)
+        # ---------------------------------------------------------
+        print("🧑‍💼 [ALERTAS - SUPERVISOR] Preparando evaluación de 10 días útiles.")
+        fechas_a_evaluar = []
+        dias_atras = 0
+        dias_agregados = 0
         
-        # Retrocedemos 25 días exactos desde hoy
-        fecha_inicio_rrhh = fecha_consulta - timedelta(days=25)
+        while dias_agregados < 10:
+            fecha_eval = fecha_consulta - timedelta(days=dias_atras)
+            if fecha_eval.weekday() != 6:  # Excluir domingos
+                fechas_a_evaluar.append(fecha_eval)
+                dias_agregados += 1
+            dias_atras += 1
+
+        print(f"📆 [ALERTAS - SUPERVISOR] Fechas a evaluar (sin domingos): {[f.strftime('%Y-%m-%d') for f in fechas_a_evaluar]}")
+
+        areas_del_supervisor = obtener_areas_por_usuario(user_name)
+        if not areas_del_supervisor:
+            print("🛑 [ALERTAS - SUPERVISOR] No hay áreas asignadas. Retornando alertas generadas hasta ahora.")
+            return alertas 
+
+        empleados_a_cargo = Empleado.query.filter(
+            Empleado.area.in_(areas_del_supervisor), 
+            Empleado.estado == 'ACTIVO'
+        ).all()
         
-        acumulados = {}
-        siglas_rrhh = ['F', 'LSG', 'V', 'DM', 'DC', 'DT', 'LG', 'FG', 'LP']
+        ids_a_cargo = {emp.id_empleado for emp in empleados_a_cargo}
+        print(f"👥 [ALERTAS - SUPERVISOR] Empleados ACTIVOS a cargo encontrados: {len(ids_a_cargo)}")
         
         modelos_asistencia = [
             EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
@@ -10812,149 +10903,92 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
             EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
         ]
         
+        asistencias_validas_por_fecha = {fecha: set() for fecha in fechas_a_evaluar}
+        
         for modelo in modelos_asistencia:
-            registros = db.session.query(modelo.id_empleado, modelo.estado).filter(
-                modelo.fec_asist >= fecha_inicio_rrhh,
-                modelo.fec_asist <= fecha_consulta,
-                modelo.estado.isnot(None)
+            print(f"🔎 [ALERTAS - SUPERVISOR] Consultando asistencias en {modelo.__name__}...")
+            registros = db.session.query(modelo.fec_asist, modelo.id_empleado).filter(
+                modelo.fec_asist.in_(fechas_a_evaluar),
+                modelo.estado.isnot(None),       
+                modelo.estado != '',             
+                modelo.estado != ' '             
             ).all()
             
-            for id_emp, estado in registros:
-                estado_limpio = str(estado).strip().upper()
-                if estado_limpio in siglas_rrhh:
-                    if id_emp not in acumulados:
-                        acumulados[id_emp] = {s: 0 for s in siglas_rrhh}
-                    acumulados[id_emp][estado_limpio] += 1
-                    
-        # Evaluar límites en esos 25 días
-        for id_emp, cont in acumulados.items():
-            motivos = []
+            for fecha_bd, emp_id in registros:
+                if fecha_bd in asistencias_validas_por_fecha:
+                    asistencias_validas_por_fecha[fecha_bd].add(emp_id)
+
+        for fecha in fechas_a_evaluar:
+            ids_con_asistencia_valida = asistencias_validas_por_fecha[fecha]
+            ids_faltantes = ids_a_cargo - ids_con_asistencia_valida
             
-            if cont['F'] >= 3: # 3 o más faltas
-                motivos.append(f"{cont['F']} Faltas")
-            if cont['DM'] >= 4: # 4 o más días médicos
-                motivos.append(f"{cont['DM']} días de Desc. Médico")
-            if cont['LSG'] >= 3: 
-                motivos.append(f"{cont['LSG']} Lic. Sin Goce")
-            if cont['DT'] >= 2: 
-                motivos.append(f"{cont['DT']} Domingos Trabajados")
-            if cont['DC'] >= 2: 
-                motivos.append(f"{cont['DT']} Domingos Trabajados")
-            
-            if motivos:
-                emp = Empleado.query.filter_by(id_empleado=id_emp).first()
-                if emp:
-                    nombres = emp.nombres or ''
-                    apellidos = getattr(emp, 'apellidos', '') or ''
-                    nombre_completo = f"{apellidos} {nombres}".strip()
-                    
-                    motivos_str = " y ".join(motivos)
-                    
-                    alertas.append({
-                        "tipo": "rrhh",
-                        "id_empleado": id_emp,
-                        # Mandamos este string para que tu modal muestre el periodo evaluado
-                        "fecha_cruda": f"Últimos 25 días", 
-                        "mensaje": f"⚠️ ALERTA: {nombre_completo} acumula {motivos_str}."
-                    })
-        
-        return alertas 
+            if ids_faltantes:
+                str_fecha = fecha.strftime('%d-%m-%Y')
+                print(f"🚨 [ALERTAS - SUPERVISOR] Fecha {str_fecha} -> {len(ids_faltantes)} empleados sin asistencia validada.")
+                
+                for emp in empleados_a_cargo:
+                    if emp.id_empleado in ids_faltantes:
+                        nombres = emp.nombres or ''
+                        apellidos = getattr(emp, 'apellidos', '') or ''
+                        nombre_completo = f"{apellidos} {nombres}".strip()
+                        
+                        alertas.append({
+                            "tipo": "advertencia",
+                            "id_empleado": emp.id_empleado,
+                            "fecha_cruda": fecha.strftime('%Y-%m-%d'),
+                            "mensaje": f"Sin asistencia registrada el día {str_fecha} para {nombre_completo}."
+                        })
+            else:
+                print(f"✅ [ALERTAS - SUPERVISOR] Fecha {fecha.strftime('%d-%m-%Y')} -> 100% de asistencias registradas.")
 
-    # ---------------------------------------------------------
-    # 2. LÓGICA ORIGINAL SUPERVISORES (10 días útiles hacia atrás)
-    # ---------------------------------------------------------
-    fechas_a_evaluar = []
-    dias_atras = 0
-    dias_agregados = 0
-    
-    while dias_agregados < 10:
-        fecha_eval = fecha_consulta - timedelta(days=dias_atras)
-        if fecha_eval.weekday() != 6:  # Excluir domingos
-            fechas_a_evaluar.append(fecha_eval)
-            dias_agregados += 1
-        dias_atras += 1
+        print(f"🏁 [ALERTAS] Proceso terminado con éxito. Total alertas generadas: {len(alertas)}")
+        return alertas
 
-    areas_del_supervisor = obtener_areas_por_usuario(user_name)
-    if not areas_del_supervisor:
-        return [] 
+    except Exception as e:
+        print(f"❌ [ERROR CRÍTICO - ALERTAS] Hubo un fallo en generar_alertas_asistencia: {e}")
+        traceback.print_exc()  # Esto imprimirá la línea exacta donde falló el código
+        return []
 
-    empleados_a_cargo = Empleado.query.filter(
-        Empleado.area.in_(areas_del_supervisor), 
-        Empleado.estado == 'ACTIVO'
-    ).all()
-    
-    ids_a_cargo = {emp.id_empleado for emp in empleados_a_cargo}
-    
-    modelos_asistencia = [
-        EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
-        EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, 
-        EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
-    ]
-    
-    asistencias_validas_por_fecha = {fecha: set() for fecha in fechas_a_evaluar}
-    
-    for modelo in modelos_asistencia:
-        registros = db.session.query(modelo.fec_asist, modelo.id_empleado).filter(
-            modelo.fec_asist.in_(fechas_a_evaluar),
-            modelo.estado.isnot(None),       
-            modelo.estado != '',             
-            modelo.estado != ' '             
-        ).all()
-        
-        for fecha_bd, emp_id in registros:
-            if fecha_bd in asistencias_validas_por_fecha:
-                asistencias_validas_por_fecha[fecha_bd].add(emp_id)
-
-    for fecha in fechas_a_evaluar:
-        ids_con_asistencia_valida = asistencias_validas_por_fecha[fecha]
-        ids_faltantes = ids_a_cargo - ids_con_asistencia_valida
-        
-        if ids_faltantes:
-            str_fecha = fecha.strftime('%d-%m-%Y')
-            
-            for emp in empleados_a_cargo:
-                if emp.id_empleado in ids_faltantes:
-                    nombres = emp.nombres or ''
-                    apellidos = getattr(emp, 'apellidos', '') or ''
-                    nombre_completo = f"{apellidos} {nombres}".strip()
-                    
-                    alertas.append({
-                        "tipo": "advertencia",
-                        "id_empleado": emp.id_empleado,
-                        "fecha_cruda": fecha.strftime('%Y-%m-%d'),
-                        "mensaje": f"Sin asistencia registrada el día {str_fecha} para {nombre_completo}."
-                    })
-                    
-    return alertas
 
 @app.route('/api/detalle_alerta')
 def api_detalle_alerta():
-    id_empleado = request.args.get('id')
-    fecha_str = request.args.get('fecha')
-    
-    if not id_empleado or not fecha_str:
-        return jsonify({"error": "Faltan datos"}), 400
+    print("\n--- 📞 [API] Petición a /api/detalle_alerta iniciada ---")
+    try:
+        id_empleado = request.args.get('id')
+        fecha_str = request.args.get('fecha')
         
-    empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-    if not empleado:
-        return jsonify({"error": "Empleado no encontrado"}), 404
+        print(f"📥 [API] Parámetros recibidos -> ID: {id_empleado}, Fecha: {fecha_str}")
         
-    nombres = empleado.nombres or ''
-    apellidos = getattr(empleado, 'apellidos', '') or ''
-    
-    # Extraemos el teléfono y le agregamos el +51 si no lo tiene
-    telefono = getattr(empleado, 'telefono', '') or ''
-    telefono = telefono.strip()
-    if telefono and not telefono.startswith('51') and not telefono.startswith('+51'):
-        telefono = f"51{telefono}"
+        if not id_empleado or not fecha_str:
+            print("❌ [API] Error: Faltan datos (id o fecha no enviados).")
+            return jsonify({"error": "Faltan datos"}), 400
+            
+        empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
         
-    data = {
-        "nombre_completo": f"{apellidos} {nombres}".strip(),
-        "area": empleado.area or "Sin área",
-        "fecha_incidencia": fecha_str,
-        "telefono": telefono
-        # Ya NO mandamos el "estado_actual" estático desde aquí.
-    }
-    
-    return jsonify(data)
-
+        if not empleado:
+            print(f"❌ [API] Error: Empleado con ID {id_empleado} no encontrado en la base de datos.")
+            return jsonify({"error": "Empleado no encontrado"}), 404
+            
+        nombres = empleado.nombres or ''
+        apellidos = getattr(empleado, 'apellidos', '') or ''
+        
+        # Extraemos el teléfono y le agregamos el +51 si no lo tiene
+        telefono = getattr(empleado, 'telefono', '') or ''
+        telefono = telefono.strip()
+        if telefono and not telefono.startswith('51') and not telefono.startswith('+51'):
+            telefono = f"51{telefono}"
+            
+        data = {
+            "nombre_completo": f"{apellidos} {nombres}".strip(),
+            "area": empleado.area or "Sin área",
+            "fecha_incidencia": fecha_str,
+            "telefono": telefono
+        }
+        
+        print(f"✅ [API] Respuesta exitosa preparada: {data}")
+        return jsonify(data)
+        
+    except Exception as e:
+        print(f"❌ [ERROR CRÍTICO - API] Fallo al obtener detalles de alerta: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno del servidor", "detalle": str(e)}), 500
