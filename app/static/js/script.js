@@ -18458,3 +18458,177 @@ document.addEventListener('click', function(e) {
         listaFiltro.style.display = 'none';
     }
 });
+
+
+
+
+//////////////// SISTEMA DE ALERTAS //////////////////
+
+// 1. Lógica del Menú Desplegable (Cierra al hacer clic afuera)
+function toggleAlertas(event) {
+    const panelAlertas = document.getElementById('panel-alertas');
+    const campanaContainer = document.getElementById('campana-noti'); // Importante: Asegúrate de que el div de tu campana tenga id="campana-noti"
+    
+    if (!panelAlertas || !campanaContainer) return;
+
+    const isVisible = panelAlertas.style.display === 'block';
+    panelAlertas.style.display = isVisible ? 'none' : 'block';
+    
+    if (!isVisible) {
+        campanaContainer.classList.add('active');
+    } else {
+        campanaContainer.classList.remove('active');
+    }
+    
+    if (event) {
+        event.stopPropagation(); // Detiene el clic para que el document no lo detecte y lo cierre al instante
+    }
+}
+
+// Listener global para cerrar la campana al hacer clic en CUALQUIER lugar
+document.addEventListener('click', function(event) {
+    const panelAlertas = document.getElementById('panel-alertas');
+    const campanaContainer = document.getElementById('campana-noti');
+    
+    if (panelAlertas && campanaContainer) {
+        // Si el panel está abierto y el clic no fue ni en la campana ni dentro del panel
+        if (panelAlertas.style.display === 'block' && !campanaContainer.contains(event.target) && !panelAlertas.contains(event.target)) {
+            panelAlertas.style.display = 'none';
+            campanaContainer.classList.remove('active');
+        }
+    }
+});
+
+// 2. Lógica del Sistema de Toasts Flotantes Futuristas
+function mostrarToast(alertaData, duracion = 5000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    
+    // Verificamos si recibimos el objeto completo (alerta real) o solo un texto (mensaje de excedente)
+    const esObjeto = typeof alertaData === 'object';
+    const textoMensaje = esObjeto ? alertaData.mensaje : alertaData;
+    
+    // Crear el elemento toast
+    const toast = document.createElement('div');
+    toast.className = 'toast-alerta';
+    toast.innerHTML = `
+        <div class="toast-icon">
+            <i class="fa-solid fa-bell-slash"></i>
+        </div>
+        <div class="toast-content">
+            ${textoMensaje}
+        </div>
+    `;
+    
+    // ---> AQUÍ AGREGAMOS EL CLIC Y LOS DATOS <---
+    if (esObjeto && alertaData.id_empleado && alertaData.fecha_cruda) {
+        toast.style.cursor = 'pointer'; // Manito para indicar que es clickeable
+        toast.onclick = function() {
+            abrirDetalleAlerta(alertaData.id_empleado, alertaData.fecha_cruda);
+        };
+        // Efecto hover sutil con CSS en línea para que se vea más interactivo
+        toast.onmouseover = () => toast.style.transform = 'scale(1.02)';
+        toast.onmouseout = () => toast.style.transform = 'scale(1)';
+        toast.style.transition = 'transform 0.2s ease';
+    }
+    
+    // Agregar al contenedor (la animación CSS se encarga de la entrada)
+    container.appendChild(toast);
+    
+    // Temporizador para la animación de salida (hacia arriba)
+    setTimeout(() => {
+        toast.style.animation = 'slideOutUp 0.5s ease forwards';
+        // Eliminar del DOM después de que termine la animación
+        setTimeout(() => {
+            toast.remove();
+        }, 500);
+    }, duracion);
+}
+
+// 3. Disparador Automático de Alertas al iniciar la app
+window.addEventListener('DOMContentLoaded', () => {
+    // Leemos la variable global creada en el HTML
+    const alertasPendientes = window.alertasSistema || [];
+    
+    if (alertasPendientes.length > 0) {
+        // Límite de 3 notificaciones flotantes (Regla UX para no saturar)
+        const maxToasts = Math.min(alertasPendientes.length, 3);
+        
+        for(let i = 0; i < maxToasts; i++) {
+            // Efecto cascada visual
+            setTimeout(() => {
+                mostrarToast(alertasPendientes[i], 6000 + (i * 1000));
+            }, i * 600); 
+        }
+
+        // Si exceden el límite, mostramos un mensaje aglomerado final
+        if (alertasPendientes.length > 3) {
+            setTimeout(() => {
+                const excedente = alertasPendientes.length - 3;
+                mostrarToast(`... y ${excedente} alertas más. Revisa la campana para ver el detalle completo.`, 8000);
+            }, maxToasts * 600);
+        }
+    }
+});
+
+
+// Función para abrir el modal y consultar datos
+function abrirDetalleAlerta(id_empleado, fecha_cruda) {
+    // 1. Mostrar el modal inmediatamente
+    document.getElementById('modalDetalleAlerta').style.display = 'flex';
+    document.getElementById('modalNombre').innerText = "Cargando...";
+    document.getElementById('modalArea').innerText = "Buscando...";
+    
+    // 2. Extraer el "Diagnóstico Inteligente" directamente de los datos que ya cargó Jinja2
+    let alertaSeleccionada = window.alertasSistema.find(a => a.id_empleado === id_empleado && a.fecha_cruda === fecha_cruda);
+    let mensajeReal = alertaSeleccionada ? alertaSeleccionada.mensaje : "Verificando incidencias...";
+    
+    // Inyectar el texto real en el HTML (¡Adiós al "Falta o registro vacío"!)
+    document.getElementById('modalEstado').innerText = mensajeReal;
+    document.getElementById('modalFecha').innerText = fecha_cruda;
+    
+    // 3. Consultar la API para traer datos personales y activar WhatsApp
+    fetch(`/api/detalle_alerta?id=${id_empleado}&fecha=${fecha_cruda}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) return;
+        
+        // Llenar tarjeta personal
+        document.getElementById('modalNombre').innerText = data.nombre_completo;
+        document.getElementById('modalArea').innerText = data.area;
+        document.getElementById('modalAvatar').innerText = data.nombre_completo.charAt(0).toUpperCase();
+        
+        // Activar Botón de WhatsApp
+        let btnWsp = document.getElementById('modalWhatsApp');
+        if (data.telefono && data.telefono !== '') {
+            btnWsp.style.display = 'block';
+            btnWsp.href = `https://wa.me/${data.telefono}`;
+            btnWsp.innerText = "Contactar por WhatsApp";
+            btnWsp.style.background = "rgba(37, 211, 102, 0.8)";
+            btnWsp.style.pointerEvents = "auto";
+        } else {
+            // Si el operario no tiene teléfono en la BD, deshabilitamos el botón pero lo mostramos
+            btnWsp.style.display = 'block';
+            btnWsp.href = "#";
+            btnWsp.innerText = "Sin número registrado";
+            btnWsp.style.background = "rgba(100, 100, 100, 0.8)";
+            btnWsp.style.pointerEvents = "none";
+        }
+    })
+    .catch(error => {
+        console.error('Error al cargar la API:', error);
+    });
+}
+
+// Función para cerrar
+function cerrarModalAlerta() {
+    document.getElementById('modalDetalleAlerta').style.display = 'none';
+}
+
+// Vinculamos el click a las alertas existentes (Suponiendo que tu div de alerta tiene una clase 'toast-alerta')
+// Asegúrate de imprimir en tu HTML atributos data (data-id y data-fecha) en el div de la alerta.
+document.addEventListener("DOMContentLoaded", function() {
+    // Si estás renderizando las alertas con un bucle Jinja en tu HTML, asegúrate de que el contenedor 
+    // de la alerta tenga el evento onclick="abrirDetalleAlerta('{{ alerta.id_empleado }}', '{{ alerta.fecha_cruda }}')"
+});
+
