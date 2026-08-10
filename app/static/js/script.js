@@ -15897,73 +15897,70 @@ function agregarFilaTemporalSalida() {
 // ==================================================
 // RENDERIZAR TABLA TEMPORAL DE SALIDAS
 // ==================================================
-function renderizarTablaTemporales() {
-    const tbody = document.getElementById('body-tabla-entradas');
+function renderizarTablaTemporalesSalida() {
+    const tbody = document.getElementById('body-tabla-salidas'); // 🚨 Apunta a la tabla correcta
     tbody.innerHTML = '';
 
-    // 1. Si el usuario ESTÁ DIGITANDO
-    if (listaEntradasTemporales.length > 0) {
-        listaEntradasTemporales.forEach(item => {
-            // Evaluamos la observación para evitar errores si viene vacía
-            const observacion = item.obs ? item.obs : '-';
-
+    // 1. Si el usuario ESTÁ DIGITANDO (Temporales)
+    if (listaSalidasTemporales.length > 0) {
+        listaSalidasTemporales.forEach(item => {
+            const obsTexto = item.obs && item.obs.trim() !== '' ? item.obs : '-';
             const fila = `
-                <tr style="background-color: #fffbeb;">
-                    <td>${item.fecha_fac}</td>
-                    <td>${item.fecha_ing}</td>
-                    <td>${item.factura}</td>
-                    <td>${item.guia}</td>
+                <tr style="background-color: #fef2f2;"> <!-- Fondo rojito sutil para temporales -->
+                    <td>${item.fecha}</td>
+                    <td class="alm-text-red alm-bold">-${item.cantidad}</td>
                     <td><span class="alm-badge alm-badge-outline">${item.codigo}</span></td>
-                    <td style="color: #475569; font-weight: 600;">${item.producto_nombre}</td>
-                    
+                    <td class="alm-truncate-prod" title="${item.producto_nombre}" style="color: #475569; font-weight: 600;">${item.producto_nombre}</td>
+                    <td>${item.empleado_nombre}</td>
+                    <td>${item.area}</td>
                     <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${item.talla}</td>
-                    
-                    <td style="font-size: 0.85rem; color: #475569;">${item.empleado_recupero_nombre}</td>
-                    
-                    <td class="alm-text-green alm-bold">+${item.cantidad}</td>
-                    <td class="alm-bold">S/ ${item.precio.toFixed(2)}</td>
-                    <td>${item.proveedor_nombre}</td>
-                    <!-- CORRECCIÓN AQUÍ: Usamos la variable 'observacion' -->
-                    <td class="alm-truncate-obs" title="${observacion !== '-' ? observacion : 'Sin observaciones'}">${observacion}</td>
+                    <td class="alm-truncate-obs" title="${obsTexto !== '-' ? obsTexto : 'Sin observaciones'}">${obsTexto}</td>
                     <td class="alm-text-center">
-                        <button class="alm-icon-btn" style="color: #ef4444;" onclick="eliminarFilaTemporal(${item.idTemporal})" title="Eliminar fila (Temporal)"><i class="fas fa-trash-alt"></i></button>
+                        <button class="alm-icon-btn" style="color: #ef4444;" onclick="eliminarFilaTemporalSalida(${item.idTemporal})" title="Eliminar fila (Temporal)">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
                     </td>
                 </tr>
             `;
             tbody.insertAdjacentHTML('beforeend', fila);
         });
     } 
-    // 2. Si la memoria está VACÍA (HISTÓRICO BD)
+    // 2. Si la memoria está VACÍA (Cargamos el HISTÓRICO BD)
     else {
-        if (!window.historicoEntradas || window.historicoEntradas.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="13" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay historial de entradas. Agregue productos a la lista con el botón (+).</td></tr>`;
+        if (!window.historicoSalidas || window.historicoSalidas.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="9" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay historial de salidas. Agregue productos a la lista con el botón (+).</td></tr>`;
         } else {
-            window.historicoEntradas.forEach(e => {
-                // Evaluamos la observación para el histórico
-                const observacion = e.obs ? e.obs : '-';
-
+            window.historicoSalidas.forEach(s => {
+                const obsTexto = s.obs && s.obs !== '-' ? s.obs : '-';
                 const fila = `
-                    <tr>
-                        <td>${e.fecha_fac}</td>
-                        <td>${e.fecha_ing}</td>
-                        <td>${e.factura}</td>
-                        <td>${e.guia}</td>
-                        <td><span class="alm-badge alm-badge-outline">${e.codigo}</span></td>
-                        <td style="color: #475569; font-weight: 600;">${e.producto}</td>
-                        
-                        <td style="color: #8b5cf6; font-weight: bold; text-align: center;">${e.talla ? e.talla : '-'}</td>
-                        
-                        <td style="font-size: 0.85rem; color: #475569;">${e.empleado_recupero ? e.empleado_recupero : '-'}</td>
-                        
-                        <td class="alm-text-green alm-bold">+${e.cantidad}</td>
-                        <td>S/ ${e.precio ? e.precio.toFixed(2) : '0.00'}</td>
-                        <td>${e.proveedor}</td>
-                        <!-- CORRECCIÓN AQUÍ: Usamos la variable 'observacion' -->
-                        <td id="td-obs-${e.id_mov}" class="alm-truncate-obs" title="${observacion !== '-' ? observacion : 'Sin observaciones'}">${observacion}</td>
+                    <tr id="fila-mov-${s.id_mov}" data-cant="${s.cantidad}" data-obs="${s.obs || ''}" data-talla="${s.talla || '-'}" data-fecha="${s.fecha_salida}">
+                        <td id="td-fecha-${s.id_mov}">${s.fecha_salida}</td>
+                        <td class="alm-text-red alm-bold" id="td-cant-${s.id_mov}">-${s.cantidad}</td>
+                        <td><span class="alm-badge alm-badge-outline">${s.codigo}</span></td>
+                        <td style="color: #475569; font-weight: 600;">${s.producto}</td>
+                        <td>${s.empleado}</td>
+                        <td>${s.area}</td>
+                        <td id="td-talla-${s.id_mov}" style="color: #8b5cf6; font-weight: bold; text-align: center;">${s.talla ? s.talla : '-'}</td>
+                        <td id="td-obs-${s.id_mov}" class="alm-truncate-obs" title="${obsTexto !== '-' ? obsTexto : 'Sin observaciones'}">${obsTexto}</td>
                         <td class="alm-text-center">
-                            <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${e.id_mov})">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
+                            <div class="alm-action-group" id="btn-normal-${s.id_mov}">
+                                <a href="#" class="alm-icon-btn" title="Ver Adjunto"><i class="fas fa-paperclip"></i></a>
+                                <button type="button" class="alm-icon-btn" style="color: #3b82f6;" title="Editar Movimiento" onclick="habilitarEdicionInline(${s.id_mov}, 'SALIDA')">
+                                    <i class="fas fa-pencil-alt"></i>
+                                </button>
+                                <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${s.id_mov})">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+                            
+                            <div class="alm-action-group" id="btn-edit-${s.id_mov}" style="display: none; justify-content: center; gap: 8px;">
+                                <button type="button" class="alm-icon-btn" style="color: #10b981;" title="Guardar Cambios" onclick="guardarEdicionInline(${s.id_mov}, 'SALIDA')">
+                                    <i class="fas fa-save"></i>
+                                </button>
+                                <button type="button" class="alm-icon-btn" style="color: #64748b;" title="Cancelar" onclick="cancelarEdicionInline(${s.id_mov})">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -15971,13 +15968,12 @@ function renderizarTablaTemporales() {
             });
         }
 
-        // Desbloquear cabeceras
-        document.querySelectorAll('.alm-input-lock').forEach(input => {
+        // Desbloquear cabeceras cuando se queda vacío
+        document.querySelectorAll('.alm-input-lock-sal').forEach(input => {
             input.disabled = false;
             input.style.backgroundColor = '#ffffff';
         });
-        $('#ent-sel-proveedor').prop('disabled', false);
-        $('#ent-sel-empleado-recupero').prop('disabled', false);
+        $('#sal-sel-empleado').prop('disabled', false);
     }
 }
 
