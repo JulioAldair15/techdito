@@ -10764,6 +10764,42 @@ def obtener_detalle_carta(carta_id):
 
 
 ########## SISTEMA DE ALERTAS ###########
+def es_feriado_peru(fecha):
+    """ Función que verifica si una fecha específica es feriado nacional en Perú """
+    # Feriados fijos (mes-dia)
+    fijos = [
+        '01-01', # Año Nuevo
+        '05-01', # Día del Trabajo
+        '06-07', # Batalla de Arica y Día de la Bandera
+        '06-29', # San Pedro y San Pablo
+        '07-23', # Día de la Fuerza Aérea
+        '07-28', # Fiestas Patrias
+        '07-29', # Fiestas Patrias
+        '08-06', # Batalla de Junín
+        '08-30', # Santa Rosa de Lima
+        '10-08', # Combate de Angamos
+        '11-01', # Todos los Santos
+        '12-08', # Inmaculada Concepción
+        '12-09', # Batalla de Ayacucho
+        '12-25'  # Navidad
+    ]
+    
+    # Feriados móviles (Jueves y Viernes Santo de los años más próximos)
+    moviles = [
+        '2024-03-28', '2024-03-29',
+        '2025-04-17', '2025-04-18',
+        '2026-04-02', '2026-04-03',
+        '2027-03-25', '2027-03-26'
+    ]
+    
+    if fecha.strftime('%m-%d') in fijos:
+        return True
+    if fecha.strftime('%Y-%m-%d') in moviles:
+        return True
+        
+    return False
+
+
 def obtener_areas_por_usuario(user_name):
     print(f"🔍 [ALERTAS] Iniciando obtener_areas_por_usuario para: '{user_name}'")
     
@@ -10796,7 +10832,7 @@ def obtener_areas_por_usuario(user_name):
 
 
 def generar_alertas_asistencia(user_name, fecha_consulta=None):
-    print(f"🚀 [ALERTAS] Iniciando generación de alertas para '{user_name}'")
+    print(f"🚀 [ALERTAS] Iniciando generación de alertas para '{user_name}'", flush=True)
     alertas = []
     
     try:
@@ -10825,14 +10861,11 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
             ]
             
             for modelo in modelos_asistencia:
-                print(f"📊 [ALERTAS - RRHH] Consultando base de datos: {modelo.__name__}")
                 registros = db.session.query(modelo.id_empleado, modelo.estado).filter(
                     modelo.fec_asist >= fecha_inicio_rrhh,
                     modelo.fec_asist <= fecha_consulta,
                     modelo.estado.isnot(None)
                 ).all()
-                
-                print(f"   -> Encontrados {len(registros)} registros evaluables en {modelo.__name__}")
                 
                 for id_emp, estado in registros:
                     estado_limpio = str(estado).strip().upper()
@@ -10840,8 +10873,6 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
                         if id_emp not in acumulados:
                             acumulados[id_emp] = {s: 0 for s in siglas_rrhh}
                         acumulados[id_emp][estado_limpio] += 1
-                        
-            print(f"📈 [ALERTAS - RRHH] Empleados con acumulados detectados: {len(acumulados)}")
 
             for id_emp, cont in acumulados.items():
                 motivos = []
@@ -10865,7 +10896,6 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
                         nombre_completo = f"{apellidos} {nombres}".strip()
                         
                         motivos_str = " y ".join(motivos)
-                        print(f"⚠️ [ALERTAS - RRHH] Generando alerta para {nombre_completo} (ID: {id_emp}) - Motivo: {motivos_str}")
                         
                         alertas.append({
                             "tipo": "rrhh",
@@ -10873,31 +10903,39 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
                             "fecha_cruda": f"Últimos 25 días", 
                             "mensaje": f"⚠️ ALERTA: {nombre_completo} acumula {motivos_str}."
                         })
-                    else:
-                        print(f"❌ [ALERTAS - RRHH] Empleado con ID {id_emp} no encontrado en la tabla maestra.")
 
         # ---------------------------------------------------------
-        # 2. LÓGICA ORIGINAL SUPERVISORES (10 días útiles hacia atrás)
+        # 2. LÓGICA SUPERVISORES: 10 días útiles (Sin domingos ni feriados)
         # ---------------------------------------------------------
-        print("🧑‍💼 [ALERTAS - SUPERVISOR] Preparando evaluación de 10 días útiles (omitiendo hoy).")
+        print("🧑‍💼 [ALERTAS - SUPERVISOR] Preparando evaluación de 10 días útiles (omitiendo hoy, domingos y feriados).")
         fechas_a_evaluar = []
+        feriados_a_evaluar = [] # Guardaremos los feriados para ver si alguien asistió
         
-        # 👇 CAMBIO AQUI 👇: Empezamos en 1 para saltarnos la fecha actual (hoy)
         dias_atras = 1  
         dias_agregados = 0
         
         while dias_agregados < 10:
             fecha_eval = fecha_consulta - timedelta(days=dias_atras)
-            if fecha_eval.weekday() != 6:  # Excluir domingos
+            
+            # Si es domingo, lo ignoramos totalmente
+            if fecha_eval.weekday() == 6:
+                pass 
+            # Si es feriado, lo guardamos en otra lista, pero NO suma como "día útil"
+            elif es_feriado_peru(fecha_eval):
+                feriados_a_evaluar.append(fecha_eval)
+            # Si es día útil normal
+            else:
                 fechas_a_evaluar.append(fecha_eval)
                 dias_agregados += 1
+                
             dias_atras += 1
 
-        print(f"📆 [ALERTAS - SUPERVISOR] Fechas a evaluar (sin domingos): {[f.strftime('%Y-%m-%d') for f in fechas_a_evaluar]}")
+        print(f"📆 [ALERTAS] Días útiles a evaluar: {[f.strftime('%d-%m') for f in fechas_a_evaluar]}")
+        if feriados_a_evaluar:
+            print(f"🎈 [ALERTAS] Feriados encontrados en el rango: {[f.strftime('%d-%m') for f in feriados_a_evaluar]}")
 
         areas_del_supervisor = obtener_areas_por_usuario(user_name)
         if not areas_del_supervisor:
-            print("🛑 [ALERTAS - SUPERVISOR] No hay áreas asignadas. Retornando alertas generadas hasta ahora.")
             return alertas 
 
         empleados_a_cargo = Empleado.query.filter(
@@ -10906,7 +10944,6 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
         ).all()
         
         ids_a_cargo = {emp.id_empleado for emp in empleados_a_cargo}
-        print(f"👥 [ALERTAS - SUPERVISOR] Empleados ACTIVOS a cargo encontrados: {len(ids_a_cargo)}")
         
         modelos_asistencia = [
             EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
@@ -10914,12 +10951,13 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
             EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
         ]
         
-        asistencias_validas_por_fecha = {fecha: set() for fecha in fechas_a_evaluar}
+        # Unimos fechas útiles y feriados para hacer una sola consulta a la Base de Datos
+        todas_las_fechas = fechas_a_evaluar + feriados_a_evaluar
+        asistencias_validas_por_fecha = {fecha: set() for fecha in todas_las_fechas}
         
         for modelo in modelos_asistencia:
-            print(f"🔎 [ALERTAS - SUPERVISOR] Consultando asistencias en {modelo.__name__}...")
             registros = db.session.query(modelo.fec_asist, modelo.id_empleado).filter(
-                modelo.fec_asist.in_(fechas_a_evaluar),
+                modelo.fec_asist.in_(todas_las_fechas),
                 modelo.estado.isnot(None),       
                 modelo.estado != '',             
                 modelo.estado != ' '             
@@ -10929,14 +10967,13 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
                 if fecha_bd in asistencias_validas_por_fecha:
                     asistencias_validas_por_fecha[fecha_bd].add(emp_id)
 
+        # A. EVALUAR DÍAS ÚTILES (Alerta por FALTAR)
         for fecha in fechas_a_evaluar:
-            ids_con_asistencia_valida = asistencias_validas_por_fecha[fecha]
-            ids_faltantes = ids_a_cargo - ids_con_asistencia_valida
+            ids_con_asistencia = asistencias_validas_por_fecha[fecha]
+            ids_faltantes = ids_a_cargo - ids_con_asistencia
             
             if ids_faltantes:
                 str_fecha = fecha.strftime('%d-%m-%Y')
-                print(f"🚨 [ALERTAS - SUPERVISOR] Fecha {str_fecha} -> {len(ids_faltantes)} empleados sin asistencia validada.")
-                
                 for emp in empleados_a_cargo:
                     if emp.id_empleado in ids_faltantes:
                         nombres = emp.nombres or ''
@@ -10949,41 +10986,57 @@ def generar_alertas_asistencia(user_name, fecha_consulta=None):
                             "fecha_cruda": fecha.strftime('%Y-%m-%d'),
                             "mensaje": f"Sin asistencia registrada el día {str_fecha} para {nombre_completo}."
                         })
-            else:
-                print(f"✅ [ALERTAS - SUPERVISOR] Fecha {fecha.strftime('%d-%m-%Y')} -> 100% de asistencias registradas.")
 
-        print(f"🏁 [ALERTAS] Proceso terminado con éxito. Total alertas generadas: {len(alertas)}")
+        # B. EVALUAR FERIADOS (Alerta por ASISTIR en Feriado)
+        for fecha in feriados_a_evaluar:
+            ids_con_asistencia = asistencias_validas_por_fecha[fecha]
+            # Intersectamos para ver qué empleados a cargo SI asistieron en el feriado
+            ids_presentes = ids_a_cargo.intersection(ids_con_asistencia)
+            
+            if ids_presentes:
+                str_fecha = fecha.strftime('%d-%m-%Y')
+                print(f"🚨 [ALERTAS - FERIADOS] Fecha {str_fecha} -> {len(ids_presentes)} empleados trabajaron en feriado.")
+                for emp in empleados_a_cargo:
+                    if emp.id_empleado in ids_presentes:
+                        nombres = emp.nombres or ''
+                        apellidos = getattr(emp, 'apellidos', '') or ''
+                        nombre_completo = f"{apellidos} {nombres}".strip()
+                        
+                        alertas.append({
+                            "tipo": "advertencia",  # Puedes cambiarlo a "feriado" si tu frontend maneja otro color
+                            "id_empleado": emp.id_empleado,
+                            "fecha_cruda": fecha.strftime('%Y-%m-%d'),
+                            "mensaje": f"⚠️ Trabajó en Feriado: Asistencia registrada el {str_fecha} para {nombre_completo}."
+                        })
+
+        print(f"🏁 [ALERTAS] Proceso terminado con éxito. Total alertas generadas: {len(alertas)}", flush=True)
         return alertas
 
     except Exception as e:
         print(f"❌ [ERROR CRÍTICO - ALERTAS] Hubo un fallo en generar_alertas_asistencia: {e}")
-        traceback.print_exc()  # Esto imprimirá la línea exacta donde falló el código
+        traceback.print_exc()  
         return []
 
 
 @app.route('/api/detalle_alerta')
 def api_detalle_alerta():
+    # ... Tu función api_detalle_alerta sigue igual ...
     print("\n--- 📞 [API] Petición a /api/detalle_alerta iniciada ---")
     try:
         id_empleado = request.args.get('id')
         fecha_str = request.args.get('fecha')
         
-        print(f"📥 [API] Parámetros recibidos -> ID: {id_empleado}, Fecha: {fecha_str}")
-        
         if not id_empleado or not fecha_str:
-            print("❌ [API] Error: Faltan datos (id o fecha no enviados).")
             return jsonify({"error": "Faltan datos"}), 400
             
         empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
         
         if not empleado:
-            print(f"❌ [API] Error: Empleado con ID {id_empleado} no encontrado en la base de datos.")
             return jsonify({"error": "Empleado no encontrado"}), 404
             
         nombres = empleado.nombres or ''
         apellidos = getattr(empleado, 'apellidos', '') or ''
         
-        # Extraemos el teléfono y le agregamos el +51 si no lo tiene
         telefono = getattr(empleado, 'telefono', '') or ''
         telefono = telefono.strip()
         if telefono and not telefono.startswith('51') and not telefono.startswith('+51'):
@@ -10996,7 +11049,6 @@ def api_detalle_alerta():
             "telefono": telefono
         }
         
-        print(f"✅ [API] Respuesta exitosa preparada: {data}")
         return jsonify(data)
         
     except Exception as e:
