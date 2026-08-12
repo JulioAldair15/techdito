@@ -15641,6 +15641,9 @@ function renderizarTablaTemporales() {
     // 1. Si el usuario ESTÁ DIGITANDO
     if (listaEntradasTemporales.length > 0) {
         listaEntradasTemporales.forEach(item => {
+            // Evaluamos la observación para evitar errores si viene vacía
+            const observacion = item.obs ? item.obs : '-';
+
             const fila = `
                 <tr style="background-color: #fffbeb;">
                     <td>${item.fecha_fac}</td>
@@ -15657,7 +15660,8 @@ function renderizarTablaTemporales() {
                     <td class="alm-text-green alm-bold">+${item.cantidad}</td>
                     <td class="alm-bold">S/ ${item.precio.toFixed(2)}</td>
                     <td>${item.proveedor_nombre}</td>
-                    <td class="alm-truncate-obs" title="${obsTexto !== '-' ? obsTexto : 'Sin observaciones'}">${obsTexto}</td>
+                    <!-- CORRECCIÓN AQUÍ: Usamos la variable 'observacion' -->
+                    <td class="alm-truncate-obs" title="${observacion !== '-' ? observacion : 'Sin observaciones'}">${observacion}</td>
                     <td class="alm-text-center">
                         <button class="alm-icon-btn" style="color: #ef4444;" onclick="eliminarFilaTemporal(${item.idTemporal})" title="Eliminar fila (Temporal)"><i class="fas fa-trash-alt"></i></button>
                     </td>
@@ -15672,6 +15676,9 @@ function renderizarTablaTemporales() {
             tbody.innerHTML = `<tr><td colspan="13" class="alm-text-center" style="color: #94a3b8; padding: 20px;">No hay historial de entradas. Agregue productos a la lista con el botón (+).</td></tr>`;
         } else {
             window.historicoEntradas.forEach(e => {
+                // Evaluamos la observación para el histórico
+                const observacion = e.obs ? e.obs : '-';
+
                 const fila = `
                     <tr>
                         <td>${e.fecha_fac}</td>
@@ -15688,7 +15695,8 @@ function renderizarTablaTemporales() {
                         <td class="alm-text-green alm-bold">+${e.cantidad}</td>
                         <td>S/ ${e.precio ? e.precio.toFixed(2) : '0.00'}</td>
                         <td>${e.proveedor}</td>
-                        <td id="td-obs-${e.id_mov}" class="alm-truncate-obs" title="${obsTexto !== '-' ? obsTexto : 'Sin observaciones'}">${obsTexto}</td>
+                        <!-- CORRECCIÓN AQUÍ: Usamos la variable 'observacion' -->
+                        <td id="td-obs-${e.id_mov}" class="alm-truncate-obs" title="${observacion !== '-' ? observacion : 'Sin observaciones'}">${observacion}</td>
                         <td class="alm-text-center">
                             <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Movimiento" onclick="eliminarMovimientoBd(${e.id_mov})">
                                 <i class="fas fa-trash-alt"></i>
