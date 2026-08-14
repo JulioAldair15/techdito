@@ -8593,38 +8593,49 @@ def api_listar_datos():
         ultimas_entradas = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
 
         # ==========================================
-        # 🚨 NUEVO: LOTES DISPONIBLES (CON STOCK) PARA EL SELECT DE SALIDAS 🚨
+        # 🚨 NUEVO: LOTES DISPONIBLES AGRUPADOS (FIFO) PARA SALIDAS 🚨
         # ==========================================
-        #lotes_vivos = MovimientoDetalle.query.filter(
-            #MovimientoDetalle.tipo_movimiento == 'ENTRADA',
-            #MovimientoDetalle.stock_restante > 0,
-            #MovimientoDetalle.estado == 'ACTIVO'
-        #).order_by(MovimientoDetalle.id_movimiento.asc()).all()
-
+        # Filtramos solo los lotes de entrada que tienen stock disponible
         lotes_vivos = MovimientoDetalle.query.filter(
             MovimientoDetalle.tipo_movimiento == 'ENTRADA',
+            MovimientoDetalle.stock_restante > 0,
             MovimientoDetalle.estado == 'ACTIVO'
         ).order_by(MovimientoDetalle.id_movimiento.asc()).all()
 
-        lista_lotes_salida = []
+        salidas_agrupadas = {}
+        
         for lote in lotes_vivos:
-            prov_nombre = lote.entrada_rel.proveedor.razon_social if lote.entrada_rel and lote.entrada_rel.proveedor else "-"
-            fecha_ing = lote.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if lote.entrada_rel and lote.entrada_rel.fecha_ingreso else "-"
+            id_prod = lote.id_producto
+            talla_str = lote.talla if lote.talla else "-"
+            prov_nombre = lote.entrada_rel.proveedor.razon_social if (lote.entrada_rel and lote.entrada_rel.proveedor) else "-"
+            precio_val = float(lote.precio_unitario or lote.producto_rel.precio_igv or 0.00)
             
-            lista_lotes_salida.append({
-                "id_lote": lote.id_movimiento, 
-                "id_producto": lote.id_producto,
-                "codigo": lote.producto_rel.codigo_identificador,
-                "nombre": lote.producto_rel.nombre_prod,
-                
-                # 🚨 ENVIAMOS LA TALLA AL FRONTEND PARA EL SELECT
-                "talla": lote.talla if lote.talla else "-", 
-                
-                "proveedor": prov_nombre,
-                "fecha_ingreso": fecha_ing,
-                "stock_restante": float(lote.stock_restante or 0),
-                "precio": float(lote.precio_unitario or lote.producto_rel.precio_igv or 0.00)
-            })
+            # Agrupamos por Producto, Talla, Proveedor y Precio
+            clave = (id_prod, talla_str, prov_nombre, precio_val)
+            
+            if clave not in salidas_agrupadas:
+                salidas_agrupadas[clave] = {
+                    "id_producto": id_prod,
+                    "codigo": lote.producto_rel.codigo_identificador,
+                    "nombre": lote.producto_rel.nombre_prod,
+                    "talla": talla_str,
+                    "proveedor": prov_nombre,
+                    "fecha_ingreso": lote.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if lote.entrada_rel and lote.entrada_rel.fecha_ingreso else "-",
+                    "stock_restante": float(lote.stock_restante or 0),
+                    "precio": precio_val,
+                    "ids_agrupados": [lote.id_movimiento] # Aquí vamos guardando los IDs
+                }
+            else:
+                # Si ya existe, le SUMAMOS el stock y agregamos su ID al carrito
+                salidas_agrupadas[clave]["stock_restante"] += float(lote.stock_restante or 0)
+                salidas_agrupadas[clave]["ids_agrupados"].append(lote.id_movimiento)
+
+        lista_lotes_salida = []
+        for val in salidas_agrupadas.values():
+            # Convertimos la lista de IDs en un string (Ej: "12_15_18") para que JS lo pueda manejar
+            val["id_lote"] = "_".join(map(str, val["ids_agrupados"]))
+            del val["ids_agrupados"] # Lo borramos para no ensuciar el JSON
+            lista_lotes_salida.append(val)
 
         # ==========================================
         # ESTRUCTURA FINAL DE RESPUESTA
@@ -8913,19 +8924,7 @@ def guardar_salida_lote():
         fecha_salida = datetime.strptime(fecha_str, '%Y-%m-%d') if fecha_str else datetime.utcnow()
         id_emp = cabecera.get('id_empleado')
 
-        # 1. Validar Stock del Lote Específico
-        #for item in detalles:
-            # Aquí 'item['id_lote']' ES EL ID DEL LOTE ESPECÍFICO (La fila del Kardex de entrada)
-            #lote_seleccionado = MovimientoDetalle.query.get(int(item['id_lote']))
-            #cant_req = float(item['cantidad'])
-            
-            #if not lote_seleccionado or cant_req > float(lote_seleccionado.stock_restante or 0):
-                #return jsonify({
-                    #"success": False, 
-                    #"message": f"Stock insuficiente en el lote seleccionado. Solo quedan {lote_seleccionado.stock_restante} unidades."
-                #}), 400
-
-        # 2. Guardar Cabecera
+        # 1. Guardar Cabecera de la Salida
         nueva_salida = Salida(
             id_empleado_solicitante=id_emp,
             fecha_salida=fecha_salida,
@@ -8934,35 +8933,60 @@ def guardar_salida_lote():
         db.session.add(nueva_salida)
         db.session.flush() 
 
-        # 3. Descontar del Lote Específico y del Producto Global
+        # 2. Bucle para procesar cada producto solicitado (LÓGICA FIFO)
         for item in detalles:
             cant_a_restar = float(item['cantidad'])
-            lote_especifico = MovimientoDetalle.query.get(int(item['id_lote']))
-            producto = Producto.query.get(lote_especifico.id_producto)
             
-            # Registrar movimiento
-            movimiento = MovimientoDetalle(
-                id_salida=nueva_salida.id_salida,
-                id_producto=lote_especifico.id_producto,
-                tipo_movimiento='SALIDA',
-                cantidad=cant_a_restar,
-                precio_unitario=lote_especifico.precio_unitario, # Mantiene el costo de esa entrada
-                estado='ACTIVO',
-                talla=lote_especifico.talla,
-                id_lote_origen=lote_especifico.id_movimiento,
-                observaciones=item.get('obs', '')
-            )
-            db.session.add(movimiento)
+            # Separamos los IDs agrupados que mandó el Frontend (Ej: "14_15_16")
+            lotes_ids = [int(x) for x in str(item['id_lote']).split('_')]
+            
+            # Traemos los lotes de la BD ORDENADOS DEL MÁS VIEJO AL MÁS NUEVO
+            lotes_origen = MovimientoDetalle.query.filter(
+                MovimientoDetalle.id_movimiento.in_(lotes_ids)
+            ).order_by(MovimientoDetalle.id_movimiento.asc()).all()
+            
+            # NUEVA VALIDACIÓN INTELIGENTE: Verifica si la suma de todos los lotes agrupados alcanza
+            stock_total_grupo = sum(float(l.stock_restante or 0) for l in lotes_origen)
+            if cant_a_restar > stock_total_grupo:
+                db.session.rollback()
+                return jsonify({
+                    "success": False, 
+                    "message": f"Stock insuficiente. Intentaste sacar {cant_a_restar}, pero solo quedan {stock_total_grupo} unidades disponibles."
+                }), 400
 
-            # Descontar del lote específico (El que el usuario eligió)
-            lote_especifico.stock_restante = float(lote_especifico.stock_restante) - cant_a_restar
-            
-            # Descontar del inventario global
-            if producto:
-                producto.stock = float(producto.stock or 0) - cant_a_restar
+            # CONSUMO FIFO (Va vaciando lotes uno por uno)
+            for lote in lotes_origen:
+                if cant_a_restar <= 0:
+                    break 
+                    
+                stock_lote = float(lote.stock_restante or 0)
+                if stock_lote <= 0:
+                    continue 
+                    
+                cantidad_a_sacar_de_este_lote = min(cant_a_restar, stock_lote)
                 
-                # 🚨 FOTO HISTÓRICA: Guardamos el stock resultante en el movimiento
-                movimiento.stock_historico = producto.stock
+                producto = Producto.query.get(lote.id_producto)
+                
+                movimiento = MovimientoDetalle(
+                    id_salida=nueva_salida.id_salida,
+                    id_producto=lote.id_producto,
+                    tipo_movimiento='SALIDA',
+                    cantidad=cantidad_a_sacar_de_este_lote,
+                    precio_unitario=lote.precio_unitario, 
+                    estado='ACTIVO',
+                    talla=lote.talla,
+                    id_lote_origen=lote.id_movimiento,
+                    observaciones=item.get('obs', '')
+                )
+                db.session.add(movimiento)
+
+                lote.stock_restante = stock_lote - cantidad_a_sacar_de_este_lote
+                
+                if producto:
+                    producto.stock = float(producto.stock or 0) - cantidad_a_sacar_de_este_lote
+                    movimiento.stock_historico = producto.stock 
+                    
+                cant_a_restar -= cantidad_a_sacar_de_este_lote
 
         db.session.commit()
         return jsonify({"success": True})
