@@ -15390,6 +15390,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==========================================
     cargarDatosMaestros();
     cargarHistorialKardex(1);
+
+    // 1. Detectar cuando el contenedor del Select2 recibe el foco y forzar su apertura
+    $(document).on('focus', '.select2-selection.select2-selection--single', function() {
+        $(this).closest('.select2-container').siblings('select:enabled').select2('open');
+    });
+
+    // 2. Asegurar que el cursor parpadee inmediatamente dentro de la caja de búsqueda
+    $(document).on('select2:open', () => {
+        setTimeout(() => {
+            const searchField = document.querySelector('.select2-container--open .select2-search__field');
+            if (searchField) searchField.focus();
+        }, 10);
+    });
 });
 
 // MATEMÁTICA EN TIEMPO REAL
