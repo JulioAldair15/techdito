@@ -18649,3 +18649,783 @@ document.addEventListener("DOMContentLoaded", function() {
     // de la alerta tenga el evento onclick="abrirDetalleAlerta('{{ alerta.id_empleado }}', '{{ alerta.fecha_cruda }}')"
 });
 
+
+
+
+/* ==========================================
+   LÓGICA DE PRODUCCIÓN
+========================================== */
+// Variable global para almacenar los datos filtrados y enviarlos al backend
+window.datosLimpiosParaSubir = [];
+
+function abrirModalSubida() {
+    document.getElementById('archivo-produccion-modal').value = "";
+    
+    const filenameSpan = document.getElementById('prod-modal-filename');
+    filenameSpan.innerText = "Ningún archivo seleccionado";
+    filenameSpan.classList.remove('active'); 
+    
+    document.getElementById('prod-modal-filas-info').innerText = "";
+    document.getElementById('thead-preview-csv').innerHTML = "";
+    document.getElementById('tbody-preview-csv').innerHTML = "";
+    
+    document.getElementById('btn-confirmar-modal').disabled = true;
+    document.getElementById('prod-modal-csv').style.display = 'flex';
+}
+
+function manejarSubidaArchivo(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const extension = file.name.split('.').pop().toLowerCase();
+    if (extension !== 'csv') {
+        alert("Por favor, seleccione un archivo .csv");
+        abrirModalSubida();
+        return;
+    }
+
+    const filenameSpan = document.getElementById('prod-modal-filename');
+    filenameSpan.innerText = file.name;
+    filenameSpan.classList.add('active'); 
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        procesarPrevisualizacionCSV(e.target.result);
+        document.getElementById('btn-confirmar-modal').disabled = false;
+    };
+    reader.readAsText(file, 'UTF-8');
+}
+
+// LA MAGIA ACTUALIZADA: Escaneo y Traducción de Múltiples Formatos
+function procesarPrevisualizacionCSV(csvString) {
+    const lineas = csvString.split(/\r\n|\n/).filter(line => line.trim() !== '');
+    if (lineas.length === 0) return;
+
+    // 1. DICCIONARIOS DE EQUIVALENCIAS (Encabezado CSV -> Columna Base de Datos)
+    const formatoOriginal = {
+        "SUMINISTRO": "suministro", "CICLO": "ciclo", "LOCALIDAD": "localidad",
+        "URBA": "urba", "CALLE2": "calle", "NROMUNI": "nromuni",
+        "OPERARIO": "operario_csv", "FECHA INI EJECUCION": "fecha_inicio", "HORA INI": "hora_ini",
+        "FECHA EJECUCION": "fecha_fin", "HORA": "hora_fin", "ACTIVIDAD": "actividad",
+        "ESTE": "este", "NORTE": "norte", "LATITUD": "latitud", "LONGITUD": "longitud",
+        "CODIGO INSPECCION PERDIDAS": "cod_perd"
+    };
+
+    const formatoLecturas = {
+        "CLICODFAC": "suministro", "CICLO": "ciclo", "URBANIZAC": "urba",
+        "CALLE": "calle", "CLIMUNRO": "nromuni", "NOMBRE OPERADOR": "operario_csv",
+        "FECLEC": "fecha_inicio", "HORALEC": "hora_ini",
+        "TIPO LECTURA TP": "actividad", "LECTURAID": "cod_perd",
+        "LATITUD": "latitud", "LONGITUD": "longitud"
+    };
+
+    let indiceCabecera = -1;
+    let mapeoColumnas = {}; // Guardará: { indice_columna_csv: "nombre_db" }
+    let formatoDetectado = null;
+    let diccionarioActivo = null;
+    let separador = ',';
+
+    // 2. DETECCIÓN AUTOMÁTICA DEL FORMATO
+    for (let i = 0; i < Math.min(lineas.length, 20); i++) {
+        let sep = lineas[i].includes(';') ? ';' : ',';
+        let celdas = lineas[i].split(sep).map(c => c.replace(/["']/g, "").trim().toUpperCase());
+        
+        if (celdas.includes("SUMINISTRO") && celdas.includes("OPERARIO")) {
+            indiceCabecera = i;
+            separador = sep;
+            formatoDetectado = "ORIGINAL (Inspecciones/Catastro)";
+            diccionarioActivo = formatoOriginal;
+        } 
+        else if (celdas.includes("CLICODFAC") && celdas.includes("NOMBRE OPERADOR")) {
+            indiceCabecera = i;
+            separador = sep;
+            formatoDetectado = "NUEVO (Lecturas)";
+            diccionarioActivo = formatoLecturas;
+        }
+
+        if (formatoDetectado) {
+            // Guardamos en qué posición (index) está cada columna válida
+            celdas.forEach((nombreColumna, index) => {
+                if (diccionarioActivo[nombreColumna]) {
+                    mapeoColumnas[index] = diccionarioActivo[nombreColumna];
+                }
+            });
+            break;
+        }
+    }
+
+    if (indiceCabecera === -1) {
+        alert("Error: El archivo no coincide con ninguno de los 2 formatos permitidos.");
+        abrirModalSubida();
+        return;
+    }
+
+    const thead = document.getElementById('thead-preview-csv');
+    const tbody = document.getElementById('tbody-preview-csv');
+    thead.innerHTML = ""; tbody.innerHTML = "";
+    window.datosLimpiosParaSubir = [];
+
+    // 3. DIBUJAR CABECERAS ESTANDARIZADAS
+    let trHead = document.createElement('tr');
+    const columnasEncontradas = Object.values(mapeoColumnas); // Ej: ["suministro", "operario_csv"...]
+    
+    columnasEncontradas.forEach(col => {
+        let th = document.createElement('th');
+        th.innerText = col.toUpperCase(); // Mostramos el nombre limpio en HTML
+        trHead.appendChild(th);
+    });
+    thead.appendChild(trHead);
+
+    // 4. EXTRAER Y TRADUCIR DATOS
+    const lineasDatos = lineas.slice(indiceCabecera + 1);
+    const maxPreview = Math.min(lineasDatos.length, 200);
+
+    for (let i = 0; i < lineasDatos.length; i++) {
+        const columnas = lineasDatos[i].split(separador).map(c => c.replace(/["']/g, "").trim());
+        if (columnas.join('') === '') continue;
+
+        let filaDataObjeto = {};
+        
+        // Convertimos la fila cruda a nuestro objeto estándar
+        Object.keys(mapeoColumnas).forEach(idx => {
+            const nombreKeyDB = mapeoColumnas[idx];
+            filaDataObjeto[nombreKeyDB] = columnas[idx] || "";
+        });
+
+        // 🔥 REGLA DE SALVATAJE PARA LA MATRIZ: 
+        // El formato Lecturas no tiene fecha_fin, la clonamos de fecha_inicio
+        if (formatoDetectado.includes("NUEVO")) {
+            filaDataObjeto["fecha_fin"] = filaDataObjeto["fecha_inicio"];
+            filaDataObjeto["hora_fin"] = filaDataObjeto["hora_ini"];
+        }
+
+        window.datosLimpiosParaSubir.push(filaDataObjeto);
+
+        // Dibujar previsualización
+        if (i < maxPreview) {
+            let trBody = document.createElement('tr');
+            columnasEncontradas.forEach(col => {
+                let td = document.createElement('td');
+                td.innerText = filaDataObjeto[col] || "";
+                trBody.appendChild(td);
+            });
+            tbody.appendChild(trBody);
+        }
+    }
+
+    document.getElementById('prod-modal-filas-info').innerText = 
+        `Formato: ${formatoDetectado} | Mostrando ${maxPreview} de ${window.datosLimpiosParaSubir.length} filas`;
+}
+
+function cerrarModalCsv() {
+    document.getElementById('prod-modal-csv').style.display = 'none';
+}
+
+function confirmarSubidaCsv() {
+    const btn = document.getElementById('btn-confirmar-modal');
+    const btnTextOriginal = btn.innerHTML;
+    btn.innerHTML = `Subiendo...`;
+    btn.disabled = true;
+
+    // AQUÍ APUNTAMOS A LA RUTA QUE ACABAMOS DE CREAR EN ROUTES.PY
+    fetch('/cargar_produccion_csv', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(window.datosLimpiosParaSubir)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === "error") {
+            throw new Error(data.error);
+        }
+        alert(data.mensaje); // Mostrará: "Se procesaron y guardaron X registros..."
+        btn.innerHTML = btnTextOriginal;
+        cerrarModalCsv();
+        
+        // OPCIONAL: Si tienes una función para recargar tu tabla principal, llámala aquí.
+        // generarTablaProduccion(); 
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert("Hubo un error al guardar la información. Contacte al administrador.");
+        btn.innerHTML = btnTextOriginal;
+        btn.disabled = false;
+    });
+}
+
+/* ==========================================
+   GENERADOR DE TABLA MATRIZ (PRODUCCIÓN)
+========================================== */
+// Variable global para que el Panel pueda leer los datos sin volver a consultar al servidor
+window.matrizGlobalData = { fechas: [], operarios: [] };
+
+function generarTablaProduccion() {
+    const fInicio = document.getElementById('filtro-prod-inicio').value;
+    const fFin = document.getElementById('filtro-prod-fin').value;
+    const actividad = document.getElementById('filtro-prod-actividad').value;
+    const operario = document.getElementById('filtro-prod-operario').value;
+
+    if (!fInicio || !fFin) {
+        alert("Por favor, seleccione un rango de fechas.");
+        return;
+    }
+
+    const btn = document.querySelector('.prod-btn-search');
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Generando...`;
+
+    fetch('/api/generar_matriz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha_inicio: fInicio, fecha_fin: fFin, actividad: actividad, operario: operario })
+    })
+    .then(response => response.json())
+    .then(data => {
+        // 🔥 GUARDAMOS EN MEMORIA GLOBAL
+        window.matrizGlobalData.fechas = data.fechas;
+        window.matrizGlobalData.operarios = data.operarios;
+        
+        dibujarMatriz(data.fechas, data.operarios);
+        
+        // Si el panel estaba abierto, lo cerramos al generar una nueva tabla
+        cerrarPanelOperario(); 
+        
+        btn.innerHTML = `<i class="fas fa-search"></i> <span>Generar Tabla</span>`;
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Error al generar la matriz.");
+        btn.innerHTML = `<i class="fas fa-search"></i> <span>Generar Tabla</span>`;
+    });
+}
+
+function dibujarMatriz(fechas, operarios) {
+    const thead = document.querySelector('#tabla-produccion thead tr');
+    const tbody = document.getElementById('body-tabla-produccion');
+    
+    operarios.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+    
+    const fInicio = document.getElementById('filtro-prod-inicio').value;
+    let anioActual = fInicio ? parseInt(fInicio.split('-')[0]) : new Date().getFullYear();
+    let mesAnterior = fInicio ? parseInt(fInicio.split('-')[1]) : new Date().getMonth() + 1;
+    
+    const esDomingoMapa = {};
+    let diasLaborables = 0; // 👈 Nuevo: Contaremos los días útiles para el semáforo
+
+    thead.innerHTML = `<th class="col-sticky-left" title="Nombres y Apellidos">Colaborador</th>`;
+    tbody.innerHTML = '';
+
+    fechas.forEach(fecha => {
+        const [diaStr, mesStr] = fecha.split('/');
+        let mes = parseInt(mesStr);
+        if (mes < mesAnterior) anioActual++;
+        mesAnterior = mes;
+
+        const fechaObj = new Date(anioActual, mes - 1, parseInt(diaStr));
+        const esDomingo = fechaObj.getDay() === 0;
+        esDomingoMapa[fecha] = esDomingo;
+
+        if (!esDomingo) diasLaborables++; // Sumamos si no es domingo
+
+        const claseDomingo = esDomingo ? 'col-domingo' : '';
+        thead.innerHTML += `<th class="text-center col-dia ${claseDomingo}" title="${fecha}">${diaStr}</th>`;
+    });
+
+    if (diasLaborables === 0) diasLaborables = 1; // Evitar división por cero
+
+    // 🔥 Redujimos los anchos y suavizamos los tamaños de letra de la cabecera
+    thead.innerHTML += `
+        <th class="text-center" style="background-color: #f8fafc; min-width: 45px; border-left: 2px solid var(--prod-border); font-size: 0.8rem; color: #64748b;">Pts.</th>
+        <th class="text-center" style="background-color: #f8fafc; min-width: 60px; font-size: 0.8rem; color: #64748b;">Base</th>
+        <th class="col-sticky-right text-center" style="background-color: #f1f5f9; min-width: 70px; font-size: 0.85rem; color: #475569;">Total (S/)</th>
+    `;
+
+    operarios.forEach((op, index) => {
+        let filaHtml = `<tr>
+            <td class="col-sticky-left font-bold prod-celda-click" title="Ver detalle de ${op.nombre}" onclick="abrirPanelOperario(${index})">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${op.nombre}</span>
+                    <i class="fas fa-chevron-right prod-icon-click"></i>
+                </div>
+            </td>`;
+
+        fechas.forEach(fecha => {
+            const dataDia = op.dias[fecha];
+            const claseDomingo = esDomingoMapa[fecha] ? 'col-domingo' : '';
+            
+            if (dataDia && dataDia.tipo === "produccion") {
+                let claseBg = dataDia.ratio < 1.0 ? "bg-alerta" : (dataDia.ratio === 1.0 ? "bg-meta" : "bg-sobre"); 
+                filaHtml += `<td class="col-dia ${claseDomingo}"><div class="prod-badge-mini ${claseBg}" title="${fecha}: ${dataDia.ejecutado} regs">${dataDia.ratio.toFixed(2)}</div></td>`;
+            } else if (dataDia && dataDia.tipo === "asistencia") {
+                let esFalta = (dataDia.estado === 'F' || dataDia.estado === 'LSG');
+                let claseAsist = esFalta ? 'bg-ausente' : '';
+                let colorAsist = esFalta ? '' : 'color: #475569; font-weight: 700;';
+                filaHtml += `<td class="col-dia text-center ${claseDomingo}"><span class="${claseAsist}" style="${colorAsist}">${dataDia.estado}</span></td>`;
+            } else {
+                filaHtml += `<td class="col-dia text-center ${claseDomingo}"><span class="bg-vacio">-</span></td>`;
+            }
+        });
+
+        const sueldoContrato = op.sueldo_contrato || 0;
+        const sueldoPagar = (sueldoContrato / 26) * op.puntaje_acumulado;
+
+        // 🔥 LÓGICA DEL SEMÁFORO SUAVE
+        const rendimiento = op.puntaje_acumulado / diasLaborables;
+        let bgColorTotal, colorTextoTotal;
+
+        if (rendimiento >= 0.95) {
+            // VERDE SUAVE (Meta cumplida)
+            bgColorTotal = "#f0fdf4"; colorTextoTotal = "#15803d";
+        } else if (rendimiento >= 0.60) {
+            // AMARILLO SUAVE (Rendimiento regular/a medias)
+            bgColorTotal = "#fefce8"; colorTextoTotal = "#a16207";
+        } else {
+            // ROJO SUAVE (No llegó a la meta)
+            bgColorTotal = "#fef2f2"; colorTextoTotal = "#b91c1c";
+        }
+
+        // Adiós a los 'font-bold' y fuentes gigantes. Todo limpio y plano.
+        filaHtml += `
+            <td class="text-center" style="background-color: #f8fafc; border-left: 2px solid var(--prod-border); color: #64748b; font-size: 0.8rem;">${op.puntaje_acumulado.toFixed(1)}</td>
+            <td class="text-center" style="background-color: #f8fafc; color: #94a3b8; font-size: 0.8rem;">${sueldoContrato.toFixed(0)}</td>
+            <td class="col-sticky-right text-center" style="background-color: ${bgColorTotal}; color: ${colorTextoTotal}; font-size: 0.85rem;">${sueldoPagar.toFixed(2)}</td>
+        </tr>`;
+
+        tbody.innerHTML += filaHtml;
+    });
+}
+
+// ==========================================
+// LÓGICA DEL PANEL DIVIDIDO Y MAPAS (BLINDADA CONTRA ERRORES)
+// ==========================================
+window.datosDetalleOperario = []; 
+window.mapaOperarioInstancia = null;
+
+function abrirPanelOperario(indexOperario) {
+    const layout = document.getElementById('prod-split-layout');
+    const panel = document.getElementById('prod-side-panel');
+    const op = window.matrizGlobalData.operarios[indexOperario];
+
+    if (!op) return;
+
+    layout.classList.add('panel-open');
+    panel.innerHTML = `
+        <div class="panel-header" style="padding:15px 20px;">
+            <div class="panel-header-info"><h3 style="font-size:1.1rem; font-weight:700;"><i class="fas fa-user-tie" style="color:var(--c-blue); margin-right:6px;"></i>${op.nombre}</h3></div>
+            <button class="panel-close-btn" onclick="cerrarPanelOperario()">×</button>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#64748b;">
+            <div class="loader2" style="margin-bottom:15px;"></div>
+            <p style="font-size:0.85rem;">Descargando métricas...</p>
+        </div>
+    `;
+
+    const fInicio = document.getElementById('filtro-prod-inicio').value;
+    const fFin = document.getElementById('filtro-prod-fin').value;
+
+    console.log("🚀 [FRONTEND] Pidiendo datos para:", op.nombre, "| Rango:", fInicio, "a", fFin);
+
+    fetch('/api/obtener_detalle_rango_operario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_empleado: op.id, operario_csv: op.nombre_original || op.nombre, fecha_inicio: fInicio, fecha_fin: fFin })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) throw new Error(data.error);
+        
+        window.datosDetalleOperario = data.trabajos;
+        
+        const diasMap = {};
+        window.datosDetalleOperario.forEach((t, i) => {
+            // Evaluamos la fecha de fin y si no existe, la de inicio
+            const fecha = t["FECHA EJECUCION"] || t["FECHA INI EJECUCION"];
+            console.log(`🔍 [Reg ${i+1}] SUM: ${t["SUMINISTRO"]} | Fecha asignada: ${fecha} | H.Ini: "${t["HORA INI"]}" | H.Fin: "${t["HORA"]}"`);
+
+            if(!fecha || fecha.trim() === "") return; // Evita agrupar campos vacíos
+            if(!diasMap[fecha]) diasMap[fecha] = [];
+            diasMap[fecha].push(t);
+        });
+
+        console.log("📅 [FRONTEND] Días agrupados exitosamente:", diasMap);
+
+        const fechasOrdenadas = Object.keys(diasMap).sort((a,b) => {
+            // Protección contra fechas mal formadas en el sort
+            try {
+                const partsA = a.includes('/') ? a.split('/') : a.split('-');
+                const partsB = b.includes('/') ? b.split('/') : b.split('-');
+                return new Date(partsB[2], partsB[1]-1, partsB[0]) - new Date(partsA[2], partsA[1]-1, partsA[0]);
+            } catch(e) { return 0; }
+        });
+
+        if (fechasOrdenadas.length === 0) {
+            panel.innerHTML = `<div class="panel-header"><div class="panel-header-info"><h3><i class="fas fa-user-tie"></i> ${op.nombre}</h3></div><button class="panel-close-btn" onclick="cerrarPanelOperario()">×</button></div><div style="padding:40px; text-align:center; color:#64748b;"><i class="fas fa-folder-open fa-2x"></i><p>No hay producción registrada.</p></div>`;
+            return;
+        }
+
+        // 🔥 BLOQUE TRY...CATCH PARA PROTEGER EL DIBUJADO DE LA LISTA
+        try {
+            const mesesTexto = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+            let htmlListaDias = '';
+            
+            fechasOrdenadas.forEach((fecha, index) => {
+                const trabajosDia = diasMap[fecha];
+                
+                // Extracción segura de día y mes
+                let dia = "--", mesIndice = 0;
+                if(fecha && (fecha.includes('/') || fecha.includes('-'))) {
+                    const partes = fecha.includes('/') ? fecha.split('/') : fecha.split('-');
+                    dia = partes[0];
+                    mesIndice = parseInt(partes[1], 10) - 1;
+                }
+                const textoMes = mesesTexto[mesIndice] || "Mes";
+                
+                let horaInicioGlobal = null, horaFinGlobal = null;
+                let totalMinutosEjecucion = 0, ejecucionesValidas = 0;
+
+                trabajosDia.forEach(f => {
+                    const hIniStr = f["HORA INI"], hFinStr = f["HORA"];
+                    
+                    // Validación ultra-estricta de las horas (ignora strings vacíos)
+                    if (hIniStr && hFinStr && hIniStr.trim() !== "" && hFinStr.trim() !== "") {
+                        try {
+                            const [h1, m1] = hIniStr.trim().split(":").map(Number);
+                            const [h2, m2] = hFinStr.trim().split(":").map(Number);
+                            
+                            if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
+                                const inicio = new Date(0, 0, 0, h1, m1), fin = new Date(0, 0, 0, h2, m2);
+                                if (!horaInicioGlobal || inicio < horaInicioGlobal) horaInicioGlobal = inicio;
+                                if (!horaFinGlobal || fin > horaFinGlobal) horaFinGlobal = fin;
+                                
+                                const duracion = (h2 * 60 + m2) - (h1 * 60 + m1);
+                                if (duracion > 0) { totalMinutosEjecucion += duracion; ejecucionesValidas++; }
+                            }
+                        } catch(errorHora) {
+                            // Ignoramos silenciosamente horas corruptas
+                        }
+                    }
+                });
+
+                let horasTrabajadasTexto = "0h 0m";
+                if (horaInicioGlobal && horaFinGlobal) {
+                    const diffMin = Math.floor((horaFinGlobal - horaInicioGlobal) / 60000);
+                    horasTrabajadasTexto = `${Math.floor(diffMin / 60)}h ${diffMin % 60}m`;
+                }
+                let promMin = ejecucionesValidas > 0 ? Math.round(totalMinutosEjecucion / ejecucionesValidas) : 0;
+                const promTexto = promMin >= 60 ? `${Math.floor(promMin/60)}h ${promMin%60}m` : `${promMin}m`;
+                
+                // Fallback seguro para actividades nulas
+                const actividadCruda = trabajosDia[0].ACTIVIDAD || "Varios";
+                const actividadCorta = actividadCruda.substring(0, 15);
+
+                htmlListaDias += `
+                    <div class="row-dia" id="row-dia-${index}" onclick="dibujarMapaDeDia('${fecha}', ${index})">
+                        <div class="row-dia-fecha">
+                            <strong>${dia}</strong><span>${textoMes}</span>
+                        </div>
+                        <div class="row-dia-stats-compact">
+                            <div title="Actividad"><i class="fas fa-clipboard-check"></i> <span style="color:#334155;">${actividadCorta}</span></div>
+                            <div title="Registros"><i class="fas fa-map-pin"></i> <span style="color:#334155;">${trabajosDia.length} regs</span></div>
+                            <div title="Tiempo Total"><i class="fas fa-stopwatch"></i> <span style="color:#334155;">${horasTrabajadasTexto}</span></div>
+                            <div title="Promedio"><i class="fas fa-bolt"></i> <span style="color:#334155;">${promTexto}</span></div>
+                        </div>
+                        <div class="row-dia-arrow"><i class="fas fa-chevron-right"></i></div>
+                    </div>
+                `;
+            });
+
+            panel.innerHTML = `
+                <div class="panel-header" style="padding:15px 20px;">
+                    <div class="panel-header-info"><h3 style="font-size:1.1rem; font-weight:700;"><i class="fas fa-user-tie" style="color:var(--c-blue); margin-right:6px;"></i>${op.nombre}</h3></div>
+                    <button class="panel-close-btn" onclick="cerrarPanelOperario()">×</button>
+                </div>
+                <div class="panel-content-wrapper">
+                    <div class="panel-lista-dias">${htmlListaDias}</div>
+                    <div class="panel-mapa-view" id="panel-mapa-view"></div>
+                </div>
+            `;
+
+            dibujarMapaDeDia(fechasOrdenadas[0], 0);
+
+        } catch (errorRender) {
+            console.error("❌ [FRONTEND RENDER ERROR]:", errorRender);
+            throw errorRender; // Lo mandamos al catch general
+        }
+
+    }).catch(err => {
+        console.error("❌ [FRONTEND ERROR FATAL]:", err);
+        panel.innerHTML = `<div class="panel-header"><button class="panel-close-btn" onclick="cerrarPanelOperario()">×</button></div><div style="padding: 20px; text-align:center; color: #e74c3c;">Error visualizando los datos del operario. Revisa la consola.</div>`;
+    });
+}
+
+function cerrarPanelOperario() {
+    document.getElementById('prod-split-layout').classList.remove('panel-open');
+    if (window.mapaOperarioInstancia) { window.mapaOperarioInstancia.remove(); window.mapaOperarioInstancia = null; }
+}
+
+function dibujarMapaDeDia(fecha, indexFila) {
+    console.log(`🗺️ [MAPA] Dibujando ruta para el día: ${fecha}`);
+
+    document.querySelectorAll('.row-dia').forEach(el => el.classList.remove('activo'));
+    const filaDOM = document.getElementById(`row-dia-${indexFila}`);
+    if(filaDOM) filaDOM.classList.add('activo');
+
+    const trabajos = window.datosDetalleOperario.filter(t => (t["FECHA EJECUCION"] || t["FECHA INI EJECUCION"]) === fecha);
+    const contenedor = document.getElementById('panel-mapa-view');
+
+    if(!contenedor) return; // Protección anti-colapsos
+
+    contenedor.innerHTML = `
+        <style>
+            #cinta-scroll-tarjetas {
+                display: flex !important; overflow-x: auto !important; gap: 8px !important;
+                padding: 6px 12px 6px 12px !important; align-items: center !important;
+                background: white !important; border-top: 1px solid #cbd5e1 !important;
+                scrollbar-width: thin !important; scrollbar-color: #cbd5e1 transparent !important;
+            }
+            #cinta-scroll-tarjetas::-webkit-scrollbar { height: 5px !important; }
+            #cinta-scroll-tarjetas::-webkit-scrollbar-track { background: transparent !important; }
+            #cinta-scroll-tarjetas::-webkit-scrollbar-thumb { background: #94a3b8 !important; border-radius: 10px !important; }
+            
+            .mini-tarjeta {
+                background: white; border: 1px solid #e2e8f0; border-radius: 6px;
+                min-width: 165px; max-width: 180px; padding: 6px 10px; flex-shrink: 0; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+            }
+            .mini-tarjeta:hover { border-color: #cbd5e1; box-shadow: 0 3px 6px rgba(0,0,0,0.06); }
+            .mini-tarjeta.activa { border-color: #3b82f6; background-color: #eff6ff; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(59,130,246,0.15); }
+        </style>
+
+        <div style="padding: 10px 15px; background: white; border-bottom: 1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; z-index:10; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <div style="font-weight:600; font-size:0.9rem; color:#334155;"><i class="fas fa-route" style="color:var(--c-blue); margin-right:4px;"></i> Ruta del ${fecha}</div>
+            <div style="font-size:0.75rem; color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 8px; border-radius:12px;">${trabajos.length} coordenadas</div>
+        </div>
+        <div id="mapa-operario" style="flex-grow:1; width:100%; z-index:1; background:#f8fafc;"></div>
+        <div id="cinta-scroll-tarjetas" style="z-index:10;"></div>
+    `;
+
+    if (window.mapaOperarioInstancia) { window.mapaOperarioInstancia.remove(); }
+
+    setTimeout(() => {
+        try {
+            const mapa = L.map('mapa-operario');
+            window.mapaOperarioInstancia = mapa;
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
+            mapa.invalidateSize(); 
+
+            const projUTM = "+proj=utm +zone=17 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs";
+            const projLatLon = "+proj=longlat +datum=WGS84 +no_defs";
+            const puntos = [];
+            
+            const filaTarjetas = document.getElementById("cinta-scroll-tarjetas");
+
+            trabajos.forEach((f, i) => {
+                let lat = parseFloat(String(f["LATITUD"] || "").replace(",", "."));
+                let lon = parseFloat(String(f["LONGITUD"] || "").replace(",", "."));
+
+                if (isNaN(lat) || isNaN(lon)) {
+                    let este = parseFloat(String(f["ESTE"] || "").replace(",", "."));
+                    let norte = parseFloat(String(f["NORTE"] || "").replace(",", "."));
+                    if (!isNaN(este) && !isNaN(norte)) {
+                        const [cLon, cLat] = proj4(projUTM, projLatLon, [este, norte]);
+                        lat = cLat; lon = cLon;
+                    }
+                }
+
+                if (!isNaN(lat) && !isNaN(lon)) {
+                    puntos.push([lat, lon]);
+                    const esInicio = i === 0, esFin = i === trabajos.length - 1;
+                    const fillColor = (esInicio || esFin) ? '#7ad9ff' : '#49ff00';
+                    const borderColor = (esInicio || esFin) ? '#49a1c3' : '#6eae6e';
+                    const label = esInicio ? "Inicio" : (esFin ? "Fin" : "");
+
+                    const marcador = L.circleMarker([lat, lon], {
+                        radius: 5, color: borderColor, weight: 2, fillColor: fillColor, fillOpacity: 1
+                    }).addTo(mapa).bindPopup(`<strong>${label}</strong><br>${f["SUMINISTRO"] || ""}`);
+
+                    marcador.on("click", () => {
+                        document.querySelectorAll(".mini-tarjeta").forEach(t => t.classList.remove("activa"));
+                        const tarjeta = document.getElementById(`tarjeta-${lat.toFixed(6)}-${lon.toFixed(6)}`);
+                        if (tarjeta) {
+                            tarjeta.classList.add("activa");
+                            tarjeta.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); 
+                        }
+                    });
+
+                    const tarjeta = document.createElement("div");
+                    tarjeta.className = "mini-tarjeta";
+                    tarjeta.id = `tarjeta-${lat.toFixed(6)}-${lon.toFixed(6)}`;
+
+                    tarjeta.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px dashed #e2e8f0; padding-bottom:4px; margin-bottom:4px;">
+                            <strong style="font-size:0.8rem; color:#1e293b;"><i class="fas fa-file-invoice" style="color:#94a3b8; margin-right:3px;"></i>${f["SUMINISTRO"] || "-"}</strong>
+                            <button class="btn-abrir-fotos" style="background:#f1f5f9; color:#3b82f6; border:1px solid #e2e8f0; border-radius:4px; width:22px; height:22px; cursor:pointer; display:flex; justify-content:center; align-items:center; font-size:10px;"><i class="fas fa-camera"></i></button>
+                        </div>
+                        <div style="font-size:0.65rem; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:4px;"><i class="fas fa-map-marker-alt"></i> ${f["URBA"] || ""} ${f["CALLE2"] || ""}</div>
+                        <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:#64748b;">
+                            <span>Ini: <b style="color:#1e293b;">${f["HORA INI"] || "-"}</b></span>
+                            <span>Fin: <b style="color:#1e293b;">${f["HORA"] || "-"}</b></span>
+                        </div>
+                    `;
+
+                    // Lógica del botón de fotos
+                    const btnFotos = tarjeta.querySelector('.btn-abrir-fotos');
+                    btnFotos.addEventListener("click", () => {
+                        const suministro = f["SUMINISTRO"]?.toString().trim();
+                        const codigoInspeccion = f["CODIGO INSPECCION PERDIDAS"]?.toString().trim();
+                        const ventana = document.createElement("div");
+                        ventana.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:99999; background:white; border-radius:10px; padding:20px; width:90%; max-width:1000px; height:90vh; overflow-y:auto; box-shadow:0 10px 25px rgba(0,0,0,0.5);";
+                        const cerrarBtn = document.createElement("button");
+                        cerrarBtn.innerHTML = "×";
+                        cerrarBtn.style.cssText = "position:absolute; top:10px; right:15px; font-size:28px; background:transparent; border:none; cursor:pointer; color:#333;";
+                        const overlay = document.createElement("div");
+                        overlay.style.cssText = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:99998;";
+
+                        cerrarBtn.addEventListener("click", () => { ventana.remove(); overlay.remove(); });
+                        const direccion = `${f["URBA"] || ""} ${f["CALLE2"] || ""} ${f["NROMUNI"] || ""}`.trim();
+                        ventana.innerHTML = `
+                            <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+                                <h3 style="margin:0; color:#1e293b;"><i class="fas fa-file-invoice"></i> Suministro: ${suministro}</h3>
+                                <div style="color:#64748b; font-size: 0.9rem; margin-top:5px;"><i class="fas fa-map-marker-alt"></i> ${direccion}</div>
+                            </div>
+                            <div id="contenedor-carrusel" style="display:flex; justify-content:center; align-items:center; height:calc(100% - 80px);"></div>
+                        `;
+                        ventana.appendChild(cerrarBtn);
+                        document.body.appendChild(overlay); document.body.appendChild(ventana);
+
+                        const contenedorCarrusel = ventana.querySelector("#contenedor-carrusel");
+                        contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Buscando imágenes...</p></div>`;
+
+                        fetch("/buscar-multiples-coincidencias", {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ pares: [{ suministro: suministro, inspeccion: codigoInspeccion }] })
+                        }).then(res => res.json()).then(data => {
+                            let imagenes = [];
+                            if (Array.isArray(data.resultados)) {
+                                data.resultados.forEach(g => {
+                                    if (g.subgrupos) g.subgrupos.forEach(sg => imagenes.push(...sg.imagenes.map(img => ({ carpeta: sg.carpeta, archivo: img }))));
+                                    else if (g.imagenes) imagenes.push(...g.imagenes.map(img => ({ carpeta: g.carpeta, archivo: img })));
+                                });
+                            }
+                            const coincidentes = imagenes.filter(img => img.archivo.includes(suministro) || img.archivo.includes(codigoInspeccion));
+
+                            if (coincidentes.length === 0) { contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>No hay fotos.</p>"; return; }
+                            let indexImg = 0;
+                            const construirCarrusel = () => {
+                                contenedorCarrusel.innerHTML = `
+                                    <div style="position:relative; width:100%; height:100%; display:flex; justify-content:center; background:#f8fafc; border-radius:8px;">
+                                        ${coincidentes.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❮</button>` : ''}
+                                        <img src="http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${coincidentes[indexImg].carpeta}/${coincidentes[indexImg].archivo}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
+                                        ${coincidentes.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❯</button>` : ''}
+                                    </div>
+                                `;
+                                if(coincidentes.length > 1){
+                                    document.getElementById("btn-izq").onclick = () => { indexImg = (indexImg - 1 + coincidentes.length) % coincidentes.length; construirCarrusel(); };
+                                    document.getElementById("btn-der").onclick = () => { indexImg = (indexImg + 1) % coincidentes.length; construirCarrusel(); };
+                                }
+                            };
+                            construirCarrusel();
+                        }).catch(err => { contenedorCarrusel.innerHTML = "<p>Error de conexión.</p>"; });
+                    });
+
+                    filaTarjetas.appendChild(tarjeta);
+
+                    if (i < trabajos.length - 1) {
+                        const flecha = document.createElement("div");
+                        flecha.innerHTML = `<i class="fas fa-angle-right"></i>`;
+                        flecha.style.cssText = "color:#cbd5e1; font-size:0.8rem; flex-shrink:0;";
+                        filaTarjetas.appendChild(flecha);
+                    }
+                }
+            });
+            
+            // DIBUJAR LÍNEAS DE RUTA EN EL MAPA (Blindado contra horas vacías)
+            if (puntos.length > 1) {
+                for (let i = 0; i < puntos.length - 1; i++) {
+                    const hFin = trabajos[i]?.["HORA"], hIniSig = trabajos[i + 1]?.["HORA INI"];
+                    let colorLinea = '#4678a6'; 
+                    if (hFin && hIniSig && hFin.trim() !== "" && hIniSig.trim() !== "" && hFin.includes(":") && hIniSig.includes(":")) {
+                        try {
+                            const [h1, m1] = hFin.split(":").map(Number);
+                            const [h2, m2] = hIniSig.split(":").map(Number);
+                            if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
+                                if (((h2*60+m2) - (h1*60+m1)) > 60) colorLinea = '#e74c3c'; 
+                            }
+                        } catch(e) {}
+                    }
+                    L.polyline([puntos[i], puntos[i + 1]], { color: colorLinea, weight: colorLinea==='#e74c3c'?3:2 }).addTo(mapa);
+                }
+
+                const rutaTotal = L.polyline(puntos, { color: "#00000000" }).addTo(mapa);
+                if(L.polylineDecorator) {
+                    L.polylineDecorator(rutaTotal, { patterns: [{ offset: '2%', repeat: '8%', symbol: L.Symbol.arrowHead({ pixelSize: 7, pathOptions: { color: '#c0392b', weight: 2 } }) }] }).addTo(mapa);
+                }
+                mapa.fitBounds(rutaTotal.getBounds(), { padding: [20, 20] });
+            } else if (puntos.length === 1) {
+                mapa.setView(puntos[0], 17);
+            }
+
+        } catch (errorMapa) {
+            console.error("❌ [ERROR RENDERIZANDO MAPA]:", errorMapa);
+        }
+    }, 300);
+}
+
+/* ==========================================
+   LLENADO DINÁMICO DE FILTROS (PRODUCCIÓN)
+========================================== */
+
+// 1. Asignar los "escuchadores" a los campos de fecha
+document.getElementById('filtro-prod-inicio').addEventListener('change', cargarFiltrosDinamicos);
+document.getElementById('filtro-prod-fin').addEventListener('change', cargarFiltrosDinamicos);
+
+function cargarFiltrosDinamicos() {
+    const fInicio = document.getElementById('filtro-prod-inicio').value;
+    const fFin = document.getElementById('filtro-prod-fin').value;
+
+    const selectActividad = document.getElementById('filtro-prod-actividad');
+    const selectOperario = document.getElementById('filtro-prod-operario');
+
+    // Si falta alguna fecha, no hacemos la consulta al servidor
+    if (!fInicio || !fFin) {
+        selectActividad.innerHTML = '<option value="TODAS">-- Todas las actividades --</option>';
+        selectOperario.innerHTML = '<option value="TODOS">-- Todos los operarios --</option>';
+        return;
+    }
+
+    // Opcional: Mostrar un estado de "Cargando..." en los selectores
+    selectActividad.innerHTML = '<option value="TODAS">Cargando actividades...</option>';
+    selectOperario.innerHTML = '<option value="TODOS">Cargando operarios...</option>';
+
+    // 2. Hacer la petición a nuestra nueva ruta en Flask
+    fetch('/api/obtener_filtros_produccion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            fecha_inicio: fInicio, 
+            fecha_fin: fFin 
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) throw new Error(data.error);
+
+        // 3. Llenar el selector de Actividades
+        selectActividad.innerHTML = '<option value="TODAS">-- Todas las actividades --</option>';
+        data.actividades.forEach(act => {
+            selectActividad.innerHTML += `<option value="${act}">${act}</option>`;
+        });
+
+        // 4. Llenar el selector de Operarios
+        selectOperario.innerHTML = '<option value="TODOS">-- Todos los operarios --</option>';
+        data.operarios.forEach(ope => {
+            selectOperario.innerHTML += `<option value="${ope}">${ope}</option>`;
+        });
+    })
+    .catch(err => {
+        console.error("Error cargando filtros dinámicos:", err);
+        selectActividad.innerHTML = '<option value="TODAS">-- Error al cargar --</option>';
+        selectOperario.innerHTML = '<option value="TODOS">-- Error al cargar --</option>';
+    });
+}
+
