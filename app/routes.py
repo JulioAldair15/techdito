@@ -11540,6 +11540,24 @@ def generar_matriz():
         import traceback
         traceback.print_exc() 
         return jsonify({"error": "Error interno"}), 500
+
+@app.route('/api/obtener_areas', methods=['GET'])
+def obtener_areas():
+    try:
+        # Buscamos todas las áreas únicas, ignorando las nulas o vacías
+        areas_db = db.session.query(Empleado.area).filter(
+            Empleado.area.isnot(None), 
+            Empleado.area != ''
+        ).distinct().all()
+        
+        # areas_db es una lista de tuplas: [('SISTEMAS',), ('COMERCIAL',), ...]
+        # Lo convertimos a una lista simple plana: ['SISTEMAS', 'COMERCIAL', ...]
+        lista_areas = sorted([area[0] for area in areas_db])
+        
+        return jsonify({"status": "success", "areas": lista_areas})
+    except Exception as e:
+        print(f"Error obteniendo áreas: {e}")
+        return jsonify({"error": "Error interno"}), 500
     
 
 @app.route('/api/obtener_filtros_produccion', methods=['POST'])
