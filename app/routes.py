@@ -11079,3 +11079,546 @@ def api_detalle_alerta():
         print(f"❌ [ERROR CRÍTICO - API] Fallo al obtener detalles de alerta: {e}")
         traceback.print_exc()
         return jsonify({"error": "Error interno del servidor", "detalle": str(e)}), 500
+
+
+
+######## PRODUCCION ########
+def parse_fecha(fecha_str):
+    if not fecha_str or fecha_str == "-": return None
+    try: return datetime.strptime(fecha_str.strip(), "%d/%m/%Y").date()
+    except ValueError: return None
+
+def parse_hora(hora_str):
+    if not hora_str or str(hora_str).strip() == "-" or str(hora_str).strip() == "": 
+        return None 
+    limpio = str(hora_str).strip()
+    formatos = ["%H:%M:%S", "%H:%M"]
+    for formato in formatos:
+        try:
+            return datetime.strptime(limpio, formato).time()
+        except ValueError:
+            pass 
+    return None
+
+# Función mejorada para ESTE, NORTE y otros decimales normales
+def parse_decimal(num_str):
+    if not num_str or str(num_str).strip() == "-" or str(num_str).strip() == "": 
+        return None
+    try: 
+        limpio = str(num_str).replace(",", ".").strip()
+        limpio = re.sub(r'[^\d.-]', '', limpio)
+        return float(limpio)
+    except ValueError: 
+        return None
+
+# 🔥 EL NUEVO CEREBRO GEOESPACIAL PARA ARREGLAR EXCEL ROTOS 🔥
+def reparar_coordenada(valor_str, tipo):
+    if not valor_str or str(valor_str).strip() == "-" or str(valor_str).strip() == "":
+        return None
+
+    texto = str(valor_str).strip()
+    # Si el dato ya viene perfecto de origen, lo pasamos directo
+    if '.' in texto and texto.count('.') == 1 and ',' not in texto:
+        try: return float(texto)
+        except: pass
+
+    # Limpiamos basura: Quitamos comas, puntos y letras.
+    limpio = re.sub(r'[^\d-]', '', texto)
+    
+    if not limpio or limpio == "-":
+        return None
+
+    try:
+        # Reconstrucción matemática basada en la geografía de tu zona
+        if tipo == 'latitud':
+            # La latitud siempre empieza con 1 dígito (-7 o -8)
+            if limpio.startswith('-'):
+                entero = limpio[:2]
+                decimal = limpio[2:]
+                return float(f"{entero}.{decimal}")
+                
+        elif tipo == 'longitud':
+            # La longitud siempre empieza con 2 dígitos (-79)
+            if limpio.startswith('-'):
+                entero = limpio[:3]
+                decimal = limpio[3:]
+                return float(f"{entero}.{decimal}")
+                
+        return float(limpio)
+    except Exception as e:
+        print(f"Error reparando coordenada {valor_str}: {e}")
+        return None
+
+
+@app.route('/cargar_produccion_csv', methods=['POST'])
+def cargar_produccion_csv():
+    try:
+        datos_csv = request.get_json()
+        if not datos_csv:
+            return jsonify({"error": "No se recibieron datos"}), 400
+
+        # Ahora el JSON SIEMPRE viene estandarizado con la llave 'cod_perd'
+        codigos_entrantes = [
+            fila.get("cod_perd", "").strip() 
+            for fila in datos_csv 
+            if fila.get("cod_perd", "").strip()
+        ]
+
+        set_codigos_existentes = set()
+        if codigos_entrantes:
+            resultados = db.session.query(Produccion.cod_perd).filter(Produccion.cod_perd.in_(codigos_entrantes)).all()
+            set_codigos_existentes = {res[0] for res in resultados}
+
+        # CEREBRO: Búsqueda de empleados
+        todos_empleados = Empleado.query.all()
+        memoria_empleados = []
+        for emp in todos_empleados:
+            nombre_completo = f"{emp.nombres or ''} {emp.apellidos or ''}".upper().replace(',', ' ')
+            palabras_clave = set(nombre_completo.split())
+            memoria_empleados.append({
+                'id': emp.id_empleado,
+                'palabras': palabras_clave
+            })
+
+        registros_omitidos = 0
+        nuevos_registros_a_guardar = []
+
+        for fila in datos_csv:
+            suministro = fila.get("suministro", "").strip()
+            if not suministro:
+                continue
+
+            cod_perd = fila.get("cod_perd", "").strip()
+            if cod_perd and cod_perd in set_codigos_existentes:
+                registros_omitidos += 1
+                continue
+            
+            if cod_perd:
+                set_codigos_existentes.add(cod_perd)
+
+            operario_csv = fila.get("operario_csv", "").strip().upper()
+            empleado_id = None
+
+            if operario_csv:
+                palabras_csv = set(operario_csv.replace(',', ' ').split())
+                mejor_coincidencia = 0
+                candidatos = []
+                
+                for emp in memoria_empleados:
+                    coincidencias = len(palabras_csv.intersection(emp['palabras']))
+                    
+                    if coincidencias >= 2:
+                        if coincidencias > mejor_coincidencia:
+                            mejor_coincidencia = coincidencias
+                            candidatos = [emp['id']]
+                        elif coincidencias == mejor_coincidencia:
+                            candidatos.append(emp['id'])
+                
+                if len(candidatos) == 1:
+                    empleado_id = candidatos[0]
+
+            # Instanciamos el objeto aplicando los filtros de datos
+            nueva_produccion = Produccion(
+                suministro=suministro,
+                ciclo=fila.get("ciclo", ""),
+                localidad=fila.get("localidad", ""),
+                urba=fila.get("urba", ""),
+                calle=fila.get("calle", ""),
+                nromuni=fila.get("nromuni", ""),
+                
+                operario_csv=operario_csv,
+                id_empleado=empleado_id,
+                
+                fecha_inicio=parse_fecha(fila.get("fecha_inicio")),
+                hora_ini=parse_hora(fila.get("hora_ini")),
+                fecha_fin=parse_fecha(fila.get("fecha_fin")),
+                hora_fin=parse_hora(fila.get("hora_fin")),
+                
+                actividad=fila.get("actividad", ""),
+                cod_perd=cod_perd,
+                
+                este=parse_decimal(fila.get("este")),
+                norte=parse_decimal(fila.get("norte")),
+                
+                # 🔥 AQUÍ APLICAMOS LA REPARACIÓN INTELIGENTE DE COORDENADAS 🔥
+                latitud=reparar_coordenada(fila.get("latitud"), 'latitud'),
+                longitud=reparar_coordenada(fila.get("longitud"), 'longitud')
+            )
+
+            nuevos_registros_a_guardar.append(nueva_produccion)
+
+        if nuevos_registros_a_guardar:
+            db.session.bulk_save_objects(nuevos_registros_a_guardar)
+            db.session.commit()
+
+        registros_creados = len(nuevos_registros_a_guardar)
+
+        mensaje_final = f"Se guardaron {registros_creados} registros."
+        if registros_omitidos > 0:
+            mensaje_final += f" Se omitieron {registros_omitidos} duplicados."
+
+        return jsonify({"status": "success", "mensaje": mensaje_final}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error al guardar producción: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Hubo un error interno al guardar los datos."}), 500
+
+
+# ========================================================
+# DICCIONARIO MAESTRO DE METAS POR ACTIVIDAD
+# ========================================================
+METAS_POR_ACTIVIDAD = {
+    "CATASTRO": 35,
+    "CATASTRO-FICHA LEVANTADA": 35,
+    "CIERRE ALCANTARILLADO": 12,
+    "CIERRE DRASTICO": 35,
+    "CIERRE DRASTICO CON PAVIMENTO": 35,
+    "CIERRE DRASTICO SIN PAVIMENTO": 35,
+    "CIERRE SIMPLE": 35,
+    "COMUNICACIÓN ATENCION": 48,
+    "COMUNICACION ATIPICAS": 48,
+    "COMUNICACION CARTA VP": 48,
+    "COMUNICACIÓN CONSUMO": 48,
+    "COMUNICACIÓN INSTALACION MEDIDORES": 48,
+    "COMUNICACION MANTENIMIENTO MEDIDORES": 48,
+    "COMUNICACION NUEVOS SUMINISTROS": 48,
+    "COMUNICACIÓN RECUPERO": 48,
+    "COMUNICACIÓN RESOLUCIÓN": 48,
+    "COMUNICACION RESULTADO VP": 48,
+    "COMUNICACIÓN TARIFA": 48,
+    "COMUNICACIÓN VERIFICACION POSTERIOR": 48,
+    "DISTRIBUCION CONTINUO": 480,
+    "DISTRIBUCION DISPERSO": 150,
+    "INSPECCION ESPECIAL GEOFONO": 8,
+    "INSPECCION ESPECIAL GEOFONO IMPOSIBILIDAD": 8,
+    "INSPECCION ESPECIAL GEOFONO USO MULTIPLE": 8,
+    "INSPECCION ESPECIAL GEOFONO USO UNICO": 8,
+    "INSPECCION EXTERNA": 48,
+    "INSPECCION EXTERNA ATIPICA": 24,
+    "INSPECCION EXTERNA COBRANZA MOROSA": 48,
+    "INSPECCION EXTERNA LEVANTAMIENTO": 48,
+    "INSPECCION EXTERNA MEDICION": 48,
+    "INSPECCION EXTERNA RECLAMO": 12,
+    "INSPECCION EXTERNA VERIFICACION": 12,
+    "INSPECCION INTERNA ATIPICA": 24,
+    "INSPECCION INTERNA ATIPICA IMPOSIBILIDAD": 24,
+    "INSPECCION INTERNA ATIPICA USO MULTIPLE": 24,
+    "INSPECCION INTERNA ATIPICA USO UNICO": 24,
+    "INSPECCION INTERNA RECLAMO": 12,
+    "INSPECCION INTERNA RECLAMO IMPOSIBILIDAD": 12,
+    "INSPECCION INTERNA RECLAMO USO MULTIPLE": 12,
+    "INSPECCION INTERNA RECLAMO USO UNICO": 12,
+    "INSPECCION INTERNA TARIFA": 12,
+    "INSPECCION INTERNA TARIFA IMPOSIBILIDAD": 12,
+    "INSPECCION INTERNA TARIFA USO MULTIPLE": 12,
+    "INSPECCION INTERNA TARIFA USO UNICO": 12,
+    "INSPECCION INTERNA VERIFICACION": 12,
+    "INSPECCION INTERNA VERIFICACION IMPOSIBILIDAD": 12,
+    "INSPECCION INTERNA VERIFICACION USO MULTIPLE": 12,
+    "INSPECCION INTERNA VERIFICACION USO UNICO": 12,
+    "INSPECCION TARIFA POR SOLICITUD": 8,
+    "INSPECCION TARIFA POR SOLICITUD IMPOSIBILIDAD": 8,
+    "INSPECCION TARIFA POR SOLICITUD USO MULTIPLE": 8,
+    "INSPECCION TARIFA POR SOLICITUD USO UNICO": 8,
+    "INSTALACION MEDIDORES": 20,
+    "LECTURA": 430,
+    "LEVANTAMIENTO ACUEDUCTO": 4,
+    "LEVANTAMIENTO ACUEDUCTO CON PAVIMENTO": 3,
+    "LEVANTAMIENTO ACUEDUCTO SIN PAVIMENTO": 4,
+    "LEVANTAMIENTO ALCANTARILLADO": 3,
+    "LEVANTAMIENTO ALCANTARILLADO CON PAVIMENTO": 3,
+    "LEVANTAMIENTO ALCANTARILLADO SIN PAVIMENTO": 3,
+    "MANTENIMIENTO MEDIDORES": 25,
+    "NOTIFICACIÓN FACTURACIÓN": 48,
+    "NUEVOS SUMINISTROS": 15,
+    "REAPERTURA ALCANTARILLADO": 10,
+    "REAPERTURA DRASTICA": 10,
+    "REAPERTURA DRASTICA CON PAVIMENTO": 10,
+    "REAPERTURA DRASTICA SIN PAVIMENTO": 10,
+    "REAPERTURA SIMPLE": 40,
+    "SELLADO DE ALCANTARILLADO": 3,
+    "VERIFICACIÓN DE ACCION COERCITIVA": 50,
+    "VERIFICACION DE ORDEN": 50,
+    "VERIFICACION ORDEN DRASTICO": 50,
+    "VERIFICACION ORDEN OBSTRACION": 50,
+    "VERIFICACION POSTERIOR MEDIDORES 1 REINSTALACION": 10,
+    "VERIFICACION POSTERIOR MEDIDORES 1 RETIRO": 10,
+    "VERIFICACION POSTERIOR MEDIDORES 1/2 REINSTALACION": 25,
+    "VERIFICACION POSTERIOR MEDIDORES 1/2 RETIRO": 25,
+    "VERIFICACION POSTERIOR MEDIDORES 3/4 REINSTALACION": 20,
+    "VERIFICACION POSTERIOR MEDIDORES 3/4 RETIRO": 20
+}
+
+@app.route('/api/generar_matriz', methods=['POST'])
+def generar_matriz():
+    print("\n" + "="*50)
+    print("🚀 [DEBUG] INICIANDO GENERACIÓN DE MATRIZ")
+    print("="*50)
+    
+    try:
+        data = request.get_json()
+        print(f"📥 [DEBUG] 1. Datos crudos recibidos del JS: {data}")
+        sys.stdout.flush()
+
+        fecha_inicio_str = data.get('fecha_inicio')
+        fecha_fin_str = data.get('fecha_fin')
+        actividad = data.get('actividad')
+        operario = data.get('operario') # <--- 1. EXTRAEMOS EL OPERARIO DEL JSON
+
+        fecha_inicio = datetime.strptime(fecha_inicio_str, "%Y-%m-%d").date()
+        fecha_fin = datetime.strptime(fecha_fin_str, "%Y-%m-%d").date()
+        
+        print(f"📅 [DEBUG] 2. Rango de SQL: Desde {fecha_inicio} a {fecha_fin} | Actividad: '{actividad}' | Operario: '{operario}'")
+
+        # 1. CONSULTA INVERTIDA
+        query = db.session.query(
+            Produccion.operario_csv,
+            Empleado.id_empleado,
+            Empleado.apellidos,
+            Empleado.nombres,
+            Remuneracion.sueldo_basico,
+            Produccion.actividad,
+            func.date(Produccion.fecha_fin).label('fecha'),
+            func.count(Produccion.id_produccion).label('ejecutado')
+        ).outerjoin(
+            Empleado, Produccion.id_empleado == Empleado.id_empleado
+        ).outerjoin(
+            Remuneracion, Remuneracion.empleado_id == Empleado.id_empleado
+        ).filter(
+            Produccion.fecha_fin >= fecha_inicio,
+            Produccion.fecha_fin <= fecha_fin
+        )
+
+        # Filtro de Actividad
+        if actividad and actividad != 'TODAS':
+            query = query.filter(Produccion.actividad == actividad)
+
+        # 🔥 2. FILTRO DE OPERARIO (Aquí estaba el problema)
+        if operario and operario != 'TODOS':
+            query = query.filter(Produccion.operario_csv == operario)
+
+        resultados_produccion = query.group_by(
+            Produccion.operario_csv, Empleado.id_empleado, Empleado.apellidos, 
+            Empleado.nombres, Remuneracion.sueldo_basico, Produccion.actividad, func.date(Produccion.fecha_fin)
+        ).all()
+
+        print(f"📊 [DEBUG] 4. Registros encontrados en BD tras el cruce: {len(resultados_produccion)}")
+        
+        if len(resultados_produccion) == 0:
+            print("⚠️ [ALERTA] No se encontró ninguna producción. Verifica que los registros en la tabla 'produccion' tengan el 'id_empleado' lleno y no en NULL.")
+
+        empleados_ids = list(set([r.id_empleado for r in resultados_produccion if r.id_empleado]))
+        print(f"🧑‍🔧 [DEBUG] 5. IDs de empleados únicos que trabajaron: {empleados_ids}")
+
+        # 2. BARRIDO DE ASISTENCIAS
+        asistencia_dict = {} 
+        
+        if empleados_ids:
+            tablas_asistencia = [
+                EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
+                EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, 
+                EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
+            ]
+            
+            total_asistencias_encontradas = 0
+            for modelo in tablas_asistencia:
+                asistencias = db.session.query(modelo.id_empleado, modelo.fec_asist, modelo.estado).filter(
+                    modelo.id_empleado.in_(empleados_ids),
+                    modelo.fec_asist >= fecha_inicio,
+                    modelo.fec_asist <= fecha_fin
+                ).all()
+                
+                for asist in asistencias:
+                    emp_id = asist.id_empleado
+                    fec = asist.fec_asist.strftime("%d/%m") if asist.fec_asist else None
+                    estado = asist.estado
+                    
+                    if emp_id and fec and estado:
+                        if emp_id not in asistencia_dict:
+                            asistencia_dict[emp_id] = {}
+                        asistencia_dict[emp_id][fec] = estado
+                        total_asistencias_encontradas += 1
+            
+            print(f"⏰ [DEBUG] 6. Se escanearon las asistencias y se encontraron: {total_asistencias_encontradas} registros.")
+
+        # 3. CONSTRUIR EL RANGO DE FECHAS
+        fechas_rango = []
+        fecha_actual = fecha_inicio
+        while fecha_actual <= fecha_fin:
+            fechas_rango.append(fecha_actual.strftime("%d/%m"))
+            fecha_actual += timedelta(days=1)
+
+        print(f"🗓️ [DEBUG] 7. Columnas de fechas a dibujar en JS: {fechas_rango}")
+
+        # 4. CONSTRUIR JSON Y CALCULAR RATIOS DINÁMICOS
+        matriz = {}
+
+        for r in resultados_produccion:
+            llave_agrupacion = r.id_empleado if r.id_empleado else r.operario_csv
+            
+            if r.id_empleado:
+                nombre_mostrar = f"{r.apellidos or ''}, {r.nombres or ''}".strip(" ,")
+            else:
+                nombre_mostrar = f"⚠️ {r.operario_csv} (No enlazado)"
+
+            fecha_str = r.fecha.strftime("%d/%m")
+            ejecutado = r.ejecutado
+            sueldo_basico = float(r.sueldo_basico) if r.sueldo_basico else 0.0
+
+            # Extraemos la actividad EXACTA que viene de la BD
+            actividad_real = (r.actividad or "").strip().upper()
+
+            # Obtenemos la meta del diccionario (500 por defecto si la actividad no está en la lista)
+            meta_diaria = METAS_POR_ACTIVIDAD.get(actividad_real, 500)
+
+            # 🎯 REGLAS DE NEGOCIO ESPECÍFICAS
+            # Si es LECTURA y no llegó a 100, se considera lectura dispersa y la meta se ajusta a 100
+            if actividad_real == "LECTURA" and ejecutado < 100:
+                meta_diaria = 100
+
+            # Calculamos el Ratio exacto
+            ratio = round(ejecutado / meta_diaria, 2) if meta_diaria > 0 else 0.0
+
+            # Construimos la matriz
+            if llave_agrupacion not in matriz:
+                matriz[llave_agrupacion] = {
+                    "id": r.id_empleado,
+                    "nombre": nombre_mostrar,
+                    "sueldo_contrato": sueldo_basico,
+                    "puntaje_acumulado": 0.0,
+                    "dias": {}
+                }
+            
+            # Si en un mismo día hizo 2 actividades (Ej: CATASTRO y CATASTRO-FICHA), sumamos sus ratios
+            if fecha_str in matriz[llave_agrupacion]["dias"] and matriz[llave_agrupacion]["dias"][fecha_str]["tipo"] == "produccion":
+                matriz[llave_agrupacion]["dias"][fecha_str]["ejecutado"] += ejecutado
+                matriz[llave_agrupacion]["dias"][fecha_str]["ratio"] += ratio
+            else:
+                matriz[llave_agrupacion]["dias"][fecha_str] = {
+                    "tipo": "produccion",
+                    "ejecutado": ejecutado,
+                    "ratio": ratio
+                }
+                
+            matriz[llave_agrupacion]["puntaje_acumulado"] += ratio
+
+        # 5. RELLENAR ASISTENCIAS Y GESTIONAR PUNTOS POR AUSENCIA
+        ASISTENCIAS_REMUNERADAS = ['A', 'DT', 'DM', 'FT', 'LG', 'V', 'LSG', 'F', 'R', 'SU', 'CE', 'FG', 'LD', 'DC', 'AP', 'LP', 'TC'] # Asistencia, Descanso Médico, Capacitación, Vacaciones
+
+        for llave, data_op in matriz.items():
+            emp_id = data_op["id"]
+            for f in fechas_rango:
+                if f not in data_op["dias"]:
+                    estado_asist = None
+                    if emp_id:
+                        estado_asist = asistencia_dict.get(emp_id, {}).get(f)
+                    
+                    if estado_asist:
+                        data_op["dias"][f] = {"tipo": "asistencia", "estado": estado_asist}
+                        
+                        if estado_asist.upper() in ASISTENCIAS_REMUNERADAS:
+                            data_op["puntaje_acumulado"] += 1.0
+                    else:
+                        data_op["dias"][f] = {"tipo": "vacio"}
+
+        return jsonify({
+            "status": "success",
+            "fechas": fechas_rango,
+            "operarios": list(matriz.values())
+        })
+
+    except Exception as e:
+        print(f"❌ [ERROR GRAVE] Hubo un fallo en la generación: {e}")
+        import traceback
+        traceback.print_exc() 
+        return jsonify({"error": "Error interno"}), 500
+    
+
+@app.route('/api/obtener_filtros_produccion', methods=['POST'])
+def obtener_filtros_produccion():
+    try:
+        data = request.get_json()
+        fecha_inicio = data.get('fecha_inicio')
+        fecha_fin = data.get('fecha_fin')
+
+        if not fecha_inicio or not fecha_fin:
+            return jsonify({"error": "Fechas incompletas"}), 400
+
+        # Buscamos actividades únicas en ese rango de fechas
+        actividades = db.session.query(Produccion.actividad)\
+            .filter(Produccion.fecha_fin >= fecha_inicio, Produccion.fecha_fin <= fecha_fin)\
+            .filter(Produccion.actividad != None, Produccion.actividad != '')\
+            .distinct().all()
+
+        # Buscamos operarios únicos en ese rango de fechas
+        operarios = db.session.query(Produccion.operario_csv)\
+            .filter(Produccion.fecha_fin >= fecha_inicio, Produccion.fecha_fin <= fecha_fin)\
+            .filter(Produccion.operario_csv != None, Produccion.operario_csv != '')\
+            .distinct().all()
+
+        return jsonify({
+            "status": "success",
+            "actividades": [a[0] for a in actividades], # a[0] extrae el texto de la tupla de SQLAlchemy
+            "operarios": [o[0] for o in operarios]
+        }), 200
+
+    except Exception as e:
+        print(f"Error obteniendo filtros: {e}")
+        return jsonify({"error": "Error interno del servidor"}), 500
+
+
+@app.route('/api/obtener_detalle_rango_operario', methods=['POST'])
+def obtener_detalle_rango_operario():
+    try:
+        data = request.get_json()
+        id_empleado = data.get('id_empleado')
+        operario_csv = data.get('operario_csv')
+        
+        fecha_inicio = datetime.strptime(data.get('fecha_inicio'), "%Y-%m-%d").date()
+        fecha_fin = datetime.strptime(data.get('fecha_fin'), "%Y-%m-%d").date()
+
+        # Filtramos por ID si el empleado fue enlazado, sino usamos el nombre en crudo
+        if id_empleado:
+            filtro_operario = Produccion.id_empleado == id_empleado
+        else:
+            filtro_operario = Produccion.operario_csv == operario_csv
+
+        # Traemos todos los trabajos del rango, ordenados cronológicamente
+        registros = Produccion.query.filter(
+            filtro_operario,
+            Produccion.fecha_fin >= fecha_inicio,
+            Produccion.fecha_fin <= fecha_fin
+        ).order_by(Produccion.fecha_fin, Produccion.hora_fin).all()
+
+        trabajos = []
+        for r in registros:
+            # Empaquetamos en el mismo formato que esperaba tu JavaScript (Estilo CSV)
+            trabajos.append({
+                "SUMINISTRO": r.suministro or "",
+                "CODIGO INSPECCION PERDIDAS": r.cod_perd or "",
+                "NOMBRE": r.localidad or "", # Fallback visual para Leaflet
+                "URBA": r.urba or "",
+                "CALLE2": r.calle or "",
+                "NROMUNI": r.nromuni or "",
+                "ACTIVIDAD": r.actividad or "",
+                
+                # Transformación segura de Date/Time a String
+                "FECHA INI EJECUCION": r.fecha_inicio.strftime("%d/%m/%Y") if r.fecha_inicio else "",
+                "FECHA EJECUCION": r.fecha_fin.strftime("%d/%m/%Y") if r.fecha_fin else "",
+                "HORA INI": r.hora_ini.strftime("%H:%M") if r.hora_ini else "",
+                "HORA": r.hora_fin.strftime("%H:%M") if r.hora_fin else "",
+                
+                # Transformación de Numeric a String
+                "LATITUD": str(r.latitud) if r.latitud else "",
+                "LONGITUD": str(r.longitud) if r.longitud else "",
+                "ESTE": str(r.este) if r.este else "",
+                "NORTE": str(r.norte) if r.norte else ""
+            })
+
+        return jsonify({"status": "success", "trabajos": trabajos})
+    except Exception as e:
+        print(f"Error cargando detalles del operario: {e}")
+        return jsonify({"error": "Error interno"}), 500
