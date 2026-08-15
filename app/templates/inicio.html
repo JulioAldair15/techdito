@@ -3772,34 +3772,43 @@
                             <h3 style="color: var(--c-blue);"><i class="fas fa-chart-bar"></i> Filtros de Búsqueda y Generación</h3>
                         </div>
 
-                        <div class="prod-filter-bar">
-                            
-                            <div style="flex: 1; min-width: 140px;">
+                        <div class="prod-filter-bar" style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+    
+                            <div style="flex: 1; min-width: 130px;">
                                 <label style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;">Fecha Inicio</label>
                                 <input type="date" id="filtro-prod-inicio" class="prod-input">
                             </div>
                             
-                            <div style="flex: 1; min-width: 140px;">
+                            <div style="flex: 1; min-width: 130px;">
                                 <label style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;">Fecha Fin</label>
                                 <input type="date" id="filtro-prod-fin" class="prod-input">
                             </div>
-
-                            <div style="flex: 1.5; min-width: 200px;">
+                        
+                            <!-- 🔥 NUEVO FILTRO DE ÁREA 🔥 -->
+                            <div style="flex: 1.2; min-width: 150px;">
+                                <label style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;">Área</label>
+                                <select id="filtro-prod-area" class="prod-input">
+                                    <option value="TODAS">-- Todas las áreas --</option>
+                                    <!-- Aquí tu JS o Jinja inyectará las áreas -->
+                                </select>
+                            </div>
+                        
+                            <div style="flex: 1.5; min-width: 180px;">
                                 <label style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;">Actividad</label>
                                 <select id="filtro-prod-actividad" class="prod-input">
                                     <option value="TODAS">-- Todas las actividades --</option>
                                 </select>
                             </div>
-
-                            <div style="flex: 1.5; min-width: 200px;">
+                        
+                            <div style="flex: 1.5; min-width: 180px;">
                                 <label style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;">Operario</label>
                                 <select id="filtro-prod-operario" class="prod-input">
                                     <option value="TODOS">-- Todos los operarios --</option>
                                 </select>
                             </div>
-
-                            <div style="flex-shrink: 0;">
-                                <button type="button" class="prod-btn prod-btn-search" onclick="generarTablaProduccion()">
+                        
+                            <div style="flex-shrink: 0; min-width: 140px;">
+                                <button type="button" class="prod-btn prod-btn-search" onclick="generarTablaProduccion()" style="width: 100%;">
                                     <i class="fas fa-search"></i> <span>Generar Tabla</span>
                                 </button>
                             </div>
