@@ -18864,6 +18864,7 @@ window.matrizGlobalData = { fechas: [], operarios: [] };
 function generarTablaProduccion() {
     const fInicio = document.getElementById('filtro-prod-inicio').value;
     const fFin = document.getElementById('filtro-prod-fin').value;
+    const area = document.getElementById('filtro-prod-area').value; // <--- NUEVO: CAPTURAMOS EL ÁREA
     const actividad = document.getElementById('filtro-prod-actividad').value;
     const operario = document.getElementById('filtro-prod-operario').value;
 
@@ -18878,7 +18879,8 @@ function generarTablaProduccion() {
     fetch('/api/generar_matriz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha_inicio: fInicio, fecha_fin: fFin, actividad: actividad, operario: operario })
+        // 🔥 NUEVO: Enviamos el área en el cuerpo de la petición JSON
+        body: JSON.stringify({ fecha_inicio: fInicio, fecha_fin: fFin, area: area, actividad: actividad, operario: operario })
     })
     .then(response => response.json())
     .then(data => {
@@ -18911,7 +18913,28 @@ function dibujarMatriz(fechas, operarios) {
     let mesAnterior = fInicio ? parseInt(fInicio.split('-')[1]) : new Date().getMonth() + 1;
     
     const esDomingoMapa = {};
-    let diasLaborables = 0; // 👈 Nuevo: Contaremos los días útiles para el semáforo
+    const esFeriadoMapa = {}; // 👈 Nuevo mapa para guardar los feriados
+    let diasLaborables = 0; 
+
+    // 🔥 DICCIONARIO DE FERIADOS DE PERÚ (DD/MM)
+    const feriadosPeru = {
+        "01/01": "Año Nuevo",
+        "02/04": "Jueves Santo",  // Dinámico (2026)
+        "03/04": "Viernes Santo", // Dinámico (2026)
+        "01/05": "Día del Trabajo",
+        "07/06": "Día de la Bandera",
+        "29/06": "San Pedro y San Pablo",
+        "23/07": "Día de la FAP",
+        "28/07": "Fiestas Patrias",
+        "29/07": "Fiestas Patrias",
+        "06/08": "Batalla de Junín",
+        "30/08": "Santa Rosa de Lima",
+        "08/10": "Combate de Angamos",
+        "01/11": "Todos los Santos",
+        "08/12": "Inmaculada Concepción",
+        "09/12": "Batalla de Ayacucho",
+        "25/12": "Navidad"
+    };
 
     thead.innerHTML = `<th class="col-sticky-left" title="Nombres y Apellidos">Colaborador</th>`;
     tbody.innerHTML = '';
@@ -18926,15 +18949,23 @@ function dibujarMatriz(fechas, operarios) {
         const esDomingo = fechaObj.getDay() === 0;
         esDomingoMapa[fecha] = esDomingo;
 
-        if (!esDomingo) diasLaborables++; // Sumamos si no es domingo
+        // 🔥 Verificador de Feriados
+        const diaMes = `${diaStr}/${mesStr}`;
+        const nombreFeriado = feriadosPeru[diaMes];
+        const esFeriado = !!nombreFeriado; // True si existe en el diccionario
+        esFeriadoMapa[fecha] = esFeriado;
 
-        const claseDomingo = esDomingo ? 'col-domingo' : '';
-        thead.innerHTML += `<th class="text-center col-dia ${claseDomingo}" title="${fecha}">${diaStr}</th>`;
+        // Restamos domingos y feriados de la meta de días laborables
+        if (!esDomingo && !esFeriado) diasLaborables++; 
+
+        const claseExtra = esDomingo ? 'col-domingo' : (esFeriado ? 'col-feriado' : '');
+        const tituloCol = esFeriado ? `${fecha} - ${nombreFeriado}` : fecha;
+
+        thead.innerHTML += `<th class="text-center col-dia ${claseExtra}" title="${tituloCol}">${diaStr}</th>`;
     });
 
-    if (diasLaborables === 0) diasLaborables = 1; // Evitar división por cero
+    if (diasLaborables === 0) diasLaborables = 1; // Seguridad anti división por cero
 
-    // 🔥 Redujimos los anchos y suavizamos los tamaños de letra de la cabecera
     thead.innerHTML += `
         <th class="text-center" style="background-color: #f8fafc; min-width: 45px; border-left: 2px solid var(--prod-border); font-size: 0.8rem; color: #64748b;">Pts.</th>
         <th class="text-center" style="background-color: #f8fafc; min-width: 60px; font-size: 0.8rem; color: #64748b;">Base</th>
@@ -18950,50 +18981,82 @@ function dibujarMatriz(fechas, operarios) {
                 </div>
             </td>`;
 
+        let puntajeRealCalculado = 0; // 👈 LA CALCULADORA ESTRICTA INICIA EN CERO
+
         fechas.forEach(fecha => {
             const dataDia = op.dias[fecha];
-            const claseDomingo = esDomingoMapa[fecha] ? 'col-domingo' : '';
+            const esDomingo = esDomingoMapa[fecha];
+            const esFeriado = esFeriadoMapa[fecha];
+            
+            const claseExtra = esDomingo ? 'col-domingo' : (esFeriado ? 'col-feriado' : '');
             
             if (dataDia && dataDia.tipo === "produccion") {
+                // 👈 SOLO SUMAMOS PUNTOS SI REALMENTE HUBO PRODUCCIÓN (Ratio de alcance)
+                puntajeRealCalculado += dataDia.ratio;
+
                 let claseBg = dataDia.ratio < 1.0 ? "bg-alerta" : (dataDia.ratio === 1.0 ? "bg-meta" : "bg-sobre"); 
-                filaHtml += `<td class="col-dia ${claseDomingo}"><div class="prod-badge-mini ${claseBg}" title="${fecha}: ${dataDia.ejecutado} regs">${dataDia.ratio.toFixed(2)}</div></td>`;
+                filaHtml += `<td class="col-dia ${claseExtra}"><div class="prod-badge-mini ${claseBg}" title="${fecha}: ${dataDia.ejecutado} regs">${dataDia.ratio.toFixed(2)}</div></td>`;
+                
             } else if (dataDia && dataDia.tipo === "asistencia") {
                 let esFalta = (dataDia.estado === 'F' || dataDia.estado === 'LSG');
                 let claseAsist = esFalta ? 'bg-ausente' : '';
                 let colorAsist = esFalta ? '' : 'color: #475569; font-weight: 700;';
-                filaHtml += `<td class="col-dia text-center ${claseDomingo}"><span class="${claseAsist}" style="${colorAsist}">${dataDia.estado}</span></td>`;
+                filaHtml += `<td class="col-dia text-center ${claseExtra}"><span class="${claseAsist}" style="${colorAsist}">${dataDia.estado}</span></td>`;
             } else {
-                filaHtml += `<td class="col-dia text-center ${claseDomingo}"><span class="bg-vacio">-</span></td>`;
+                filaHtml += `<td class="col-dia text-center ${claseExtra}"><span class="bg-vacio">-</span></td>`;
             }
         });
 
+        // 🔥 CÁLCULO DE SUELDO CON LOS PUNTOS REALES (Ignorando la data del backend)
         const sueldoContrato = op.sueldo_contrato || 0;
-        const sueldoPagar = (sueldoContrato / 26) * op.puntaje_acumulado;
+        const sueldoPagar = (sueldoContrato / 26) * puntajeRealCalculado;
 
-        // 🔥 LÓGICA DEL SEMÁFORO SUAVE
-        const rendimiento = op.puntaje_acumulado / diasLaborables;
+        // Semáforo Suave evaluado sobre los puntos reales vs días hábiles
+        const rendimiento = puntajeRealCalculado / diasLaborables;
         let bgColorTotal, colorTextoTotal;
 
         if (rendimiento >= 0.95) {
-            // VERDE SUAVE (Meta cumplida)
-            bgColorTotal = "#f0fdf4"; colorTextoTotal = "#15803d";
+            bgColorTotal = "#f0fdf4"; colorTextoTotal = "#15803d"; // Verde
         } else if (rendimiento >= 0.60) {
-            // AMARILLO SUAVE (Rendimiento regular/a medias)
-            bgColorTotal = "#fefce8"; colorTextoTotal = "#a16207";
+            bgColorTotal = "#fefce8"; colorTextoTotal = "#a16207"; // Amarillo
         } else {
-            // ROJO SUAVE (No llegó a la meta)
-            bgColorTotal = "#fef2f2"; colorTextoTotal = "#b91c1c";
+            bgColorTotal = "#fef2f2"; colorTextoTotal = "#b91c1c"; // Rojo
         }
 
-        // Adiós a los 'font-bold' y fuentes gigantes. Todo limpio y plano.
         filaHtml += `
-            <td class="text-center" style="background-color: #f8fafc; border-left: 2px solid var(--prod-border); color: #64748b; font-size: 0.8rem;">${op.puntaje_acumulado.toFixed(1)}</td>
+            <td class="text-center" style="background-color: #f8fafc; border-left: 2px solid var(--prod-border); color: #64748b; font-size: 0.8rem;">${puntajeRealCalculado.toFixed(2)}</td>
             <td class="text-center" style="background-color: #f8fafc; color: #94a3b8; font-size: 0.8rem;">${sueldoContrato.toFixed(0)}</td>
             <td class="col-sticky-right text-center" style="background-color: ${bgColorTotal}; color: ${colorTextoTotal}; font-size: 0.85rem;">${sueldoPagar.toFixed(2)}</td>
         </tr>`;
 
         tbody.innerHTML += filaHtml;
     });
+}
+
+/* ==========================================
+   CARGA INICIAL DE FILTROS
+========================================== */
+document.addEventListener('DOMContentLoaded', function() {
+    cargarAreasSelect();
+});
+
+function cargarAreasSelect() {
+    fetch('/api/obtener_areas')
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            const selectArea = document.getElementById('filtro-prod-area');
+            
+            // Recorremos la lista y creamos un <option> por cada área
+            data.areas.forEach(area => {
+                const option = document.createElement('option');
+                option.value = area;
+                option.textContent = area;
+                selectArea.appendChild(option);
+            });
+        }
+    })
+    .catch(err => console.error("❌ Error al cargar las áreas:", err));
 }
 
 // ==========================================
