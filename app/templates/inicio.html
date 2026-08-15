@@ -3805,29 +3805,37 @@
                             </div>
                         </div>
 
-                        <div class="prod-table-scroll prod-custom-scrollbar">
-                            <table class="prod-table" id="tabla-produccion">
-                                
-                                <thead>
-                                    <tr>
-                                        <th class="col-sticky-left" style="min-width: 220px;">Nombres y Apellidos</th>
-                                        <th class="text-center" style="width: 100%; color: #94a3b8; font-weight: normal;">Esperando generación...</th>
-                                        </tr>
-                                </thead>
-                                
-                                <tbody id="body-tabla-produccion">
-                                    <tr>
-                                        <td colspan="2" class="text-center" style="padding: 40px; color: #64748b;">
-                                            <i class="fas fa-calendar-alt" style="font-size: 2.5rem; margin-bottom: 12px; color: #cbd5e1; display: block;"></i>
-                                            Seleccione un rango de fechas y haga clic en <b>Generar Tabla</b> para visualizar los datos de producción.
-                                        </td>
-                                    </tr>
-                                </tbody>
+                        <!-- 🔥 NUEVO ECOSISTEMA DE PANTALLA DIVIDIDA 🔥 -->
+                        <div class="prod-split-layout" id="prod-split-layout">
+                            
+                            <!-- Lado Izquierdo: La Tabla -->
+                            <div class="prod-table-container" id="prod-table-container">
+                                <div class="prod-table-scroll prod-custom-scrollbar">
+                                    <table class="prod-table" id="tabla-produccion">
+                                        <thead>
+                                            <tr>
+                                                <th class="col-sticky-left" style="min-width: 140px;">Colaborador</th>
+                                                <th class="text-center" style="width: 100%; color: #94a3b8; font-weight: normal;">Esperando generación...</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="body-tabla-produccion">
+                                            <tr>
+                                                <td colspan="2" class="text-center" style="padding: 40px; color: #64748b;">
+                                                    <i class="fas fa-calendar-alt" style="font-size: 2.5rem; margin-bottom: 12px; color: #cbd5e1; display: block;"></i>
+                                                    Seleccione un rango de fechas y haga clic en <b>Generar Tabla</b>.
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="prod-tfoot" id="foot-tabla-produccion"></tfoot>
+                                    </table>
+                                </div>
+                            </div>
 
-                                <tfoot class="prod-tfoot" id="foot-tabla-produccion">
-                                </tfoot>
+                            <!-- Lado Derecho: El Panel de Detalle (Oculto por defecto) -->
+                            <div class="prod-side-panel prod-custom-scrollbar" id="prod-side-panel">
+                                <!-- El JS inyectará las tarjetas de los días aquí -->
+                            </div>
 
-                            </table>
                         </div>
                     </div>
                 </div>
