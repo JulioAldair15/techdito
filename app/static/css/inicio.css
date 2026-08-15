@@ -10429,3 +10429,13 @@ select.form-control {
     color: #cbd5e1; font-size: 0.8rem; flex-shrink: 0; 
     margin-bottom: 5px; /* Alineamos la flecha con la tarjeta */
 }
+
+/* ==========================================
+   COLORES DE FERIADOS PERÚ (NARANJA PASTEL)
+========================================== */
+.col-feriado {
+    background-color: #fff7ed !important; 
+}
+.col-dia.col-feriado {
+    border-right: 1px solid #ffedd5 !important;
+}
