@@ -11365,13 +11365,14 @@ def generar_matriz():
 
         fecha_inicio_str = data.get('fecha_inicio')
         fecha_fin_str = data.get('fecha_fin')
+        area = data.get('area') # <--- 1. EXTRAEMOS EL ÁREA DEL JSON
         actividad = data.get('actividad')
-        operario = data.get('operario') # <--- 1. EXTRAEMOS EL OPERARIO DEL JSON
+        operario = data.get('operario')
 
         fecha_inicio = datetime.strptime(fecha_inicio_str, "%Y-%m-%d").date()
         fecha_fin = datetime.strptime(fecha_fin_str, "%Y-%m-%d").date()
         
-        print(f"📅 [DEBUG] 2. Rango de SQL: Desde {fecha_inicio} a {fecha_fin} | Actividad: '{actividad}' | Operario: '{operario}'")
+        print(f"📅 [DEBUG] 2. Rango de SQL: Desde {fecha_inicio} a {fecha_fin} | Área: '{area}' | Actividad: '{actividad}' | Operario: '{operario}'")
 
         # 1. CONSULTA INVERTIDA
         query = db.session.query(
@@ -11392,11 +11393,15 @@ def generar_matriz():
             Produccion.fecha_fin <= fecha_fin
         )
 
+        # 🔥 2. FILTRO DE ÁREA (Relacionado con la tabla Empleado)
+        if area and area != 'TODAS':
+            query = query.filter(Empleado.area == area)
+
         # Filtro de Actividad
         if actividad and actividad != 'TODAS':
             query = query.filter(Produccion.actividad == actividad)
 
-        # 🔥 2. FILTRO DE OPERARIO (Aquí estaba el problema)
+        # Filtro de Operario
         if operario and operario != 'TODOS':
             query = query.filter(Produccion.operario_csv == operario)
 
@@ -11506,7 +11511,7 @@ def generar_matriz():
             matriz[llave_agrupacion]["puntaje_acumulado"] += ratio
 
         # 5. RELLENAR ASISTENCIAS Y GESTIONAR PUNTOS POR AUSENCIA
-        ASISTENCIAS_REMUNERADAS = ['A', 'DT', 'DM', 'FT', 'LG', 'V', 'LSG', 'F', 'R', 'SU', 'CE', 'FG', 'LD', 'DC', 'AP', 'LP', 'TC'] # Asistencia, Descanso Médico, Capacitación, Vacaciones
+        ASISTENCIAS_REMUNERADAS = ['A', 'DT', 'DM', 'FT', 'LG', 'V', 'LSG', 'F', 'R', 'SU', 'CE', 'FG', 'LD', 'DC', 'AP', 'LP', 'TC']
 
         for llave, data_op in matriz.items():
             emp_id = data_op["id"]
