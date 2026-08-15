@@ -10142,3 +10142,290 @@ select.form-control {
 #produccion .prod-table tbody tr:hover td.col-domingo {
     background-color: #ffe4e6 !important; 
 }
+
+/* ==========================================
+   PANTALLA DIVIDIDA GERENCIAL (MASTER-DETAIL PRO)
+========================================== */
+.prod-split-layout {
+    display: flex;
+    width: 100%;
+    height: 75vh; /* Altura fija para que el mapa tenga espacio */
+    overflow: hidden;
+    transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+    border-radius: 0 0 8px 8px;
+    background: var(--prod-white);
+    border-top: 1px solid var(--prod-border);
+}
+
+.prod-table-container {
+    width: 100%;
+    flex: 0 0 100%;
+    height: 100%;
+    overflow-y: auto;
+    transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.prod-side-panel {
+    width: 0%;
+    flex: 0 0 0%;
+    opacity: 0;
+    transform: translateX(50px);
+    transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+    background-color: #f8fafc;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 🔥 LA MAGIA DEL SPLIT SCREEN 🔥 */
+.prod-split-layout.panel-open .prod-table-container {
+    width: 35%; /* La tabla se encoge */
+    flex: 0 0 35%;
+    border-right: 2px solid var(--prod-border);
+    box-shadow: 5px 0 15px rgba(0,0,0,0.03);
+    z-index: 5;
+}
+
+.prod-split-layout.panel-open .prod-side-panel {
+    width: 65%; /* El mapa toma el control absoluto */
+    flex: 0 0 65%;
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* Efecto Clic en el Nombre (Tabla) */
+.prod-celda-click { cursor: pointer; transition: all 0.2s; }
+.prod-celda-click:hover { background-color: #e0e7ff !important; color: var(--c-blue) !important; }
+.prod-icon-click { opacity: 0; transform: translateX(-5px); transition: all 0.2s; color: var(--c-blue); }
+.prod-celda-click:hover .prod-icon-click { opacity: 1; transform: translateX(0); }
+
+/* ==========================================
+   DISEÑO INTERNO DEL PANEL DERECHO (MAPA Y CHIPS)
+========================================== */
+.panel-header {
+    padding: 15px 20px; background: white; border-bottom: 1px solid var(--prod-border);
+    display: flex; justify-content: space-between; align-items: center; z-index: 10;
+}
+.panel-header-info h3 { margin: 0; font-size: 1.2rem; color: #1e293b; }
+.panel-close-btn {
+    background: #f1f5f9; border: none; border-radius: 50%; width: 32px; height: 32px;
+    color: #64748b; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; font-size: 1.2rem;
+}
+.panel-close-btn:hover { background: #fee2e2; color: #ef4444; }
+
+/* Carrusel Horizontal de Días (Chips) */
+.dias-carrusel {
+    display: flex; overflow-x: auto; gap: 10px; padding: 12px 20px;
+    background: white; border-bottom: 1px solid var(--prod-border);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03); z-index: 9;
+}
+.dias-carrusel::-webkit-scrollbar { height: 6px; }
+.dias-carrusel::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+.dia-chip {
+    background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 20px;
+    cursor: pointer; white-space: nowrap; font-weight: 700; color: #64748b; font-size: 0.85rem;
+    transition: all 0.2s; display: flex; flex-direction: column; align-items: center; line-height: 1.2;
+}
+.dia-chip:hover { background: #e2e8f0; color: #334155; }
+.dia-chip.activo { background: var(--c-blue); color: white; border-color: var(--c-blue); box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3); transform: scale(1.05);}
+.dia-chip span { font-size: 0.65rem; font-weight: normal; opacity: 0.8; }
+
+/* Contenedor del Mapa */
+.mapa-wrapper { flex-grow: 1; padding: 15px; display: flex; flex-direction: column; overflow: hidden; background: #f1f5f9; }
+
+/* Responsive */
+@media (max-width: 992px) {
+    .prod-split-layout { height: 120vh; flex-direction: column; }
+    .prod-split-layout.panel-open .prod-table-container { width: 100%; flex: 0 0 40vh; border-right: none; border-bottom: 2px solid var(--prod-accent); }
+    .prod-split-layout.panel-open .prod-side-panel { width: 100%; flex: 0 0 80vh; }
+}
+
+/* ==========================================
+   DISEÑO GERENCIAL: 3 PANELES (PULIDO Y SEPARADO)
+========================================== */
+.panel-content-wrapper {
+    display: flex; flex-direction: row; flex: 1; height: calc(100% - 55px); overflow: hidden;
+}
+
+/* 1. SEPARACIÓN CLARA DE LA TABLA IZQUIERDA */
+.prod-split-layout.panel-open .prod-table-container {
+    width: 32%; flex: 0 0 32%;
+    border-right: 4px solid #cbd5e1; /* Borde grueso separador */
+    box-shadow: 4px 0 15px rgba(0,0,0,0.05); /* Sombra para dar profundidad */
+    z-index: 10;
+}
+.prod-split-layout.panel-open .prod-side-panel {
+    width: 68%; flex: 0 0 68%; opacity: 1; transform: translateX(0);
+    background: #f1f5f9; /* Fondo distinto para contrastar */
+}
+
+/* Panel Central: Listado de Días */
+.panel-lista-dias {
+    width: 35%; flex: 0 0 35%; border-right: 1px solid #e2e8f0;
+    background: white; overflow-y: auto;
+}
+.panel-lista-dias::-webkit-scrollbar { width: 4px; }
+.panel-lista-dias::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+/* Panel Derecho: Mapa Geoespacial */
+.panel-mapa-view {
+    width: 65%; flex: 1; display: flex; flex-direction: column; background: #f8fafc; position: relative;
+}
+
+/* ==========================================
+   FILAS DE DÍAS (EL EQUILIBRIO PERFECTO)
+========================================== */
+.row-dia {
+    display: flex; 
+    align-items: center; 
+    /* 🔥 EL RESPIRO: Subimos de 5px a 10px (el equilibrio entre los 15px iniciales y lo apretado de antes) */
+    padding: 10px 15px; 
+    background: white; 
+    border-bottom: 1px solid #e2e8f0; 
+    cursor: pointer; 
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+.row-dia:hover { background: #f8fafc; }
+.row-dia.activo { 
+    background: #eff6ff; border-left-color: var(--c-blue); 
+}
+
+.row-dia-fecha { 
+    width: 50px; 
+    text-align: center; 
+    border-right: 1px solid #e2e8f0; 
+    margin-right: 12px; 
+    padding-right: 8px;
+}
+.row-dia-fecha strong { 
+    display: block; 
+    font-size: 1.15rem; 
+    color: #1e293b; 
+    font-weight: 700; 
+    line-height: 1; 
+}
+.row-dia-fecha span { 
+    font-size: 0.65rem; 
+    color: #64748b; 
+    text-transform: uppercase; 
+    font-weight: normal; 
+    margin-top: 3px; /* Un mini respiro extra bajo el número */
+    display: block;
+}
+
+.row-dia-stats-compact { 
+    flex: 1; 
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    /* 🔥 SEPARACIÓN INTERNA: 6px de separación vertical (arriba/abajo) y 10px horizontal */
+    gap: 6px 10px; 
+    font-size: 0.75rem; 
+    color: #475569; 
+}
+.row-dia-stats-compact div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-dia-stats-compact i { color: #94a3b8; margin-right: 4px; } 
+
+.row-dia-arrow { color: #cbd5e1; font-size: 0.9rem; margin-left: 5px; transition: transform 0.2s; }
+.row-dia.activo .row-dia-arrow { color: var(--c-blue); transform: translateX(3px); }
+
+/* ==========================================
+   TARJETAS DEL MAPA INFERIORES (ULTRA COMPACTAS Y SCROLL FINO)
+========================================== */
+
+/* 🔥 1. ELIMINAMOS EL ESPACIO EN BLANCO 🔥 */
+.fila-detalle { 
+    display: flex !important; 
+    overflow-x: auto !important; 
+    gap: 8px !important; 
+    /* El tercer valor (0px) elimina el hueco blanco debajo de las tarjetas */
+    padding: 10px 10px 0px 10px !important; 
+    align-items: center !important; 
+    background: white !important; 
+    border-top: 1px solid #e2e8f0 !important;
+    
+    /* Forzar scroll fino en Firefox */
+    scrollbar-width: thin !important;
+    scrollbar-color: #cbd5e1 transparent !important;
+}
+
+/* 🔥 2. DESTRUIMOS EL SCROLL GRUESO DE WINDOWS/CHROME 🔥 */
+.fila-detalle::-webkit-scrollbar { 
+    height: 5px !important; /* Grosor horizontal */
+    width: 5px !important;  
+    background-color: transparent !important;
+    -webkit-appearance: none !important;
+}
+.fila-detalle::-webkit-scrollbar-track { 
+    background: transparent !important; 
+    border-radius: 10px !important;
+}
+.fila-detalle::-webkit-scrollbar-thumb { 
+    background-color: #cbd5e1 !important; 
+    border-radius: 10px !important; 
+    border: none !important;
+}
+.fila-detalle::-webkit-scrollbar-thumb:hover { 
+    background-color: var(--c-blue) !important; 
+}
+
+/* 3. PEGAMOS LAS TARJETAS AL SCROLL */
+.tarjeta-detalle-compacta { 
+    background: white !important; 
+    border: 1px solid #e2e8f0 !important; 
+    border-radius: 6px !important; 
+    min-width: 170px !important; 
+    max-width: 190px !important; 
+    padding: 6px 10px !important; 
+    /* Este margin pega la tarjeta al scroll que está justo debajo */
+    margin-bottom: 5px !important; 
+    transition: all 0.2s !important; 
+    flex-shrink: 0 !important; 
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important; 
+    cursor: pointer !important;
+}
+.tarjeta-detalle-compacta:hover { 
+    border-color: #cbd5e1 !important; 
+    box-shadow: 0 3px 6px rgba(0,0,0,0.04) !important; 
+}
+.tarjeta-detalle-compacta.resaltada { 
+    border-color: var(--c-blue) !important; 
+    background-color: #f0f8ff !important; 
+    transform: translateY(-2px) !important; 
+    box-shadow: 0 4px 8px rgba(37,99,235,0.1) !important;
+}
+
+.tarjeta-header { 
+    display: flex; justify-content: space-between; align-items: center; 
+    margin-bottom: 4px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 4px;
+}
+.t-suministro { 
+    font-weight: 700; font-size: 0.8rem; color: #1e293b; line-height: 1; 
+}
+
+/* Botón de cámara más pequeño */
+.t-btn-foto { 
+    background: #f1f5f9; color: var(--c-blue); border: 1px solid #e2e8f0; border-radius: 4px; 
+    width: 20px; height: 20px; font-size: 0.65rem; display: flex; align-items: center; 
+    justify-content: center; cursor: pointer; transition: all 0.2s;
+}
+.t-btn-foto:hover { 
+    background: var(--c-blue); color: white; border-color: var(--c-blue); 
+}
+
+.t-direccion { 
+    font-size: 0.65rem; color: #64748b; white-space: nowrap; overflow: hidden; 
+    text-overflow: ellipsis; margin-bottom: 4px; line-height: 1;
+}
+.t-tiempos { 
+    display: flex; justify-content: space-between; font-size: 0.65rem; color: #64748b; padding-top: 2px;
+}
+.t-tiempos span.valor { 
+    color: #334155; font-weight: 700; 
+}
+
+.flecha-detalle { 
+    color: #cbd5e1; font-size: 0.8rem; flex-shrink: 0; 
+    margin-bottom: 5px; /* Alineamos la flecha con la tarjeta */
+}
