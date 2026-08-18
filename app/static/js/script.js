@@ -19001,7 +19001,13 @@ function dibujarMatriz(fechas, operarios) {
                 let esFalta = (dataDia.estado === 'F' || dataDia.estado === 'LSG');
                 let claseAsist = esFalta ? 'bg-ausente' : '';
                 let colorAsist = esFalta ? '' : 'color: #475569; font-weight: 700;';
-                filaHtml += `<td class="col-dia text-center ${claseExtra}"><span class="${claseAsist}" style="${colorAsist}">${dataDia.estado}</span></td>`;
+                
+                // 🔥 EL TOOLTIP Y EL CURSOR DE AYUDA 🔥
+                let tooltipTexto = `Asistencia origen: Supervisor de ${dataDia.origen}`;
+                
+                filaHtml += `<td class="col-dia text-center ${claseExtra}" title="${tooltipTexto}" style="cursor: help;">
+                    <span class="${claseAsist}" style="${colorAsist}">${dataDia.estado}</span>
+                </td>`;
             } else {
                 filaHtml += `<td class="col-dia text-center ${claseExtra}"><span class="bg-vacio">-</span></td>`;
             }
