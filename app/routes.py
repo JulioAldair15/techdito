@@ -11418,7 +11418,7 @@ def generar_matriz():
         empleados_ids = list(set([r.id_empleado for r in resultados_produccion if r.id_empleado]))
         print(f"🧑‍🔧 [DEBUG] 5. IDs de empleados únicos que trabajaron: {empleados_ids}")
 
-        # 2. BARRIDO DE ASISTENCIAS
+        # 2. BARRIDO DE ASISTENCIAS (AHORA DETECTA EL MÓDULO)
         asistencia_dict = {} 
         
         if empleados_ids:
@@ -11430,6 +11430,10 @@ def generar_matriz():
             
             total_asistencias_encontradas = 0
             for modelo in tablas_asistencia:
+                # 🔥 Sacamos el nombre del área basados en el modelo (Ej: "EmpleadoLectura" -> "Lectura")
+                nombre_modulo = modelo.__name__.replace('Empleado', '')
+
+                # Si tu tabla de asistencia tiene una columna de usuario, la podrías añadir aquí a la consulta
                 asistencias = db.session.query(modelo.id_empleado, modelo.fec_asist, modelo.estado).filter(
                     modelo.id_empleado.in_(empleados_ids),
                     modelo.fec_asist >= fecha_inicio,
@@ -11444,7 +11448,12 @@ def generar_matriz():
                     if emp_id and fec and estado:
                         if emp_id not in asistencia_dict:
                             asistencia_dict[emp_id] = {}
-                        asistencia_dict[emp_id][fec] = estado
+                        
+                        # 🔥 Guardamos un diccionario con el estado Y el origen
+                        asistencia_dict[emp_id][fec] = {
+                            "estado": estado,
+                            "origen": nombre_modulo
+                        }
                         total_asistencias_encontradas += 1
             
             print(f"⏰ [DEBUG] 6. Se escanearon las asistencias y se encontraron: {total_asistencias_encontradas} registros.")
@@ -11517,14 +11526,22 @@ def generar_matriz():
             emp_id = data_op["id"]
             for f in fechas_rango:
                 if f not in data_op["dias"]:
-                    estado_asist = None
+                    dict_asist = None
                     if emp_id:
-                        estado_asist = asistencia_dict.get(emp_id, {}).get(f)
+                        dict_asist = asistencia_dict.get(emp_id, {}).get(f)
                     
-                    if estado_asist:
-                        data_op["dias"][f] = {"tipo": "asistencia", "estado": estado_asist}
+                    if dict_asist:
+                        # Extraemos los datos que guardamos arriba
+                        estado_real = dict_asist["estado"]
+                        origen_real = dict_asist["origen"]
                         
-                        if estado_asist.upper() in ASISTENCIAS_REMUNERADAS:
+                        data_op["dias"][f] = {
+                            "tipo": "asistencia", 
+                            "estado": estado_real, 
+                            "origen": origen_real # Lo mandamos al JSON del frontend
+                        }
+                        
+                        if estado_real.upper() in ASISTENCIAS_REMUNERADAS:
                             data_op["puntaje_acumulado"] += 1.0
                     else:
                         data_op["dias"][f] = {"tipo": "vacio"}
@@ -11540,6 +11557,7 @@ def generar_matriz():
         import traceback
         traceback.print_exc() 
         return jsonify({"error": "Error interno"}), 500
+        
 
 @app.route('/api/obtener_areas', methods=['GET'])
 def obtener_areas():
