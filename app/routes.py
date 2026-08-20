@@ -9848,6 +9848,18 @@ def descargar_matriz(user_id):
             # token_set_ratio ignora palabras extra, desordenadas y tolera typos
             similitud = fuzz.token_set_ratio(nombre_db, nombre_csv)
 
+            if similitud >= 75:
+                palabras_db = set(nombre_db.split())
+                palabras_csv = set(nombre_csv.split())
+                
+                # Detectamos si en el CSV hay una palabra (nombre) que el empleado NO tiene
+                palabras_ajenas = palabras_csv - palabras_db
+                
+                # Si hay nombres ajenos y la similitud estricta cae por debajo de 85%,
+                # deducimos que es la hermana y anulamos la similitud.
+                if palabras_ajenas and fuzz.token_sort_ratio(nombre_db, nombre_csv) < 85:
+                    similitud = 0
+
             # Umbral de confianza: 75% suele ser el punto dulce ideal
             if similitud >= 75:
                 # Opcional: Imprimir en consola para ver cómo funciona el algoritmo
