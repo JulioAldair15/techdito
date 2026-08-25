@@ -10084,7 +10084,7 @@ def get_avance_validacion():
         func.count(MatrizValidacion.id_matriz).label('total'),
         func.sum(
             case(
-                (MatrizValidacion.estado.in_(['VALIDADO']), 1), 
+                (MatrizValidacion.estado.in_(['VALIDADO', 'POR MODIFICAR']), 1), 
                 else_=0
             )
         ).label('procesados')
