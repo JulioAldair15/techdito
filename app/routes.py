@@ -11279,6 +11279,25 @@ def cargar_produccion_csv():
         return jsonify({"error": "Hubo un error interno al guardar los datos."}), 500
 
 
+@app.route('/api/obtener_areas', methods=['GET'])
+def obtener_areas():
+    try:
+        # Buscamos todas las áreas únicas, ignorando las nulas o vacías
+        areas_db = db.session.query(Empleado.area).filter(
+            Empleado.area.isnot(None), 
+            Empleado.area != ''
+        ).distinct().all()
+        
+        # areas_db es una lista de tuplas: [('SISTEMAS',), ('COMERCIAL',), ...]
+        # Lo convertimos a una lista simple plana: ['SISTEMAS', 'COMERCIAL', ...]
+        lista_areas = sorted([area[0] for area in areas_db])
+        
+        return jsonify({"status": "success", "areas": lista_areas})
+    except Exception as e:
+        print(f"Error obteniendo áreas: {e}")
+        return jsonify({"error": "Error interno"}), 500
+
+
 # ========================================================
 # DICCIONARIO MAESTRO DE METAS POR ACTIVIDAD
 # ========================================================
@@ -11569,25 +11588,6 @@ def generar_matriz():
         import traceback
         traceback.print_exc() 
         return jsonify({"error": "Error interno"}), 500
-        
-
-@app.route('/api/obtener_areas', methods=['GET'])
-def obtener_areas():
-    try:
-        # Buscamos todas las áreas únicas, ignorando las nulas o vacías
-        areas_db = db.session.query(Empleado.area).filter(
-            Empleado.area.isnot(None), 
-            Empleado.area != ''
-        ).distinct().all()
-        
-        # areas_db es una lista de tuplas: [('SISTEMAS',), ('COMERCIAL',), ...]
-        # Lo convertimos a una lista simple plana: ['SISTEMAS', 'COMERCIAL', ...]
-        lista_areas = sorted([area[0] for area in areas_db])
-        
-        return jsonify({"status": "success", "areas": lista_areas})
-    except Exception as e:
-        print(f"Error obteniendo áreas: {e}")
-        return jsonify({"error": "Error interno"}), 500
     
 
 @app.route('/api/obtener_filtros_produccion', methods=['POST'])
@@ -11633,45 +11633,169 @@ def obtener_detalle_rango_operario():
         fecha_inicio = datetime.strptime(data.get('fecha_inicio'), "%Y-%m-%d").date()
         fecha_fin = datetime.strptime(data.get('fecha_fin'), "%Y-%m-%d").date()
 
-        # Filtramos por ID si el empleado fue enlazado, sino usamos el nombre en crudo
         if id_empleado:
             filtro_operario = Produccion.id_empleado == id_empleado
         else:
             filtro_operario = Produccion.operario_csv == operario_csv
 
-        # Traemos todos los trabajos del rango, ordenados cronológicamente
         registros = Produccion.query.filter(
             filtro_operario,
             Produccion.fecha_fin >= fecha_inicio,
             Produccion.fecha_fin <= fecha_fin
         ).order_by(Produccion.fecha_fin, Produccion.hora_fin).all()
 
+        # 🔥 NUEVO: Extraemos la carga planeada para este empleado
+        cargas_asignadas = {}
+        if id_empleado:
+            cargas_bd = CargaDiaria.query.filter(
+                CargaDiaria.id_empleado == id_empleado,
+                CargaDiaria.fecha >= fecha_inicio,
+                CargaDiaria.fecha <= fecha_fin
+            ).all()
+            for c in cargas_bd:
+                # Lo guardamos con el mismo formato de fecha que usa el frontend
+                cargas_asignadas[c.fecha.strftime("%d/%m/%Y")] = c.cantidad
+
         trabajos = []
         for r in registros:
-            # Empaquetamos en el mismo formato que esperaba tu JavaScript (Estilo CSV)
             trabajos.append({
                 "SUMINISTRO": r.suministro or "",
                 "CODIGO INSPECCION PERDIDAS": r.cod_perd or "",
-                "NOMBRE": r.localidad or "", # Fallback visual para Leaflet
+                "NOMBRE": r.localidad or "", 
                 "URBA": r.urba or "",
                 "CALLE2": r.calle or "",
                 "NROMUNI": r.nromuni or "",
                 "ACTIVIDAD": r.actividad or "",
-                
-                # Transformación segura de Date/Time a String
                 "FECHA INI EJECUCION": r.fecha_inicio.strftime("%d/%m/%Y") if r.fecha_inicio else "",
                 "FECHA EJECUCION": r.fecha_fin.strftime("%d/%m/%Y") if r.fecha_fin else "",
                 "HORA INI": r.hora_ini.strftime("%H:%M") if r.hora_ini else "",
                 "HORA": r.hora_fin.strftime("%H:%M") if r.hora_fin else "",
-                
-                # Transformación de Numeric a String
                 "LATITUD": str(r.latitud) if r.latitud else "",
                 "LONGITUD": str(r.longitud) if r.longitud else "",
                 "ESTE": str(r.este) if r.este else "",
                 "NORTE": str(r.norte) if r.norte else ""
             })
 
-        return jsonify({"status": "success", "trabajos": trabajos})
+        return jsonify({
+            "status": "success", 
+            "trabajos": trabajos,
+            "cargas_asignadas": cargas_asignadas # 🔥 Enviamos el diccionario al JS
+        })
     except Exception as e:
         print(f"Error cargando detalles del operario: {e}")
         return jsonify({"error": "Error interno"}), 500
+
+
+@app.route('/api/empleados_por_area', methods=['POST'])
+def empleados_por_area():
+    try:
+        data = request.get_json()
+        area_seleccionada = data.get('area')
+        fecha_str = data.get('fecha') # 🔥 Nuevo: Recibimos la fecha
+
+        if not area_seleccionada:
+            return jsonify({"error": "Falta el parámetro área"}), 400
+
+        # 1. Buscamos empleados activos de esta área
+        empleados_area = Empleado.query.filter(Empleado.area == area_seleccionada, Empleado.estado == 'ACTIVO').all()
+        dict_empleados = {e.id_empleado: {"nombre": f"{e.apellidos or ''} {e.nombres or ''}".strip(), "area": e.area, "carga": 0} for e in empleados_area}
+
+        # 2. Si hay fecha, buscamos qué se ha guardado
+        if fecha_str:
+            try:
+                fecha_asignacion = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+                cargas_dia = CargaDiaria.query.filter_by(fecha=fecha_asignacion, area_asignadora=area_seleccionada).all()
+                
+                for c in cargas_dia:
+                    if c.id_empleado in dict_empleados:
+                        dict_empleados[c.id_empleado]["carga"] = c.cantidad
+                    else:
+                        # Si es un apoyo externo guardado en esta fecha, lo incluimos
+                        emp_externo = Empleado.query.get(c.id_empleado)
+                        if emp_externo:
+                            dict_empleados[c.id_empleado] = {
+                                "nombre": f"{emp_externo.apellidos or ''} {emp_externo.nombres or ''}".strip(),
+                                "area": emp_externo.area,
+                                "carga": c.cantidad
+                            }
+            except ValueError:
+                pass
+
+        lista = []
+        for id_emp, info in dict_empleados.items():
+            lista.append({
+                "id_empleado": id_emp,
+                "nombre": info["nombre"],
+                "area_origen": info["area"] if info["area"] != area_seleccionada else None,
+                "carga": info["carga"] # 🔥 Enviamos la carga actual
+            })
+        
+        lista.sort(key=lambda x: x["nombre"])
+        return jsonify({"status": "success", "empleados": lista})
+    except Exception as e:
+        print(f"Error consultando empleados por área: {e}")
+        return jsonify({"error": "Error interno"}), 500
+
+
+@app.route('/api/empleados_externos', methods=['POST'])
+def empleados_externos():
+    """Devuelve los empleados activos que NO pertenecen al área seleccionada"""
+    area_actual = request.get_json().get('area')
+    empleados = Empleado.query.filter(Empleado.area != area_actual, Empleado.estado == 'ACTIVO').order_by(Empleado.apellidos).all()
+    
+    lista = []
+    for e in empleados:
+        lista.append({
+            "id_empleado": e.id_empleado, 
+            "nombre": f"{e.apellidos or ''} {e.nombres or ''}".strip(), 
+            "area_origen": e.area
+        })
+    return jsonify({"status": "success", "empleados": lista})
+
+
+@app.route('/api/guardar_cargas', methods=['POST'])
+def guardar_cargas():
+    try:
+        data = request.get_json()
+        fecha_str, area_actual, asignaciones = data.get('fecha'), data.get('area'), data.get('asignaciones')
+
+        if not fecha_str or not asignaciones or not area_actual:
+            return jsonify({"error": "Datos incompletos."}), 400
+            
+        fecha_asignacion = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        registros_nuevos, registros_actualizados = 0, 0
+
+        for item in asignaciones:
+            emp_id = item.get('id_empleado')
+            cantidad_carga = int(item.get('carga'))
+
+            # 🔥 REGLA 1: Si no tiene carga (> 0), lo ignoramos
+            if cantidad_carga <= 0: continue
+
+            carga_existente = db.session.query(CargaDiaria).filter_by(id_empleado=emp_id, fecha=fecha_asignacion).first()
+
+            if carga_existente:
+                # 🔥 REGLA 2, 3 Y 4: Validar si otro supervisor ya le asignó carga
+                if carga_existente.area_asignadora != area_actual:
+                    empleado = Empleado.query.get(emp_id)
+                    nombre_emp = f"{empleado.apellidos or ''} {empleado.nombres or ''}".strip()
+                    db.session.rollback() # Abortamos todo
+                    # Retornamos la alerta explícita
+                    return jsonify({"error": f"El colaborador {nombre_emp} ya tiene carga asignada el {fecha_str} por el área: {carga_existente.area_asignadora}"})
+                else:
+                    # Es de la misma área, se permite actualizar
+                    if carga_existente.cantidad != cantidad_carga:
+                        carga_existente.cantidad = cantidad_carga
+                        registros_actualizados += 1
+            else:
+                nueva_carga = CargaDiaria(id_empleado=emp_id, fecha=fecha_asignacion, cantidad=cantidad_carga, area_asignadora=area_actual)
+                db.session.add(nueva_carga)
+                registros_nuevos += 1
+        
+        db.session.commit()
+        return jsonify({"status": "success", "mensaje": f"Se guardaron {registros_nuevos} nuevas cargas y se actualizaron {registros_actualizados}."})
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error guardando cargas: {e}")
+        return jsonify({"error": "Error interno del servidor."})
