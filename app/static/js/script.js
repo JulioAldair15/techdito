@@ -19039,9 +19039,6 @@ function dibujarMatriz(fechas, operarios) {
     });
 }
 
-/* ==========================================
-   CARGA INICIAL DE FILTROS
-========================================== */
 document.addEventListener('DOMContentLoaded', function() {
     cargarAreasSelect();
 });
@@ -19105,26 +19102,21 @@ function abrirPanelOperario(indexOperario) {
         if (data.error) throw new Error(data.error);
         
         window.datosDetalleOperario = data.trabajos;
+        const cargasAsignadas = data.cargas_asignadas || {}; // 🔥 Recibimos las metas
         
         const diasMap = {};
         window.datosDetalleOperario.forEach((t, i) => {
-            // Evaluamos la fecha de fin y si no existe, la de inicio
             const fecha = t["FECHA EJECUCION"] || t["FECHA INI EJECUCION"];
-            console.log(`🔍 [Reg ${i+1}] SUM: ${t["SUMINISTRO"]} | Fecha asignada: ${fecha} | H.Ini: "${t["HORA INI"]}" | H.Fin: "${t["HORA"]}"`);
-
-            if(!fecha || fecha.trim() === "") return; // Evita agrupar campos vacíos
+            if(!fecha || fecha.trim() === "") return;
             if(!diasMap[fecha]) diasMap[fecha] = [];
             diasMap[fecha].push(t);
         });
 
-        console.log("📅 [FRONTEND] Días agrupados exitosamente:", diasMap);
-
         const fechasOrdenadas = Object.keys(diasMap).sort((a,b) => {
-            // Protección contra fechas mal formadas en el sort
             try {
                 const partsA = a.includes('/') ? a.split('/') : a.split('-');
                 const partsB = b.includes('/') ? b.split('/') : b.split('-');
-                return new Date(partsB[2], partsB[1]-1, partsB[0]) - new Date(partsA[2], partsA[1]-1, partsA[0]);
+                return new Date(partsA[2], partsA[1]-1, partsA[0]) - new Date(partsB[2], partsB[1]-1, partsB[0]);
             } catch(e) { return 0; }
         });
 
@@ -19133,15 +19125,12 @@ function abrirPanelOperario(indexOperario) {
             return;
         }
 
-        // 🔥 BLOQUE TRY...CATCH PARA PROTEGER EL DIBUJADO DE LA LISTA
         try {
             const mesesTexto = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
             let htmlListaDias = '';
             
             fechasOrdenadas.forEach((fecha, index) => {
                 const trabajosDia = diasMap[fecha];
-                
-                // Extracción segura de día y mes
                 let dia = "--", mesIndice = 0;
                 if(fecha && (fecha.includes('/') || fecha.includes('-'))) {
                     const partes = fecha.includes('/') ? fecha.split('/') : fecha.split('-');
@@ -19155,24 +19144,18 @@ function abrirPanelOperario(indexOperario) {
 
                 trabajosDia.forEach(f => {
                     const hIniStr = f["HORA INI"], hFinStr = f["HORA"];
-                    
-                    // Validación ultra-estricta de las horas (ignora strings vacíos)
                     if (hIniStr && hFinStr && hIniStr.trim() !== "" && hFinStr.trim() !== "") {
                         try {
                             const [h1, m1] = hIniStr.trim().split(":").map(Number);
                             const [h2, m2] = hFinStr.trim().split(":").map(Number);
-                            
                             if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
                                 const inicio = new Date(0, 0, 0, h1, m1), fin = new Date(0, 0, 0, h2, m2);
                                 if (!horaInicioGlobal || inicio < horaInicioGlobal) horaInicioGlobal = inicio;
                                 if (!horaFinGlobal || fin > horaFinGlobal) horaFinGlobal = fin;
-                                
                                 const duracion = (h2 * 60 + m2) - (h1 * 60 + m1);
                                 if (duracion > 0) { totalMinutosEjecucion += duracion; ejecucionesValidas++; }
                             }
-                        } catch(errorHora) {
-                            // Ignoramos silenciosamente horas corruptas
-                        }
+                        } catch(errorHora) {}
                     }
                 });
 
@@ -19184,22 +19167,41 @@ function abrirPanelOperario(indexOperario) {
                 let promMin = ejecucionesValidas > 0 ? Math.round(totalMinutosEjecucion / ejecucionesValidas) : 0;
                 const promTexto = promMin >= 60 ? `${Math.floor(promMin/60)}h ${promMin%60}m` : `${promMin}m`;
                 
-                // Fallback seguro para actividades nulas
                 const actividadCruda = trabajosDia[0].ACTIVIDAD || "Varios";
                 const actividadCorta = actividadCruda.substring(0, 15);
 
+                const metaDia = cargasAsignadas[fecha] || 0; 
+                const registrosEjecutados = trabajosDia.length;
+                let porcentajeTexto = "-";
+                let colorAvance = "#64748b";
+
+                if (metaDia > 0) {
+                    const pct = Math.round((registrosEjecutados / metaDia) * 100);
+                    // Límite visual para que porcentajes masivos no rompan el diseño
+                    porcentajeTexto = pct > 999 ? `+999%` : `${pct}%`;
+                    colorAvance = pct >= 100 ? "#16a34a" : (pct >= 50 ? "#d97706" : "#dc2626");
+                } else {
+                    porcentajeTexto = "Sin Meta";
+                }
+
                 htmlListaDias += `
-                    <div class="row-dia" id="row-dia-${index}" onclick="dibujarMapaDeDia('${fecha}', ${index})">
-                        <div class="row-dia-fecha">
-                            <strong>${dia}</strong><span>${textoMes}</span>
+                    <div class="row-dia" id="row-dia-${index}" onclick="dibujarMapaDeDia('${fecha}', ${index})" style="padding: 10px 12px; gap: 8px; display: flex; align-items: center; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: 0.2s; background: white;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                        
+                        <div class="row-dia-fecha" style="width: 38px; min-width: 38px; margin-right: 5px; padding-right: 8px; border-right: 1px solid #e2e8f0; text-align: center;">
+                            <strong style="display: block; font-size: 1.1rem; color: #1e293b; font-weight: 700; line-height: 1;">${dia}</strong>
+                            <span style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; margin-top: 3px; display: block;">${textoMes}</span>
                         </div>
-                        <div class="row-dia-stats-compact">
-                            <div title="Actividad"><i class="fas fa-clipboard-check"></i> <span style="color:#334155;">${actividadCorta}</span></div>
-                            <div title="Registros"><i class="fas fa-map-pin"></i> <span style="color:#334155;">${trabajosDia.length} regs</span></div>
-                            <div title="Tiempo Total"><i class="fas fa-stopwatch"></i> <span style="color:#334155;">${horasTrabajadasTexto}</span></div>
-                            <div title="Promedio"><i class="fas fa-bolt"></i> <span style="color:#334155;">${promTexto}</span></div>
+
+                        <div class="row-dia-stats-compact" style="flex: 1; display: grid; grid-template-columns: 1.1fr 1fr 1.1fr; gap: 8px 10px; font-size: 0.75rem; color: #475569;">
+                            <div title="Actividad" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-clipboard-check" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${actividadCorta}</span></div>
+                            <div title="Meta Asignada" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-bullseye" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${metaDia} meta</span></div>
+                            <div title="Registros Ejecutados" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-map-pin" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${registrosEjecutados} regs</span></div>
+                            <div title="Tiempo Total" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-stopwatch" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${horasTrabajadasTexto}</span></div>
+                            <div title="Promedio" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-bolt" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${promTexto}</span></div>
+                            <div title="Avance de Meta" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-chart-line" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:${colorAvance}; font-weight:700;">${porcentajeTexto}</span></div>
                         </div>
-                        <div class="row-dia-arrow"><i class="fas fa-chevron-right"></i></div>
+
+                        <div class="row-dia-arrow" style="color:#cbd5e1; font-size:0.9rem; margin-left:auto;"><i class="fas fa-chevron-right"></i></div>
                     </div>
                 `;
             });
@@ -19219,7 +19221,7 @@ function abrirPanelOperario(indexOperario) {
 
         } catch (errorRender) {
             console.error("❌ [FRONTEND RENDER ERROR]:", errorRender);
-            throw errorRender; // Lo mandamos al catch general
+            throw errorRender;
         }
 
     }).catch(err => {
@@ -19498,3 +19500,311 @@ function cargarFiltrosDinamicos() {
     });
 }
 
+
+function abrirModalCargas() {
+    try {
+        console.log("1. Botón clickeado. Buscando modal...");
+        const modal = document.getElementById('modal-cargas');
+        
+        if (!modal) {
+            alert("Error crítico: El navegador no encuentra el HTML con id='modal-cargas'. Revisa que el código HTML del modal esté pegado correctamente.");
+            return;
+        }
+        
+        modal.style.display = 'flex';
+        console.log("2. Modal hecho visible. Buscando selects...");
+
+        const selectAreaModal = document.getElementById('cargas-select-area');
+        const selectPrincipal = document.getElementById('filtro-prod-area');
+        
+        // Protección: Solo copia si ambos existen en el HTML
+        if (selectAreaModal && selectPrincipal) {
+            if (selectAreaModal.options.length <= 1) {
+                selectAreaModal.innerHTML = selectPrincipal.innerHTML;
+                selectAreaModal.value = ""; 
+            }
+        } else {
+            console.warn("Advertencia: No se encontró uno de los select de área.");
+        }
+        
+        console.log("3. Seteando fechas e inicializando lista...");
+        const inputFecha = document.getElementById('cargas-input-fecha');
+        if (inputFecha) inputFecha.value = new Date().toISOString().split('T')[0];
+        
+        const lista = document.getElementById('cargas-body-lista');
+        if (lista) {
+            lista.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: #94a3b8;">Selecciona un área para ver a los colaboradores.</div>`;
+        }
+        
+        const suma = document.getElementById('cargas-total-suma');
+        if (suma) suma.innerText = "0";
+
+        console.log("4. Proceso de apertura finalizado con éxito.");
+
+    } catch (error) {
+        console.error("❌ ERROR CRÍTICO AL ABRIR EL MODAL:", error);
+        alert("El código falló al intentar abrir el modal. Presiona F12 y revisa la consola.");
+    }
+}
+
+function cerrarModalCargas() {
+    document.getElementById('modal-cargas').style.display = 'none';
+}
+
+function cargarEmpleadosParaCarga() {
+    const area = document.getElementById('cargas-select-area').value;
+    const contenedor = document.getElementById('cargas-body-lista');
+
+    if (!area || area === "TODAS") {
+        contenedor.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: #94a3b8; font-size: 0.85rem;">Por favor, selecciona un área específica.</div>`;
+        document.getElementById('cargas-total-suma').innerText = "0";
+        return;
+    }
+    
+    contenedor.innerHTML = `<div style="text-align: center; padding: 30px;"><div class="loader2"></div><p style="font-size: 0.85rem; color:#64748b; margin-top:10px;">Cargando colaboradores...</p></div>`;
+
+    fetch('/api/empleados_por_area', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ area: area })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) throw new Error(data.error);
+        if (data.empleados.length === 0) {
+            contenedor.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: #ef4444; font-size: 0.85rem;">No hay colaboradores activos en esta área.</div>`;
+            return;
+        }
+
+        let htmlLista = "";
+        data.empleados.forEach(emp => {
+            htmlLista += `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 15px; border-bottom: 1px solid #f1f5f9; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                    <div style="font-size: 0.85rem; color: #334155; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px;" title="${emp.nombre}">
+                        ${emp.nombre}
+                    </div>
+                    <input type="number" class="input-carga-dinamico" data-id="${emp.id_empleado}" min="0" placeholder="0" oninput="sumarCargasTotales()" style="width: 70px; padding: 6px; text-align: center; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9rem; color: #0f172a; outline: none; flex-shrink: 0;" onfocus="this.style.borderColor='var(--c-blue)'" onblur="this.style.borderColor='#cbd5e1'">
+                </div>
+            `;
+        });
+        
+        contenedor.innerHTML = htmlLista;
+        sumarCargasTotales();
+        habilitarNavegacionTeclas();
+    })
+    .catch(err => {
+        console.error(err);
+        contenedor.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: #ef4444; font-size: 0.85rem;">Error al cargar los empleados.</div>`;
+    });
+}
+
+function habilitarNavegacionTeclas() {
+    const contenedor = document.getElementById('cargas-body-lista');
+    contenedor.removeEventListener('keydown', handleTeclasCargas);
+    contenedor.addEventListener('keydown', handleTeclasCargas);
+}
+
+function handleTeclasCargas(e) {
+    if (!e.target.classList.contains('input-carga-dinamico')) return;
+    const inputs = Array.from(document.querySelectorAll('.input-carga-dinamico'));
+    const index = inputs.indexOf(e.target);
+    
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        e.preventDefault();
+        if (index > -1 && index < inputs.length - 1) {
+            inputs[index + 1].focus();
+            inputs[index + 1].select();
+        }
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (index > 0) {
+            inputs[index - 1].focus();
+            inputs[index - 1].select();
+        }
+    }
+}
+
+function sumarCargasTotales() {
+    const inputs = document.querySelectorAll('.input-carga-dinamico');
+    let total = 0;
+    inputs.forEach(input => { total += parseInt(input.value) || 0; });
+    document.getElementById('cargas-total-suma').innerText = total;
+}
+
+window.empleadosExternosMemoria = []; // Variable global para la búsqueda
+
+function cargarEmpleadosParaCarga() {
+    const area = document.getElementById('cargas-select-area').value;
+    const fecha = document.getElementById('cargas-input-fecha').value; // 🔥 Capturamos fecha
+    const contenedor = document.getElementById('cargas-body-lista');
+
+    if (!area || area === "TODAS" || !fecha) {
+        contenedor.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: #94a3b8; font-size: 0.85rem;">Por favor, selecciona un área específica.</div>`;
+        return;
+    }
+    
+    contenedor.innerHTML = `<div style="text-align: center; padding: 30px;"><div class="loader2"></div></div>`;
+
+    fetch('/api/empleados_por_area', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ area: area, fecha: fecha }) // 🔥 Enviamos fecha
+    }).then(res => res.json()).then(data => {
+        let htmlLista = "";
+        data.empleados.forEach(emp => {
+            htmlLista += generarFilaEmpleado(emp.id_empleado, emp.nombre, emp.area_origen, emp.carga);
+        });
+        contenedor.innerHTML = htmlLista || `<div style="text-align: center; padding: 40px; color: #ef4444;">Sin colaboradores.</div>`;
+        
+        sumarCargasTotales();
+        habilitarNavegacionTeclas();
+        cargarApoyosExternos(area);
+    });
+}
+
+function cargarApoyosExternos(areaActual) {
+    fetch('/api/empleados_externos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ area: areaActual })
+    }).then(res => res.json()).then(data => {
+        window.empleadosExternosMemoria = data.empleados;
+        renderizarDropdownExternos(); // Dibujamos la lista inicial
+    });
+}
+
+// Función que dibuja el menú desplegable
+function renderizarDropdownExternos(filtro = "") {
+    const dropdown = document.getElementById('cargas-dropdown-externo');
+    dropdown.innerHTML = "";
+    
+    let filtrados = window.empleadosExternosMemoria;
+    
+    // Si el usuario escribió algo, filtramos ignorando mayúsculas/minúsculas
+    if (filtro) {
+        const txt = filtro.toLowerCase();
+        filtrados = filtrados.filter(e => e.nombre.toLowerCase().includes(txt));
+    }
+
+    if (filtrados.length === 0) {
+        dropdown.innerHTML = `<div style="padding: 10px; color: #ef4444; font-size: 0.8rem; text-align: center;">No se encontraron colaboradores.</div>`;
+        return;
+    }
+
+    // Dibujamos las coincidencias
+    filtrados.forEach(emp => {
+        const div = document.createElement('div');
+        div.style.cssText = "padding: 8px 12px; font-size: 0.8rem; color: #334155; cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.2s;";
+        div.innerHTML = `<strong>${emp.nombre}</strong> <span style="color:#94a3b8; font-size:0.7rem;">(${emp.area_origen})</span>`;
+        
+        div.onmouseover = () => div.style.background = "#f8fafc";
+        div.onmouseout = () => div.style.background = "white";
+        
+        // Al hacer clic, pasamos el nombre al input visual y el ID al input oculto
+        div.onclick = () => {
+            document.getElementById('cargas-search-externo').value = emp.nombre;
+            document.getElementById('cargas-val-externo').value = emp.id_empleado;
+            dropdown.style.display = 'none';
+        };
+        dropdown.appendChild(div);
+    });
+}
+
+function filtrarApoyosExternos() {
+    const texto = document.getElementById('cargas-search-externo').value;
+    document.getElementById('cargas-val-externo').value = ""; // Limpiamos el ID oculto por si borra
+    renderizarDropdownExternos(texto);
+    document.getElementById('cargas-dropdown-externo').style.display = 'block';
+}
+
+// Cierra el menú desplegable si el usuario hace clic en otra parte de la pantalla
+document.addEventListener('click', function(e) {
+    const searchInput = document.getElementById('cargas-search-externo');
+    const dropdown = document.getElementById('cargas-dropdown-externo');
+    if (searchInput && dropdown) {
+        if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    }
+});
+
+function agregarEmpleadoExterno() {
+    const idEmp = document.getElementById('cargas-val-externo').value;
+    
+    if (!idEmp) {
+        alert("Por favor, busca y selecciona un colaborador de la lista desplegable.");
+        return;
+    }
+
+    if (document.querySelector(`.input-carga-dinamico[data-id="${idEmp}"]`)) {
+        alert("Este colaborador ya fue añadido a la lista.");
+        return;
+    }
+
+    const emp = window.empleadosExternosMemoria.find(e => e.id_empleado == idEmp);
+    const contenedor = document.getElementById('cargas-body-lista');
+    
+    // Inyectamos de forma segura sin borrar lo digitado
+    contenedor.insertAdjacentHTML('beforeend', generarFilaEmpleado(emp.id_empleado, emp.nombre, emp.area_origen, 0));
+    
+    // Lo sacamos de la memoria para que no aparezca más en el buscador
+    window.empleadosExternosMemoria = window.empleadosExternosMemoria.filter(e => e.id_empleado != idEmp);
+    
+    // Reseteamos el buscador
+    document.getElementById('cargas-search-externo').value = "";
+    document.getElementById('cargas-val-externo').value = "";
+    renderizarDropdownExternos(); 
+    
+    habilitarNavegacionTeclas();
+}
+
+// 🔥 ACTUALIZADO: Recibe la carga de la base de datos
+function generarFilaEmpleado(id, nombre, areaApoyo, cargaActual = 0) {
+    let badgeApoyo = areaApoyo ? `<span style="font-size:0.6rem; color:#f97316; background:#fff7ed; padding:2px 5px; border-radius:4px; margin-left:6px; border: 1px solid #ffedd5;">Apoyo: ${areaApoyo}</span>` : "";
+    let valueAttr = cargaActual > 0 ? `value="${cargaActual}"` : ""; // Si es 0, dejamos placeholder
+    
+    return `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 15px; border-bottom: 1px solid #f1f5f9; transition: 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+            <div style="font-size: 0.85rem; color: #334155; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px;" title="${nombre}">
+                ${nombre} ${badgeApoyo}
+            </div>
+            <input type="number" class="input-carga-dinamico" data-id="${id}" min="0" placeholder="0" ${valueAttr} oninput="sumarCargasTotales()" style="width: 70px; padding: 6px; text-align: center; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9rem; color: #0f172a; outline: none; flex-shrink: 0;" onfocus="this.style.borderColor='var(--c-blue)'" onblur="this.style.borderColor='#cbd5e1'">
+        </div>
+    `;
+}
+
+function guardarCargasDiarias() {
+    const fecha = document.getElementById('cargas-input-fecha').value;
+    const area = document.getElementById('cargas-select-area').value;
+    const inputs = document.querySelectorAll('.input-carga-dinamico');
+    const btnGuardar = document.getElementById('btn-guardar-cargas');
+    
+    if (!fecha || !area) { alert("Debes seleccionar una fecha y un área."); return; }
+    
+    let asignaciones = [];
+    inputs.forEach(input => {
+        let cantidad = parseInt(input.value) || 0;
+        if (cantidad > 0) asignaciones.push({ id_empleado: input.getAttribute('data-id'), carga: cantidad });
+    });
+    
+    if (asignaciones.length === 0) { alert("No has asignado carga a ningún empleado."); return; }
+
+    btnGuardar.disabled = true;
+    btnGuardar.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+
+    fetch('/api/guardar_cargas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha: fecha, area: area, asignaciones: asignaciones })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            alert("⚠️ " + data.error);
+            return;
+        }
+        alert("✅ " + data.mensaje);
+        // Se quitó la línea cerrarModalCargas() para mantener la lista visible
+    })
+    .catch(() => alert("Error de conexión."))
+    .finally(() => {
+        btnGuardar.disabled = false;
+        btnGuardar.innerHTML = `Guardar Cargas`;
+    });
+}
