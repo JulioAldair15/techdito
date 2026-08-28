@@ -3735,43 +3735,51 @@
 
                 <!-- PRODUCCION -->
                 <div id="produccion" class="section">
-    
+                    
+                    <!-- 🔥 LÓGICA MAESTRA: Identificamos quién está estrictamente limitado 🔥 -->
+                    <!-- Quitamos a supervisor1 de aquí para que tenga acceso total -->
+                    {% set supervisores_limitados = ['sup_catastro', 'sup_distribucion', 'sup_inspecciones', 'sup_lecturas', 'sup_medicion', 'sup_norte', 'sup_persuasivas'] %}
+                    {% set es_solo_cargas = user_name and (user_name | trim | lower) in supervisores_limitados %}
+
                     <div class="prod-header-wrapper">
                         <div>
                             <h2 class="prod-main-title">Producción de Colaboradores</h2>
                             <p class="prod-subtitle">Panel gerencial de rendimiento, puntajes y cálculo salarial.</p>
                         </div>
                         
-                        <!-- 🔥 Agregamos flex-wrap: wrap para proteger la responsividad en móviles -->
                         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                             
+                            <!-- ADMINISTRADORES: Ven Subir -->
+                            {% if not es_solo_cargas %}
                             <button type="button" class="prod-btn" onclick="abrirModalSubida()" 
                                 style="background-color: var(--c-blue); color: white; padding: 0 16px; margin: 0; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); height: 38px; box-sizing: border-box;">
                                 <i class="fas fa-upload" style="font-size: 1.1rem; margin-right: 8px;"></i> 
                                 <span>Subir</span>
                             </button>
+                            {% endif %}
 
-                            {% set usuarios_permitidos = ['sup_catastro', 'sup_distribucion', 'sup_inspecciones', 'sup_lecturas', 'sup_medicion', 'sup_norte', 'sup_persuasivas', 'supervisor1'] %}
-    
-                            {% if session.get('user') in usuarios_permitidos %}
+                            <!-- TODOS: Ven el botón Cargas (Tanto admins como supervisores limitados) -->
                             <button type="button" class="prod-btn" onclick="abrirModalCargas()" 
                                 style="background-color: #f97316; color: white; padding: 0 16px; margin: 0; box-shadow: 0 2px 4px rgba(249, 115, 22, 0.2); height: 38px; box-sizing: border-box;">
                                 <i class="fas fa-clipboard-list" style="font-size: 1.1rem; margin-right: 8px;"></i> 
                                 <span>Cargas</span>
                             </button>
-                            {% endif %}
 
+                            <!-- ADMINISTRADORES: Ven Exportar -->
+                            {% if not es_solo_cargas %}
                             <button type="button" class="prod-btn" onclick="exportarProduccionExcel()" 
                                 style="background-color: #10b981; color: white; padding: 0 16px; margin: 0; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2); height: 38px; box-sizing: border-box;">
                                 <i class="fas fa-file-excel" style="font-size: 1.1rem; margin-right: 8px;"></i> 
                                 <span>Exportar </span>
                             </button>
+                            {% endif %}
 
                         </div>
                     </div>
 
+                    <!-- VISTA COMPLETA PARA ADMINISTRADORES / SUPERVISOR1 (MATRIZ Y FILTROS) -->
+                    {% if not es_solo_cargas %}
                     <div class="prod-filter-bar" style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
-    
                         <div style="flex: 1; min-width: 130px;">
                             <label style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;">Fecha Inicio</label>
                             <input type="date" id="filtro-prod-inicio" class="prod-input">
@@ -3782,12 +3790,10 @@
                             <input type="date" id="filtro-prod-fin" class="prod-input">
                         </div>
 
-                        <!-- 🔥 NUEVO FILTRO DE ÁREA 🔥 -->
                         <div style="flex: 1.2; min-width: 150px;">
                             <label style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;">Área</label>
                             <select id="filtro-prod-area" class="prod-input">
                                 <option value="TODAS">-- Todas las áreas --</option>
-                                <!-- Aquí tu JS o Jinja inyectará las áreas -->
                             </select>
                         </div>
 
@@ -3811,10 +3817,7 @@
                             </button>
                         </div>
                     
-                        <!-- 🔥 NUEVO ECOSISTEMA DE PANTALLA DIVIDIDA 🔥 -->
                         <div class="prod-split-layout" id="prod-split-layout">
-                            
-                            <!-- Lado Izquierdo: La Tabla -->
                             <div class="prod-table-container" id="prod-table-container">
                                 <div class="prod-table-scroll prod-custom-scrollbar">
                                     <table class="prod-table" id="tabla-produccion">
@@ -3837,15 +3840,20 @@
                                 </div>
                             </div>
 
-                            <!-- Lado Derecho: El Panel de Detalle (Oculto por defecto) -->
-                            <div class="prod-side-panel prod-custom-scrollbar" id="prod-side-panel">
-                                <!-- El JS inyectará las tarjetas de los días aquí -->
-                            </div>
-
+                            <div class="prod-side-panel prod-custom-scrollbar" id="prod-side-panel"></div>
                         </div>
                     </div>
-                </div>
 
+                    <!-- VISTA EXCLUSIVA PARA SUPERVISORES LIMITADOS -->
+                    {% else %}
+                    <div style="padding: 60px 20px; text-align: center; background: white; border: 1px dashed #cbd5e1; border-radius: 8px; margin-top: 20px;">
+                        <i class="fas fa-tasks" style="font-size: 3rem; color: #cbd5e1; margin-bottom: 15px;"></i>
+                        <h3 style="color: #334155; margin: 0 0 10px 0; font-size: 1.2rem;">Panel de Asignación de Cargas</h3>
+                        <p style="color: #64748b; margin: 0; font-size: 0.9rem;">Utilice el botón naranja <b>Cargas</b> en la parte superior para asignar las metas diarias de su equipo.</p>
+                    </div>
+                    {% endif %}
+
+                </div>
 
                 
                      
