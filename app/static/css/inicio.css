@@ -10439,3 +10439,245 @@ select.form-control {
 .col-dia.col-feriado {
     border-right: 1px solid #ffedd5 !important;
 }
+
+
+
+/* Contenedor principal interno */
+        .rt-wrapper {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 100px); /* Ajustado para no desbordar el viewport */
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+        }
+
+        /* Cabecera */
+        .rt-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .rt-title { margin: 0; font-size: 1.5rem; color: #1e293b; font-weight: 700; }
+        .rt-subtitle { margin: 5px 0 0 0; color: #64748b; font-size: 0.9rem; }
+
+        /* Pantalla Dividida (Master-Detail) */
+        .rt-split-layout {
+            display: flex;
+            flex: 1;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .rt-panel-izq {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            transition: width 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            border-right: 1px solid transparent;
+        }
+
+        .rt-panel-der {
+            width: 0%;
+            opacity: 0;
+            display: flex;
+            flex-direction: column;
+            background: #f8fafc;
+            transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            overflow: hidden;
+        }
+
+        /* Clase activa cuando se selecciona una ruta */
+        .rt-split-layout.rt-open .rt-panel-izq {
+            width: 35%;
+            border-right: 3px solid #cbd5e1;
+        }
+        .rt-split-layout.rt-open .rt-panel-der {
+            width: 65%;
+            opacity: 1;
+        }
+
+        /* Lista de Rutas */
+        .rt-list-container {
+            flex: 1;
+            overflow-y: auto;
+            background: #ffffff;
+        }
+        .rt-row {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #e2e8f0;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-left: 4px solid transparent;
+        }
+        .rt-row:hover { background: #f1f5f9; }
+        .rt-row.active { background: #eff6ff; border-left-color: #2563eb; }
+
+        .rt-row-icon {
+            width: 40px; height: 40px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; margin-right: 15px; font-size: 1.1rem;
+        }
+
+        /* Mapa y Tarjetas */
+        .rt-map-container {
+            flex: 1;
+            background: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .rt-cards-row {
+            display: flex;
+            overflow-x: auto;
+            padding: 10px;
+            gap: 10px;
+            background: #ffffff;
+            border-top: 1px solid #e2e8f0;
+            scrollbar-width: thin;
+        }
+        .rt-card-item {
+            min-width: 200px;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 10px;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .rt-card-item:hover { border-color: #2563eb; box-shadow: 0 4px 6px rgba(37,99,235,0.1); transform: translateY(-2px); }
+
+        /* Botones e Inputs */
+        .rt-btn {
+            background: #2563eb; color: white; border: none; padding: 0 20px;
+            height: 38px; border-radius: 6px; font-weight: 600; cursor: pointer;
+            display: flex; align-items: center; gap: 8px; transition: 0.2s;
+        }
+        .rt-btn:hover { background: #1d4ed8; }
+        .rt-input {
+            border: 1px solid #cbd5e1; padding: 8px 12px; border-radius: 4px;
+            outline: none; width: 100%; box-sizing: border-box; font-family: inherit;
+        }
+
+        /* Modal Aislado */
+        .rt-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px);
+            z-index: 105000; display: none; align-items: center; justify-content: center;
+        }
+        .rt-modal-box {
+            background: #ffffff; width: 90%; max-width: 600px;
+            border-radius: 10px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            display: flex; flex-direction: column;
+        }
+
+        /* Estilo para los números dentro de los puntos del mapa */
+        .map-label-orden {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            color: white;
+            font-weight: 800;
+            font-size: 0.75rem;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            direction: center;
+        }
+
+
+/* ==========================================
+   ESTILOS: MODAL DE CARGAS (UI LIMPIA)
+========================================== */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.4); 
+    z-index: 99999; display: flex; justify-content: center; align-items: center;
+    padding: 15px; box-sizing: border-box;
+}
+
+.cargas-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 15px; border-bottom: 1px solid #f1f5f9;
+}
+.cargas-row:last-child { border-bottom: none; }
+.cargas-row:hover { background: #f8fafc; }
+
+.cargas-nombre { 
+    font-size: 0.85rem; color: #334155; white-space: nowrap; 
+    overflow: hidden; text-overflow: ellipsis; 
+}
+
+.cargas-input-number {
+    width: 80px; padding: 6px; text-align: center; border: 1px solid #cbd5e1;
+    border-radius: 4px; font-size: 0.9rem; color: #0f172a; outline: none;
+}
+.cargas-input-number:focus { 
+    border-color: var(--c-blue, #1e3a8a); 
+    box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.1); 
+}
+/* Quitar flechas por defecto de los inputs number para diseño más limpio */
+.cargas-input-number::-webkit-inner-spin-button, 
+.cargas-input-number::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Estilos estrictos y locales para asegurar el diseño limpio */
+#modal-cargas .cargas-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 15px; border-bottom: 1px solid #f1f5f9;
+}
+#modal-cargas .cargas-row:hover { background: #f8fafc; }
+#modal-cargas .cargas-nombre { 
+    font-size: 0.85rem; color: #334155; white-space: nowrap; 
+    overflow: hidden; text-overflow: ellipsis; 
+}
+#modal-cargas .cargas-input-number {
+    width: 80px; padding: 6px; text-align: center; border: 1px solid #cbd5e1;
+    border-radius: 4px; font-size: 0.9rem; color: #0f172a; outline: none;
+}
+#modal-cargas .cargas-input-number:focus { 
+    border-color: #1e3a8a; box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.1); 
+}
+#modal-cargas .cargas-input-number::-webkit-inner-spin-button, 
+#modal-cargas .cargas-input-number::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* ==========================================
+   SCROLL MINIMALISTA PARA MODALES
+========================================== */
+.prod-modal-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+.prod-modal-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.prod-modal-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+.prod-modal-scroll::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+.prod-modal-scroll::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Ocultar flechas del input number para diseño más limpio */
+input[type="number"].input-carga-dinamico::-webkit-inner-spin-button, 
+input[type="number"].input-carga-dinamico::-webkit-outer-spin-button { 
+    -webkit-appearance: none; 
+    margin: 0; 
+}
+input[type="number"].input-carga-dinamico {
+    -moz-appearance: textfield;
+}
