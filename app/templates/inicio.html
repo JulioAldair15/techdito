@@ -3751,9 +3751,9 @@
                                 <span>Subir</span>
                             </button>
 
-                            {% set usuarios_permitidos = ['sup_catastro', 'sup_distribucion', 'sup_inspecciones', 'sup_lecturas', 'sup_medicion', 'sup_norte', 'sup_persuasivas'] %}
+                            {% set usuarios_permitidos = ['sup_catastro', 'sup_distribucion', 'sup_inspecciones', 'sup_lecturas', 'sup_medicion', 'sup_norte', 'sup_persuasivas', 'supervisor1'] %}
     
-                            {% if session.get('usuario') in usuarios_permitidos %}
+                            {% if session.get('user') in usuarios_permitidos %}
                             <button type="button" class="prod-btn" onclick="abrirModalCargas()" 
                                 style="background-color: #f97316; color: white; padding: 0 16px; margin: 0; box-shadow: 0 2px 4px rgba(249, 115, 22, 0.2); height: 38px; box-sizing: border-box;">
                                 <i class="fas fa-clipboard-list" style="font-size: 1.1rem; margin-right: 8px;"></i> 
