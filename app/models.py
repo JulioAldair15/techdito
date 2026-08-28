@@ -731,4 +731,19 @@ class Produccion(db.Model):
     def __repr__(self):
         return f'<Produccion {self.suministro} - {self.actividad}>'
 
+class CargaDiaria(db.Model):
+    __tablename__ = 'carga_diaria'
+    
+    id_carga = db.Column(db.Integer, primary_key=True)
+    id_empleado = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado', ondelete='CASCADE'), nullable=False)
+    fecha = db.Column(db.Date, nullable=False)
+    cantidad = db.Column(db.Integer, nullable=False)
+    
+    # 🔥 NUEVO CAMPO: Registra qué área le asignó la carga
+    area_asignadora = db.Column(db.String(250), nullable=True) 
+
+    empleado = db.relationship('Empleado', backref=db.backref('cargas_diarias', lazy=True))
+
+
+
 
