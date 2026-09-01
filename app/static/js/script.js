@@ -1786,7 +1786,8 @@ async function cargarEmpleadosDistribucion() {
             const estadoOptions = diaSemana === 0  
                 ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
                     <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option> 
+                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
+                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
                 `
                 : `
                     <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
@@ -2578,7 +2579,8 @@ async function cargarEmpleadosInspecciones() {
             const estadoOptions = diaSemana === 0  
                 ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
                     <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option> 
+                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
+                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
                 `
                 : `
                     <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
@@ -3367,7 +3369,8 @@ async function cargarEmpleadosCatastro() {
             const estadoOptions = diaSemana === 0  
                 ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
                     <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option> 
+                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
+                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
                 `
                 : `
                     <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
@@ -4156,7 +4159,8 @@ async function cargarEmpleadosMedidores() {
             const estadoOptions = diaSemana === 0  
                 ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
                     <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option> 
+                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
+                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
                 `
                 : `
                     <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
@@ -4945,7 +4949,8 @@ async function cargarEmpleadosPersuasivas() {
             const estadoOptions = diaSemana === 0  
                 ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
                     <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option> 
+                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
+                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
                 `
                 : `
                     <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
@@ -5751,7 +5756,8 @@ async function cargarEmpleadosNorte() {
             const estadoOptions = diaSemana === 0  
                 ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
                     <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option> 
+                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
+                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
                 `
                 : `
                     <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
