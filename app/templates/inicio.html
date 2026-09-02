@@ -3738,7 +3738,7 @@
                     
                     <!-- 🔥 LÓGICA MAESTRA: Identificamos quién está estrictamente limitado 🔥 -->
                     <!-- Quitamos a supervisor1 de aquí para que tenga acceso total -->
-                    {% set supervisores_limitados = ['sup_catastro', 'sup_distribucion', 'sup_inspecciones', 'sup_lecturas', 'sup_medicion', 'sup_norte', 'sup_persuasivas'] %}
+                    {% set supervisores_limitados = ['sup_catastro', 'sup_distribucion', 'sup_inspecciones', 'sup_lecturas', 'sup_medicion', 'sup_persuasivas'] %}
                     {% set es_solo_cargas = user_name and (user_name | trim | lower) in supervisores_limitados %}
 
                     <div class="prod-header-wrapper">
