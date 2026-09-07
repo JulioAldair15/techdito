@@ -292,6 +292,210 @@ function formatearNombreVisual(nombreCompleto) {
 }
 
 
+
+// ====================================================================
+// LÓGICA DEL MAPA DE CALOR (LUNES A DOMINGO + FERIADOS)
+// ====================================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const areaSelect = document.getElementById('smart-attn-area');
+    const mesInput = document.getElementById('smart-attn-mes');
+    const heatmapContainer = document.getElementById('smart-attn-heatmap-container');
+    const grid = document.getElementById('smart-attn-grid');
+
+    // Lunes al inicio, Domingo como última columna
+    const diasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+    const hoy = new Date();
+    mesInput.value = `${hoy.getFullYear()}-${(hoy.getMonth() + 1).toString().padStart(2, '0')}`;
+
+    async function generarCalendario() {
+        const area = areaSelect.value;
+        if (!area) {
+            heatmapContainer.style.display = 'none';
+            return;
+        }
+
+        heatmapContainer.style.display = 'block';
+        grid.innerHTML = '<div style="grid-column: span 7; text-align: center; color: #94a3b8; padding: 20px;">Cargando calendario...</div>';
+        
+        const [year, month] = mesInput.value.split('-');
+        const mesIndex = parseInt(month) - 1;
+        const diasEnMes = new Date(year, month, 0).getDate();
+
+        document.getElementById('smart-attn-mes-titulo').innerHTML = `${nombresMeses[mesIndex]} ${year} <span class="smart-attn-badge" id="smart-attn-dias-badge">${diasEnMes} Días</span>`;
+
+        let diasConAsistencia = [];
+        let diasFeriados = [];
+        
+        try {
+            const response = await fetch(`/verificar-asistencias-mes?area=${area}&anio=${year}&mes=${month}`);
+            if (response.ok) {
+                const data = await response.json();
+                diasConAsistencia = data.dias || [];
+                diasFeriados = data.feriados || [];
+            }
+        } catch (error) {
+            console.error("Error al consultar asistencias:", error);
+        }
+
+        grid.innerHTML = ''; 
+
+        // 📌 Alinear el primer día del mes con la columna correcta de la semana (Lunes = 0, Domingo = 6)
+        const primerDiaMes = new Date(year, mesIndex, 1);
+        let diaInicioIndex = (primerDiaMes.getDay() + 6) % 7; 
+
+        // Crear celdas vacías de relleno si el mes no empieza en Lunes
+        for (let p = 0; p < diaInicioIndex; p++) {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.style.visibility = 'hidden';
+            emptyDiv.style.pointerEvents = 'none';
+            grid.appendChild(emptyDiv);
+        }
+
+        // Generar los días del mes
+        for (let i = 1; i <= diasEnMes; i++) {
+            const fechaActual = new Date(year, mesIndex, i);
+            const diaSemanaIndex = (fechaActual.getDay() + 6) % 7; // 6 es Domingo
+            
+            const div = document.createElement('div');
+            div.className = 'smart-attn-day';
+            
+            // 🎨 Jerarquía de colores: Feriado > Domingo > Asistido > Vacío
+            if (diasFeriados.includes(i)) {
+                div.classList.add('status-feriado'); // 🟠 Feriado
+            } else if (diaSemanaIndex === 6) {
+                div.classList.add('status-domingo'); // 🔴 Domingo
+            } else if (diasConAsistencia.includes(i)) {
+                div.classList.add('status-completo'); // 🟢 Con asistencia guardada
+            } else {
+                div.classList.add('status-vacio'); // ⚪ Sin registro
+            }
+
+            div.innerHTML = `
+                <span class="smart-attn-day-name">${diasSemana[diaSemanaIndex]}</span>
+                <span>${i}</span>
+            `;
+
+            // 🔥 Evento click para abrir la tabla del día
+            div.addEventListener('click', () => {
+                const fechaString = `${year}-${month}-${i.toString().padStart(2, '0')}`;
+                const nombreMes = nombresMeses[mesIndex];
+                const seccionDestino = document.getElementById(area);
+                
+                if (seccionDestino) {
+                    const contenedorAsistencias = document.getElementById('asistencias');
+                    if (contenedorAsistencias) {
+                        contenedorAsistencias.style.display = 'none';
+                        contenedorAsistencias.classList.remove('active');
+                    }
+                    
+                    seccionDestino.style.display = 'block';
+                    seccionDestino.classList.add('active');
+                    
+                    if(area === 'lecturas') {
+                        document.getElementById('mes-lecturas').value = nombreMes;
+                        const inputFecha = document.getElementById('fecha-lecturas');
+                        inputFecha.value = fechaString;
+                        inputFecha.dispatchEvent(new Event('change'));
+                    } 
+                    else if(area === 'recaudacion') {
+                        document.getElementById('mes').value = nombreMes;
+                        const inputFecha = document.getElementById('fecha');
+                        inputFecha.value = fechaString;
+                        inputFecha.dispatchEvent(new Event('change')); 
+                    }
+                    else if(area === 'distribucion') {
+                        document.getElementById('mes-distribucion').value = nombreMes;
+                        const inputFecha = document.getElementById('fecha-distribucion');
+                        inputFecha.value = fechaString;
+                        inputFecha.dispatchEvent(new Event('change')); 
+                    }
+                    else if(area === 'catastro') {
+                        document.getElementById('mes-catastro').value = nombreMes;
+                        const inputFecha = document.getElementById('fecha-catastro');
+                        inputFecha.value = fechaString;
+                        inputFecha.dispatchEvent(new Event('change')); 
+                    }
+                    else if(area === 'inspecciones') {
+                        document.getElementById('mes-inspecciones').value = nombreMes;
+                        const inputFecha = document.getElementById('fecha-inspecciones');
+                        inputFecha.value = fechaString;
+                        inputFecha.dispatchEvent(new Event('change')); 
+                    }
+                    else if(area === 'medidores') {
+                        document.getElementById('mes-medidores').value = nombreMes;
+                        const inputFecha = document.getElementById('fecha-medidores');
+                        inputFecha.value = fechaString;
+                        inputFecha.dispatchEvent(new Event('change')); 
+                    }
+                    else if(area === 'persuasivas') {
+                        document.getElementById('mes-persuasivas').value = nombreMes;
+                        const inputFecha = document.getElementById('fecha-persuasivas');
+                        inputFecha.value = fechaString;
+                        inputFecha.dispatchEvent(new Event('change')); 
+                    }
+                    else if(area === 'norte') {
+                        document.getElementById('mes-norte').value = nombreMes;
+                        const inputFecha = document.getElementById('fecha-norte');
+                        inputFecha.value = fechaString;
+                        inputFecha.dispatchEvent(new Event('change')); 
+                    }
+                    else if(area === 'administrativo_1') {
+                        document.getElementById('mes-administrativo_1').value = nombreMes;
+                        const inputFecha = document.getElementById('fecha-administrativo_1');
+                        inputFecha.value = fechaString;
+                        inputFecha.dispatchEvent(new Event('change')); 
+                    }
+                }
+            });
+
+            grid.appendChild(div);
+        }
+    }
+
+    window.actualizarCalendario = generarCalendario;
+
+    areaSelect.addEventListener('change', generarCalendario);
+    mesInput.addEventListener('change', generarCalendario);
+});
+
+function volverAlCalendario(seccionActual) {
+    const seccion = document.getElementById(seccionActual);
+    const asistencias = document.getElementById('asistencias');
+
+    if (seccion) {
+        seccion.style.display = 'none';
+        seccion.classList.remove('active');
+    }
+    if (asistencias) {
+        asistencias.style.display = 'block';
+        asistencias.classList.add('active');
+        
+        if (typeof window.actualizarCalendario === 'function') {
+            window.actualizarCalendario();
+        }
+    }
+}
+
+// Funciones para abrir y cerrar los modales de leyendas
+function abrirModalLeyendas(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) modal.classList.add('active');
+}
+
+function cerrarModalLeyendas() {
+    // Busca directamente el ID de tu único modal y lo cierra
+    document.getElementById('modal-leyendas').classList.remove('active');
+}
+
+// Cerrar modal si el usuario hace clic fuera de la caja blanca
+document.addEventListener('click', function(event) {
+    if (event.target.classList.contains('smart-modal-overlay')) {
+        event.target.classList.remove('active');
+    }
+});
+
 // RECAUDACION
 document.addEventListener('DOMContentLoaded', function () {
     });
@@ -347,55 +551,72 @@ async function cargarEmpleadosRecaudacion() {
         empleados.forEach((empleado, index) => {
             const row = document.createElement('tr');
 
-            // 📌 Generamos las opciones del select según si es domingo
+            const estiloOpcion = 'style="color: #1e293b; font-weight: 500; background: #ffffff;"';
+
+            // 📌 Generamos las opciones del select con Tooltips para Recaudación
             const estadoOptions = diaSemana === 0  
-                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option> 
+                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option> 
                 `
                 : `
-                    <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="A" ${empleado.estado === "A" ? "selected" : ""}>A</option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
-                    <option value="LG" ${empleado.estado === "LG" ? "selected" : ""}>LG</option>
-                    <option value="DM" ${empleado.estado === "DM" ? "selected" : ""}>DM</option>
-                    <option value="V" ${empleado.estado === "V" ? "selected" : ""}>V</option>
-                    <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""}>LSG</option>
-                    <option value="F" ${empleado.estado === "F" ? "selected" : ""}>F</option>
-                    <option value="R" ${empleado.estado === "R" ? "selected" : ""}>R</option>
-                    <option value="SU" ${empleado.estado === "SU" ? "selected" : ""}>SU</option>
-                    <option value="CE" ${empleado.estado === "CE" ? "selected" : ""}>CE</option>
-                    <option value="FG" ${empleado.estado === "FG" ? "selected" : ""}>FG</option>
-                    <option value="LD" ${empleado.estado === "LD" ? "selected" : ""}>LD</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="AP" ${empleado.estado === "AP" ? "selected" : ""}>AP</option>
-                    <option value="LP" ${empleado.estado === "LP" ? "selected" : ""}>LP</option>
-                    <option value="TC" ${empleado.estado === "TC" ? "selected" : ""}>TC</option>
+                   <option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="A" ${empleado.estado === "A" ? "selected" : ""} ${estiloOpcion} title="DÍA ASISTIDO">A</option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>
+                   <option value="LG" ${empleado.estado === "LG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA CON GOCE DE HABER">LG</option>
+                   <option value="DM" ${empleado.estado === "DM" ? "selected" : ""} ${estiloOpcion} title="DESCANSO MÉDICO">DM</option>
+                   <option value="V" ${empleado.estado === "V" ? "selected" : ""} ${estiloOpcion} title="VACACIONES">V</option>
+                   <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA SIN GOCE DE HABER">LSG</option>
+                   <option value="F" ${empleado.estado === "F" ? "selected" : ""} ${estiloOpcion} title="FALTA">F</option>
+                   <option value="R" ${empleado.estado === "R" ? "selected" : ""} ${estiloOpcion} title="RENUNCIÓ">R</option>
+                   <option value="SU" ${empleado.estado === "SU" ? "selected" : ""} ${estiloOpcion} title="SUSP. PERFECTA LABORES">SU</option>
+                   <option value="CE" ${empleado.estado === "CE" ? "selected" : ""} ${estiloOpcion} title="CESE">CE</option>
+                   <option value="FG" ${empleado.estado === "FG" ? "selected" : ""} ${estiloOpcion} title="FERIADO GANADO">FG</option>
+                   <option value="LD" ${empleado.estado === "LD" ? "selected" : ""} ${estiloOpcion} title="LICENCIA POR DEFUNCION">LD</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="AP" ${empleado.estado === "AP" ? "selected" : ""} ${estiloOpcion} title="ASISTENCIA PROYECTADA">AP</option>
+                   <option value="LP" ${empleado.estado === "LP" ? "selected" : ""} ${estiloOpcion} title="LICENCIA PATERNIDAD">LP</option>
+                   <option value="TC" ${empleado.estado === "TC" ? "selected" : ""} ${estiloOpcion} title="TERMINO DE CONTRATO">TC</option>
                 `;
 
             row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${empleado.dni}</td>
-                <td>${empleado.nombre_visual}</td>
-                <td>${empleado.cargo}</td>
-                <td>
+                <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${index + 1}</td>
+                <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleado.dni}</span></td>
+                <td style="color: #0369a1; font-weight: 700;">${empleado.nombre_visual}</td>
+                <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleado.cargo}</td>
+                
+                <td style="width: 130px;">
                     <select name="estado">${estadoOptions}</select>
                     <input type="hidden" name="id_empleado" value="${empleado.id_empleado}">
                 </td>
-                <td>
-                    <div style="display: flex; gap: 5px;">
-                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
-                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" ${empleado.pasajes === 'PR' ? 'disabled' : ''}>
-                        <select name="pasajes" class="pasajes-select">
-                            <option value="">Seleccione</option>
+                
+                <td style="width: 170px;">
+                    <div class="ui-merged-group">
+                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" 
+                            ${empleado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                        <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                            <option value="">Sel.</option>
                             <option value="PR" ${empleado.pasajes === "PR" ? "selected" : ""}>PR</option>
                         </select>
                     </div>
                 </td>
-                <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleado.viaticos || ''}"></td>
-                <td><input type="text" name="ruta" placeholder="Ruta" value="${empleado.ruta || ''}"></td>
+                
+                <td style="width: 110px;">
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                        <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleado.viaticos || ''}" style="padding-left: 30px !important;">
+                    </div>
+                </td>
+                
                 <td>
-                    <button type="button" class="eliminar-fila-btn-1">X</button>
+                    <input type="text" name="ruta" placeholder="Destino..." value="${empleado.ruta || ''}">
+                </td>
+                
+                <td style="text-align: center; width: 60px;">
+                    <button type="button" class="eliminar-fila-btn-1 ui-btn-delete-icon" title="Eliminar Registro">
+                        <i class="far fa-trash-alt"></i>
+                    </button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -615,25 +836,26 @@ document.addEventListener('DOMContentLoaded', async function () {
     // 🟢 Modificar opciones del select según el día de la semana
     function obtenerOpcionesEstado(diaSemana) {
         return diaSemana === 0 // Si es domingo
-            ? `<option value=" "> </option>
-            <option value="DT">DT</option>`
-            : `<option value=" "> </option>
-            <option value="A">A</option>
-            <option value="DT">DT</option>
-            <option value="FT">FT</option>
-            <option value="LG">LG</option>
-            <option value="DM">DM</option>
-            <option value="V">V</option>
-            <option value="LSG">LSG</option>
-            <option value="F">F</option>
-            <option value="SU">SU</option>
-            <option value="CE">CE</option>
-            <option value="FG">FG</option>
-            <option value="LD">LD</option>
-            <option value="DC">DC</option>
-            <option value="AP">AP</option>
-            <option value="LP">LP</option>
-            <option value="TC">TC</option>`;
+            ? `<option value=" " title="Sin Asignar"> </option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>`
+            : `<option value=" " title="Sin Asignar"> </option>
+               <option value="A" title="DÍA ASISTIDO">A</option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>
+               <option value="LG" title="LICENCIA CON GOCE DE HABER">LG</option>
+               <option value="DM" title="DESCANSO MÉDICO">DM</option>
+               <option value="V" title="VACACIONES">V</option>
+               <option value="LSG" title="LICENCIA SIN GOCE DE HABER">LSG</option>
+               <option value="F" title="FALTA">F</option>
+               <option value="R" title="RENUNCIÓ">R</option>
+               <option value="SU" title="SUSP. PERFECTA LABORES">SU</option>
+               <option value="CE" title="CESE">CE</option>
+               <option value="FG" title="FERIADO GANADO">FG</option>
+               <option value="LD" title="LICENCIA POR DEFUNCION">LD</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="AP" title="ASISTENCIA PROYECTADA">AP</option>
+               <option value="LP" title="LICENCIA PATERNIDAD">LP</option>
+               <option value="TC" title="TERMINO DE CONTRATO">TC</option>`;
     }
 
     // Añadir empleado seleccionado a la tabla
@@ -668,31 +890,43 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const nuevaFila = document.createElement('tr');
         nuevaFila.innerHTML = `
-            <td>${tbody.children.length + 1}</td>
-            <td>${dni}</td>
-            <td>${nombresApellidos}</td>
-            <td>${cargo}</td>
-
-            <td>
-            <select name="estado">${opcionesEstado}</select>
-            <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
+            <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${tbody.children.length + 1}</td>
+            <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${dni}</span></td>
+            <td style="color: #0369a1; font-weight: 700;">${nombresApellidos}</td>
+            <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${cargo}</td>
+            
+            <td style="width: 130px;">
+                <select name="estado">${opcionesEstado}</select>
+                <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
             </td>
-
-            <td>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
+            
+            <td style="width: 170px;">
+                <div class="ui-merged-group">
+                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
                         value="${empleadoSeleccionado.pasajes !== 'PR' ? empleadoSeleccionado.pasajes || '' : ''}" 
-                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''}>
-                    <select name="pasajes" class="pasajes-select">
-                        <option value="">Seleccione</option>
+                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                    <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                        <option value="">Sel.</option>
                         <option value="PR" ${empleadoSeleccionado.pasajes === "PR" ? "selected" : ""}>PR</option>
                     </select>
                 </div>
             </td>
-            <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleadoSeleccionado.viaticos || ''}"></td>
-            <td><input type="text" name="ruta" placeholder="Ruta" value="${empleadoSeleccionado.ruta || ''}"></td>
+            
+            <td style="width: 110px;">
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                    <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleadoSeleccionado.viaticos || ''}" style="padding-left: 30px !important;">
+                </div>
+            </td>
+            
             <td>
-                <button type="button" class="eliminar-fila-btn">X</button>
+                <input type="text" name="ruta" placeholder="Destino..." value="${empleadoSeleccionado.ruta || ''}">
+            </td>
+            
+            <td style="text-align: center; width: 60px;">
+                <button type="button" class="eliminar-fila-btn ui-btn-delete-icon" title="Eliminar Registro">
+                    <i class="far fa-trash-alt"></i>
+                </button>
             </td>
         `;
 
@@ -840,7 +1074,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         tbody.querySelectorAll('tr').forEach(fila => {
             const idEmpleado = fila.querySelector('input[name="id_empleado"]').value;
             const estadoSelect = fila.querySelector('select[name="estado"]');
-            const estado = estadoSelect ? estadoSelect.value : 'A';
+            const estado = estadoSelect ? estadoSelect.value.trim() : '';
 
             const pasajesInput = fila.querySelector('input[name="pasajes"]');
             const pasajesSelect = fila.querySelector('select[name="pasajes"]');
@@ -853,16 +1087,29 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             const rutaInput = fila.querySelector('input[name="ruta"]');
             const viaticosInput = fila.querySelector('input[name="viaticos"]');
+            const ruta = rutaInput ? rutaInput.value.trim() : '';
+            const viaticos = viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0;
+
+            // ✅ VALIDACIÓN CRÍTICA: Si no hay estado ni otros datos, saltamos esta fila
+            if (estado === "" && pasajes === 0 && viaticos === 0 && ruta === "") {
+                return; // El return dentro de un forEach funciona como un "continue"
+            }
     
             empleadosParaGuardar.push({
-                id_empleado: idEmpleado,
-                estado: estado,
-                pasajes: pasajes,
-                ruta: rutaInput ? rutaInput.value.trim() : '',
-                viaticos: viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0,
-                es_extra: empleadosSeleccionados.some(e => e.id_empleado == idEmpleado) // Verificar si es extra
-            });
+            id_empleado: idEmpleado,
+            estado: estado,
+            pasajes: pasajes,
+            ruta: ruta,
+            viaticos: viaticos,
+            es_extra: empleadosSeleccionados.some(e => e.id_empleado == idEmpleado)
         });
+    });
+
+    // ✅ Evitar hacer peticiones al backend si todas las filas estaban vacías
+    if (empleadosParaGuardar.length === 0) {
+        alert("No hay asistencias registradas para guardar.");
+        return;
+    }
 
         // Preparar los datos para el backend
         const asistencias = empleadosParaGuardar.map(empleado => ({
@@ -992,56 +1239,73 @@ async function cargarEmpleadosLecturas() {
             const row = document.createElement('tr');
 
             // 📌 Generamos las opciones del select según si es domingo
+            // Opciones limpias con Tooltips (title)
             const estadoOptions = diaSemana === 0  
-                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>  
+                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""} title="Sin Asignar"> </option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} title="DIA COMPENSADO">DC</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} title="FERIADO TRABAJADO">FT</option>  
                 `
                 : `
-                    <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="A" ${empleado.estado === "A" ? "selected" : ""}>A</option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
-                    <option value="LG" ${empleado.estado === "LG" ? "selected" : ""}>LG</option>
-                    <option value="DM" ${empleado.estado === "DM" ? "selected" : ""}>DM</option>
-                    <option value="V" ${empleado.estado === "V" ? "selected" : ""}>V</option>
-                    <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""}>LSG</option>
-                    <option value="F" ${empleado.estado === "F" ? "selected" : ""}>F</option>
-                    <option value="R" ${empleado.estado === "R" ? "selected" : ""}>R</option>
-                    <option value="SU" ${empleado.estado === "SU" ? "selected" : ""}>SU</option>
-                    <option value="CE" ${empleado.estado === "CE" ? "selected" : ""}>CE</option>
-                    <option value="FG" ${empleado.estado === "FG" ? "selected" : ""}>FG</option>
-                    <option value="LD" ${empleado.estado === "LD" ? "selected" : ""}>LD</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="AP" ${empleado.estado === "AP" ? "selected" : ""}>AP</option>
-                    <option value="LP" ${empleado.estado === "LP" ? "selected" : ""}>LP</option>
-                    <option value="TC" ${empleado.estado === "TC" ? "selected" : ""}>TC</option>
+                   <option value=" " ${empleado.estado === " " ? "selected" : ""} title="Sin Asignar"> </option>
+                   <option value="A" ${empleado.estado === "A" ? "selected" : ""} title="DÍA ASISTIDO">A</option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} title="FERIADO TRABAJADO">FT</option>
+                   <option value="LG" ${empleado.estado === "LG" ? "selected" : ""} title="LICENCIA CON GOCE DE HABER">LG</option>
+                   <option value="DM" ${empleado.estado === "DM" ? "selected" : ""} title="DESCANSO MÉDICO">DM</option>
+                   <option value="V" ${empleado.estado === "V" ? "selected" : ""} title="VACACIONES">V</option>
+                   <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""} title="LICENCIA SIN GOCE DE HABER">LSG</option>
+                   <option value="F" ${empleado.estado === "F" ? "selected" : ""} title="FALTA">F</option>
+                   <option value="R" ${empleado.estado === "R" ? "selected" : ""} title="RENUNCIÓ">R</option>
+                   <option value="SU" ${empleado.estado === "SU" ? "selected" : ""} title="SUSP. PERFECTA LABORES">SU</option>
+                   <option value="CE" ${empleado.estado === "CE" ? "selected" : ""} title="CESE">CE</option>
+                   <option value="FG" ${empleado.estado === "FG" ? "selected" : ""} title="FERIADO GANADO">FG</option>
+                   <option value="LD" ${empleado.estado === "LD" ? "selected" : ""} title="LICENCIA POR DEFUNCION">LD</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} title="DIA COMPENSADO">DC</option>
+                   <option value="AP" ${empleado.estado === "AP" ? "selected" : ""} title="ASISTENCIA PROYECTADA">AP</option>
+                   <option value="LP" ${empleado.estado === "LP" ? "selected" : ""} title="LICENCIA PATERNIDAD">LP</option>
+                   <option value="TC" ${empleado.estado === "TC" ? "selected" : ""} title="TERMINO DE CONTRATO">TC</option>
                 `;
 
+            // HTML CON DISEÑO CLEAR PARA LECTURAS
             row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${empleado.dni}</td>
-                <td>${empleado.nombre_visual}</td>
-                <td>${empleado.cargo}</td>
-                <td>
+                <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${index + 1}</td>
+                <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleado.dni}</span></td>
+                <td style="color: #0369a1; font-weight: 700;">${empleado.nombre_visual}</td>
+                <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleado.cargo}</td>
+                
+                <td style="width: 130px;">
                     <select name="estado">${estadoOptions}</select>
                     <input type="hidden" name="id_empleado" value="${empleado.id_empleado}">
                 </td>
-                <td>
-                    <div style="display: flex; gap: 5px;">
-                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
-                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" ${empleado.pasajes === 'PR' ? 'disabled' : ''}>
-                        <select name="pasajes" class="pasajes-select">
-                            <option value="">Seleccione</option>
+                
+                <td style="width: 170px;">
+                    <div class="ui-merged-group">
+                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" 
+                            ${empleado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                        <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                            <option value="">Sel.</option>
                             <option value="PR" ${empleado.pasajes === "PR" ? "selected" : ""}>PR</option>
                         </select>
                     </div>
                 </td>
-                <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleado.viaticos || ''}"></td>
-                <td><input type="text" name="ruta" placeholder="Ruta" value="${empleado.ruta || ''}"></td>
+                
+                <td style="width: 110px;">
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                        <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleado.viaticos || ''}" style="padding-left: 30px !important;">
+                    </div>
+                </td>
+                
                 <td>
-                    <button type="button" class="eliminar-fila-btn-2">X</button>
+                    <input type="text" name="ruta" placeholder="Destino..." value="${empleado.ruta || ''}">
+                </td>
+                
+                <td style="text-align: center; width: 60px;">
+                    <button type="button" class="eliminar-fila-btn-2 ui-btn-delete-icon" title="Eliminar Registro">
+                        <i class="far fa-trash-alt"></i>
+                    </button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -1318,28 +1582,31 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     // 🟢 Modificar opciones del select según el día de la semana
+    // 🟢 Modificar opciones del select según el día de la semana (con Tooltips)
     function obtenerOpcionesEstado(diaSemana) {
         return diaSemana === 0 // Si es domingo
-            ? `<option value=" "> </option>
-            <option value="DT">DT</option>
-            <option value="DC">DC</option>`
-            : `<option value=" "> </option>
-            <option value="A">A</option>
-            <option value="DT">DT</option>
-            <option value="FT">FT</option>
-            <option value="LG">LG</option>
-            <option value="DM">DM</option>
-            <option value="V">V</option>
-            <option value="LSG">LSG</option>
-            <option value="F">F</option>
-            <option value="SU">SU</option>
-            <option value="CE">CE</option>
-            <option value="FG">FG</option>
-            <option value="LD">LD</option>
-            <option value="DC">DC</option>
-            <option value="AP">AP</option>
-            <option value="LP">LP</option>
-            <option value="TC">TC</option>`;
+            ? `<option value=" " title="Sin Asignar"> </option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>`
+            : `<option value=" " title="Sin Asignar"> </option>
+               <option value="A" title="DÍA ASISTIDO">A</option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>
+               <option value="LG" title="LICENCIA CON GOCE DE HABER">LG</option>
+               <option value="DM" title="DESCANSO MÉDICO">DM</option>
+               <option value="V" title="VACACIONES">V</option>
+               <option value="LSG" title="LICENCIA SIN GOCE DE HABER">LSG</option>
+               <option value="F" title="FALTA">F</option>
+               <option value="R" title="RENUNCIÓ">R</option>
+               <option value="SU" title="SUSP. PERFECTA LABORES">SU</option>
+               <option value="CE" title="CESE">CE</option>
+               <option value="FG" title="FERIADO GANADO">FG</option>
+               <option value="LD" title="LICENCIA POR DEFUNCION">LD</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="AP" title="ASISTENCIA PROYECTADA">AP</option>
+               <option value="LP" title="LICENCIA PATERNIDAD">LP</option>
+               <option value="TC" title="TERMINO DE CONTRATO">TC</option>`;
     }
 
     // Añadir empleado seleccionado a la tabla para la sección Lecturas
@@ -1375,31 +1642,43 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const nuevaFilaLectura = document.createElement('tr');
         nuevaFilaLectura.innerHTML = `
-            <td>${tbodyLectura.children.length + 1}</td>
-            <td>${dni}</td>
-            <td>${nombresApellidos}</td>
-            <td>${cargo}</td>
+            <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${tbodyLectura.children.length + 1}</td>
+            <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${dni}</span></td>
+            <td style="color: #0369a1; font-weight: 700;">${nombresApellidos}</td>
+            <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${cargo}</td>
             
-            <td>
-            <select name="estado">${opcionesEstado}</select>
-            <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
+            <td style="width: 130px;">
+                <select name="estado">${opcionesEstado}</select>
+                <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
             </td>
-
-            <td>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
+            
+            <td style="width: 170px;">
+                <div class="ui-merged-group">
+                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
                         value="${empleadoSeleccionado.pasajes !== 'PR' ? empleadoSeleccionado.pasajes || '' : ''}" 
-                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''}>
-                    <select name="pasajes" class="pasajes-select">
-                        <option value="">Seleccione</option>
+                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                    <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                        <option value="">Sel.</option>
                         <option value="PR" ${empleadoSeleccionado.pasajes === "PR" ? "selected" : ""}>PR</option>
                     </select>
                 </div>
             </td>
-            <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleadoSeleccionado.viaticos || ''}"></td>
-            <td><input type="text" name="ruta" placeholder="Ruta" value="${empleadoSeleccionado.ruta || ''}"></td>
+            
+            <td style="width: 110px;">
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                    <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleadoSeleccionado.viaticos || ''}" style="padding-left: 30px !important;">
+                </div>
+            </td>
+            
             <td>
-                <button type="button" class="eliminar-fila-btn">X</button>
+                <input type="text" name="ruta" placeholder="Destino..." value="${empleadoSeleccionado.ruta || ''}">
+            </td>
+            
+            <td style="text-align: center; width: 60px;">
+                <button type="button" class="eliminar-fila-btn ui-btn-delete-icon" title="Eliminar Registro">
+                    <i class="far fa-trash-alt"></i>
+                </button>
             </td>
         `;
 
@@ -1639,29 +1918,44 @@ document.addEventListener('DOMContentLoaded', async function () {
         tbodyLectura.querySelectorAll('tr').forEach(fila => {
             const idEmpleado = fila.querySelector('input[name="id_empleado"]').value;
             const estadoSelect = fila.querySelector('select[name="estado"]');
-            const estado = estadoSelect ? estadoSelect.value : 'A';
+            
+            // Usamos .trim() para que la opción vacía " " se evalúe como ""
+            const estado = estadoSelect ? estadoSelect.value.trim() : '';
 
             const pasajesInput = fila.querySelector('input[name="pasajes"]');
             const pasajesSelect = fila.querySelector('select[name="pasajes"]');
-            let pasajes = 0;  // Valor por defecto
+            let pasajes = 0; 
             if (pasajesSelect && pasajesSelect.value === "PR") {
-                pasajes = "PR";  // Guardar "PR" si fue seleccionado en el <select>
+                pasajes = "PR"; 
             } else if (pasajesInput && pasajesInput.value.trim() !== "") {
-                pasajes = parseFloat(pasajesInput.value) || 0;  // Convertir a número si no es vacío
+                pasajes = parseFloat(pasajesInput.value) || 0; 
             }
 
             const rutaInput = fila.querySelector('input[name="ruta"]');
             const viaticosInput = fila.querySelector('input[name="viaticos"]');
-    
+            const ruta = rutaInput ? rutaInput.value.trim() : '';
+            const viaticos = viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0;
+
+            // ✅ VALIDACIÓN CRÍTICA: Si no hay estado ni otros datos, saltamos esta fila
+            if (estado === "" && pasajes === 0 && viaticos === 0 && ruta === "") {
+                return; // El return dentro de un forEach funciona como un "continue"
+            }
+
             empleadosParaGuardarLectura.push({
                 id_empleado: idEmpleado,
                 estado: estado,
                 pasajes: pasajes,
-                ruta: rutaInput ? rutaInput.value.trim() : '',
-                viaticos: viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0,
-                es_extra: empleadosSeleccionadosLectura.some(e => e.id_empleado == idEmpleado) // Verificar si es extra
+                ruta: ruta,
+                viaticos: viaticos,
+                es_extra: empleadosSeleccionadosLectura.some(e => e.id_empleado == idEmpleado)
             });
         });
+
+        // ✅ Evitar hacer peticiones al backend si todas las filas estaban vacías
+        if (empleadosParaGuardarLectura.length === 0) {
+            alert("No hay asistencias registradas para guardar.");
+            return;
+        }
         
         console.log('Empleados para guardar:', empleadosParaGuardarLectura);
     
@@ -1690,14 +1984,19 @@ document.addEventListener('DOMContentLoaded', async function () {
     
             const result = await response.json(); // Obtener respuesta del backend
 
+            // 🚨 AQUÍ ESTÁ EL CAMBIO CRÍTICO 🚨
             if (!response.ok) {
-                throw new Error(result.message || 'Error al guardar la asistencia');
+                // Mostrar el mensaje directamente en pantalla y detenerse
+                alert(result.message || 'Error al guardar la asistencia');
+                return; // <-- Esto reemplaza al throw new Error
             }
 
+            // Si pasa de aquí, significa que todo salió bien (status 200)
             alert(result.message || 'Asistencia guardada correctamente.');
+            
             // Auditar que se guardó la asistencia
             const fechaAuditoria = document.getElementById('fecha-lecturas').value;
-            console.log('Fecha usada para auditoría:', fechaAuditoria);  // ✅ <-- ESTA ES LA LÍNEA QUE QUERÍAS
+            console.log('Fecha usada para auditoría:', fechaAuditoria); 
 
             fetch('/auditar-guardar-asistencia', {
                 method: 'POST',
@@ -1708,12 +2007,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
             
         } catch (error) {
-            // Si el error viene del backend, lo mostramos en pantalla
-            if (error.message.includes('ya cuenta con asistencia')) {
-                alert(error.message);
-            } else {
-                alert('Hubo un problema al guardar la asistencia.');
-            }
+            // Este catch AHORA solo se activa si hay un error de internet o servidor caído
+            console.error('Error de red o de ejecución:', error);
+            alert('Fallo de conexión con el servidor.');
         }
     
         empleadosSeleccionadosLectura = []; // Limpiar la lista de empleados seleccionados
@@ -1783,56 +2079,74 @@ async function cargarEmpleadosDistribucion() {
         empleados.forEach((empleado, index) => {
             const row = document.createElement('tr');
             // 📌 Generamos las opciones del select según si es domingo
+            const estiloOpcion = 'style="color: #1e293b; font-weight: 500; background: #ffffff;"';
+
+            // 📌 Generamos las opciones del select con Tooltips para Distribución
             const estadoOptions = diaSemana === 0  
-                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
+                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>  
                 `
                 : `
-                    <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="A" ${empleado.estado === "A" ? "selected" : ""}>A</option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
-                    <option value="LG" ${empleado.estado === "LG" ? "selected" : ""}>LG</option>
-                    <option value="DM" ${empleado.estado === "DM" ? "selected" : ""}>DM</option>
-                    <option value="V" ${empleado.estado === "V" ? "selected" : ""}>V</option>
-                    <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""}>LSG</option>
-                    <option value="F" ${empleado.estado === "F" ? "selected" : ""}>F</option>
-                    <option value="R" ${empleado.estado === "R" ? "selected" : ""}>R</option>
-                    <option value="SU" ${empleado.estado === "SU" ? "selected" : ""}>SU</option>
-                    <option value="CE" ${empleado.estado === "CE" ? "selected" : ""}>CE</option>
-                    <option value="FG" ${empleado.estado === "FG" ? "selected" : ""}>FG</option>
-                    <option value="LD" ${empleado.estado === "LD" ? "selected" : ""}>LD</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="AP" ${empleado.estado === "AP" ? "selected" : ""}>AP</option>
-                    <option value="LP" ${empleado.estado === "LP" ? "selected" : ""}>LP</option>
-                    <option value="TC" ${empleado.estado === "TC" ? "selected" : ""}>TC</option>
+                   <option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="A" ${empleado.estado === "A" ? "selected" : ""} ${estiloOpcion} title="DÍA ASISTIDO">A</option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>
+                   <option value="LG" ${empleado.estado === "LG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA CON GOCE DE HABER">LG</option>
+                   <option value="DM" ${empleado.estado === "DM" ? "selected" : ""} ${estiloOpcion} title="DESCANSO MÉDICO">DM</option>
+                   <option value="V" ${empleado.estado === "V" ? "selected" : ""} ${estiloOpcion} title="VACACIONES">V</option>
+                   <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA SIN GOCE DE HABER">LSG</option>
+                   <option value="F" ${empleado.estado === "F" ? "selected" : ""} ${estiloOpcion} title="FALTA">F</option>
+                   <option value="R" ${empleado.estado === "R" ? "selected" : ""} ${estiloOpcion} title="RENUNCIÓ">R</option>
+                   <option value="SU" ${empleado.estado === "SU" ? "selected" : ""} ${estiloOpcion} title="SUSP. PERFECTA LABORES">SU</option>
+                   <option value="CE" ${empleado.estado === "CE" ? "selected" : ""} ${estiloOpcion} title="CESE">CE</option>
+                   <option value="FG" ${empleado.estado === "FG" ? "selected" : ""} ${estiloOpcion} title="FERIADO GANADO">FG</option>
+                   <option value="LD" ${empleado.estado === "LD" ? "selected" : ""} ${estiloOpcion} title="LICENCIA POR DEFUNCION">LD</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="AP" ${empleado.estado === "AP" ? "selected" : ""} ${estiloOpcion} title="ASISTENCIA PROYECTADA">AP</option>
+                   <option value="LP" ${empleado.estado === "LP" ? "selected" : ""} ${estiloOpcion} title="LICENCIA PATERNIDAD">LP</option>
+                   <option value="TC" ${empleado.estado === "TC" ? "selected" : ""} ${estiloOpcion} title="TERMINO DE CONTRATO">TC</option>
                 `;
 
             row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${empleado.dni}</td>
-                <td>${empleado.nombre_visual}</td>
-                <td>${empleado.cargo}</td>
-                <td>
+                <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${index + 1}</td>
+                <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleado.dni}</span></td>
+                <td style="color: #0369a1; font-weight: 700;">${empleado.nombre_visual}</td>
+                <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleado.cargo}</td>
+                
+                <td style="width: 130px;">
                     <select name="estado">${estadoOptions}</select>
                     <input type="hidden" name="id_empleado" value="${empleado.id_empleado}">
                 </td>
-                <td>
-                    <div style="display: flex; gap: 5px;">
-                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
-                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" ${empleado.pasajes === 'PR' ? 'disabled' : ''}>
-                        <select name="pasajes" class="pasajes-select">
-                            <option value="">Seleccione</option>
+                
+                <td style="width: 170px;">
+                    <div class="ui-merged-group">
+                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" 
+                            ${empleado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                        <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                            <option value="">Sel.</option>
                             <option value="PR" ${empleado.pasajes === "PR" ? "selected" : ""}>PR</option>
                         </select>
                     </div>
                 </td>
-                <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleado.viaticos || ''}"></td>
-                <td><input type="text" name="ruta" placeholder="Ruta" value="${empleado.ruta || ''}"></td>
+                
+                <td style="width: 110px;">
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                        <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleado.viaticos || ''}" style="padding-left: 30px !important;">
+                    </div>
+                </td>
+                
                 <td>
-                    <button type="button" class="eliminar-fila-btn-3">X</button>
+                    <input type="text" name="ruta" placeholder="Destino..." value="${empleado.ruta || ''}">
+                </td>
+                
+                <td style="text-align: center; width: 60px;">
+                    <button type="button" class="eliminar-fila-btn-3 ui-btn-delete-icon" title="Eliminar Registro">
+                        <i class="far fa-trash-alt"></i>
+                    </button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -2112,26 +2426,28 @@ document.addEventListener('DOMContentLoaded', async function () {
     // 🟢 Modificar opciones del select según el día de la semana
     function obtenerOpcionesEstado(diaSemana) {
         return diaSemana === 0 // Si es domingo
-            ? `<option value=" "> </option>
-            <option value="DT">DT</option>
-            <option value="DC">DC</option>`
-            : `<option value=" "> </option>
-            <option value="A">A</option>
-            <option value="DT">DT</option>
-            <option value="FT">FT</option>
-            <option value="LG">LG</option>
-            <option value="DM">DM</option>
-            <option value="V">V</option>
-            <option value="LSG">LSG</option>
-            <option value="F">F</option>
-            <option value="SU">SU</option>
-            <option value="CE">CE</option>
-            <option value="FG">FG</option>
-            <option value="LD">LD</option>
-            <option value="DC">DC</option>
-            <option value="AP">AP</option>
-            <option value="LP">LP</option>
-            <option value="TC">TC</option>`;
+            ? `<option value=" " title="Sin Asignar"> </option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>`
+            : `<option value=" " title="Sin Asignar"> </option>
+               <option value="A" title="DÍA ASISTIDO">A</option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>
+               <option value="LG" title="LICENCIA CON GOCE DE HABER">LG</option>
+               <option value="DM" title="DESCANSO MÉDICO">DM</option>
+               <option value="V" title="VACACIONES">V</option>
+               <option value="LSG" title="LICENCIA SIN GOCE DE HABER">LSG</option>
+               <option value="F" title="FALTA">F</option>
+               <option value="R" title="RENUNCIÓ">R</option>
+               <option value="SU" title="SUSP. PERFECTA LABORES">SU</option>
+               <option value="CE" title="CESE">CE</option>
+               <option value="FG" title="FERIADO GANADO">FG</option>
+               <option value="LD" title="LICENCIA POR DEFUNCION">LD</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="AP" title="ASISTENCIA PROYECTADA">AP</option>
+               <option value="LP" title="LICENCIA PATERNIDAD">LP</option>
+               <option value="TC" title="TERMINO DE CONTRATO">TC</option>`;
     }
 
     // Añadir empleado seleccionado a la tabla para la sección Lecturas
@@ -2167,31 +2483,43 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const nuevaFilaDistribucion = document.createElement('tr');
         nuevaFilaDistribucion.innerHTML = `
-            <td>${tbodyDistribucion.children.length + 1}</td>
-            <td>${dni}</td>
-            <td>${nombresApellidos}</td>
-            <td>${cargo}</td>
+            <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${tbodyDistribucion.children.length + 1}</td>
+            <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${dni}</span></td>
+            <td style="color: #0369a1; font-weight: 700;">${nombresApellidos}</td>
+            <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${cargo}</td>
             
-            <td>
-            <select name="estado">${opcionesEstado}</select>
-            <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
+            <td style="width: 130px;">
+                <select name="estado">${opcionesEstado}</select>
+                <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
             </td>
             
-            <td>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
+            <td style="width: 170px;">
+                <div class="ui-merged-group">
+                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
                         value="${empleadoSeleccionado.pasajes !== 'PR' ? empleadoSeleccionado.pasajes || '' : ''}" 
-                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''}>
-                    <select name="pasajes" class="pasajes-select">
-                        <option value="">Seleccione</option>
+                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                    <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                        <option value="">Sel.</option>
                         <option value="PR" ${empleadoSeleccionado.pasajes === "PR" ? "selected" : ""}>PR</option>
                     </select>
                 </div>
             </td>
-            <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleadoSeleccionado.viaticos || ''}"></td>
-            <td><input type="text" name="ruta" placeholder="Ruta" value="${empleadoSeleccionado.ruta || ''}"></td>
+            
+            <td style="width: 110px;">
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                    <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleadoSeleccionado.viaticos || ''}" style="padding-left: 30px !important;">
+                </div>
+            </td>
+            
             <td>
-                <button type="button" class="eliminar-fila-btn">X</button>
+                <input type="text" name="ruta" placeholder="Destino..." value="${empleadoSeleccionado.ruta || ''}">
+            </td>
+            
+            <td style="text-align: center; width: 60px;">
+                <button type="button" class="eliminar-fila-btn ui-btn-delete-icon" title="Eliminar Registro">
+                    <i class="far fa-trash-alt"></i>
+                </button>
             </td>
         `;
 
@@ -2429,7 +2757,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         tbodyDistribucion.querySelectorAll('tr').forEach(fila => {
             const idEmpleado = fila.querySelector('input[name="id_empleado"]').value;
             const estadoSelect = fila.querySelector('select[name="estado"]');
-            const estado = estadoSelect ? estadoSelect.value : 'A';
+            const estado = estadoSelect ? estadoSelect.value.trim() : '';
 
             const pasajesInput = fila.querySelector('input[name="pasajes"]');
             const pasajesSelect = fila.querySelector('select[name="pasajes"]');
@@ -2443,15 +2771,29 @@ document.addEventListener('DOMContentLoaded', async function () {
             const rutaInput = fila.querySelector('input[name="ruta"]');
             const viaticosInput = fila.querySelector('input[name="viaticos"]');
     
+            const ruta = rutaInput ? rutaInput.value.trim() : '';
+            const viaticos = viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0;
+
+            // ✅ VALIDACIÓN CRÍTICA: Si no hay estado ni otros datos, saltamos esta fila
+            if (estado === "" && pasajes === 0 && viaticos === 0 && ruta === "") {
+                return; // El return dentro de un forEach funciona como un "continue"
+            }
+
             empleadosParaGuardarDistribucion.push({
                 id_empleado: idEmpleado,
                 estado: estado,
                 pasajes: pasajes,
-                ruta: rutaInput ? rutaInput.value.trim() : '',
-                viaticos: viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0,
-                es_extra: empleadosSeleccionadosDistribucion.some(e => e.id_empleado == idEmpleado) // Verificar si es extra
+                ruta: ruta,
+                viaticos: viaticos,
+                es_extra: empleadosSeleccionadosDistribucion.some(e => e.id_empleado == idEmpleado)
             });
         });
+
+        // ✅ Evitar hacer peticiones al backend si todas las filas estaban vacías
+        if (empleadosParaGuardarDistribucion.length === 0) {
+            alert("No hay asistencias registradas para guardar.");
+            return;
+        }
         
         console.log('Empleados para guardar:', empleadosParaGuardarDistribucion);
     
@@ -2481,7 +2823,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             const result = await response.json(); // Obtener respuesta del backend
 
             if (!response.ok) {
-                throw new Error(result.message || 'Error al guardar la asistencia');
+                // Mostrar el mensaje directamente en pantalla y detenerse
+                alert(result.message || 'Error al guardar la asistencia');
+                return; // <-- Esto reemplaza al throw new Error
             }
 
             alert(result.message || 'Asistencia guardada correctamente.');
@@ -2500,14 +2844,10 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             
         } catch (error) {
-            // Si el error viene del backend, lo mostramos en pantalla
-            if (error.message.includes('ya cuenta con asistencia')) {
-                alert(error.message);
-            } else {
-                alert('Hubo un problema al guardar la asistencia.');
-            }
+            // Este catch AHORA solo se activa si hay un error de internet o servidor caído
+            console.error('Error de red o de ejecución:', error);
+            alert('Fallo de conexión con el servidor.');
         }
-    
         empleadosSeleccionadosDistribucion = []; // Limpiar la lista de empleados seleccionados
         console.log('Empleados seleccionados después de guardar:', empleadosSeleccionadosDistribucion);
     });
@@ -2575,57 +2915,74 @@ async function cargarEmpleadosInspecciones() {
         // Iteramos sobre los empleados y los agregamos a la tabla
         empleados.forEach((empleado, index) => {
             const row = document.createElement('tr');
-            // 📌 Generamos las opciones del select según si es domingo
+            const estiloOpcion = 'style="color: #1e293b; font-weight: 500; background: #ffffff;"';
+
+            // 📌 Generamos las opciones del select con Tooltips para Inspecciones
             const estadoOptions = diaSemana === 0  
-                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
+                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>  
                 `
                 : `
-                    <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="A" ${empleado.estado === "A" ? "selected" : ""}>A</option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
-                    <option value="LG" ${empleado.estado === "LG" ? "selected" : ""}>LG</option>
-                    <option value="DM" ${empleado.estado === "DM" ? "selected" : ""}>DM</option>
-                    <option value="V" ${empleado.estado === "V" ? "selected" : ""}>V</option>
-                    <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""}>LSG</option>
-                    <option value="F" ${empleado.estado === "F" ? "selected" : ""}>F</option>
-                    <option value="R" ${empleado.estado === "R" ? "selected" : ""}>R</option>
-                    <option value="SU" ${empleado.estado === "SU" ? "selected" : ""}>SU</option>
-                    <option value="CE" ${empleado.estado === "CE" ? "selected" : ""}>CE</option>
-                    <option value="FG" ${empleado.estado === "FG" ? "selected" : ""}>FG</option>
-                    <option value="LD" ${empleado.estado === "LD" ? "selected" : ""}>LD</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="AP" ${empleado.estado === "AP" ? "selected" : ""}>AP</option>
-                    <option value="LP" ${empleado.estado === "LP" ? "selected" : ""}>LP</option>
-                    <option value="TC" ${empleado.estado === "TC" ? "selected" : ""}>TC</option>
+                   <option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="A" ${empleado.estado === "A" ? "selected" : ""} ${estiloOpcion} title="DÍA ASISTIDO">A</option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>
+                   <option value="LG" ${empleado.estado === "LG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA CON GOCE DE HABER">LG</option>
+                   <option value="DM" ${empleado.estado === "DM" ? "selected" : ""} ${estiloOpcion} title="DESCANSO MÉDICO">DM</option>
+                   <option value="V" ${empleado.estado === "V" ? "selected" : ""} ${estiloOpcion} title="VACACIONES">V</option>
+                   <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA SIN GOCE DE HABER">LSG</option>
+                   <option value="F" ${empleado.estado === "F" ? "selected" : ""} ${estiloOpcion} title="FALTA">F</option>
+                   <option value="R" ${empleado.estado === "R" ? "selected" : ""} ${estiloOpcion} title="RENUNCIÓ">R</option>
+                   <option value="SU" ${empleado.estado === "SU" ? "selected" : ""} ${estiloOpcion} title="SUSP. PERFECTA LABORES">SU</option>
+                   <option value="CE" ${empleado.estado === "CE" ? "selected" : ""} ${estiloOpcion} title="CESE">CE</option>
+                   <option value="FG" ${empleado.estado === "FG" ? "selected" : ""} ${estiloOpcion} title="FERIADO GANADO">FG</option>
+                   <option value="LD" ${empleado.estado === "LD" ? "selected" : ""} ${estiloOpcion} title="LICENCIA POR DEFUNCION">LD</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="AP" ${empleado.estado === "AP" ? "selected" : ""} ${estiloOpcion} title="ASISTENCIA PROYECTADA">AP</option>
+                   <option value="LP" ${empleado.estado === "LP" ? "selected" : ""} ${estiloOpcion} title="LICENCIA PATERNIDAD">LP</option>
+                   <option value="TC" ${empleado.estado === "TC" ? "selected" : ""} ${estiloOpcion} title="TERMINO DE CONTRATO">TC</option>
                 `;
 
             row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${empleado.dni}</td>
-                <td>${empleado.nombre_visual}</td>
-                <td>${empleado.cargo}</td>
-                <td>
+                <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${index + 1}</td>
+                <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleado.dni}</span></td>
+                <td style="color: #0369a1; font-weight: 700;">${empleado.nombre_visual}</td>
+                <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleado.cargo}</td>
+                
+                <td style="width: 130px;">
                     <select name="estado">${estadoOptions}</select>
                     <input type="hidden" name="id_empleado" value="${empleado.id_empleado}">
                 </td>
-                <td>
-                    <div style="display: flex; gap: 5px;">
-                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
-                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" ${empleado.pasajes === 'PR' ? 'disabled' : ''}>
-                        <select name="pasajes" class="pasajes-select">
-                            <option value="">Seleccione</option>
+                
+                <td style="width: 170px;">
+                    <div class="ui-merged-group">
+                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" 
+                            ${empleado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                        <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                            <option value="">Sel.</option>
                             <option value="PR" ${empleado.pasajes === "PR" ? "selected" : ""}>PR</option>
                         </select>
                     </div>
                 </td>
-                <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleado.viaticos || ''}"></td>
-                <td><input type="text" name="ruta" placeholder="Ruta" value="${empleado.ruta || ''}"></td>
+                
+                <td style="width: 110px;">
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                        <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleado.viaticos || ''}" style="padding-left: 30px !important;">
+                    </div>
+                </td>
+                
                 <td>
-                    <button type="button" class="eliminar-fila-btn-4">X</button>
+                    <input type="text" name="ruta" placeholder="Destino..." value="${empleado.ruta || ''}">
+                </td>
+                
+                <td style="text-align: center; width: 60px;">
+                    <button type="button" class="eliminar-fila-btn-4 ui-btn-delete-icon" title="Eliminar Registro">
+                        <i class="far fa-trash-alt"></i>
+                    </button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -2907,26 +3264,28 @@ document.addEventListener('DOMContentLoaded', async function () {
     // 🟢 Modificar opciones del select según el día de la semana
     function obtenerOpcionesEstado(diaSemana) {
         return diaSemana === 0 // Si es domingo
-            ? `<option value=" "> </option>
-            <option value="DT">DT</option>
-            <option value="DC">DC</option>`
-            : `<option value=" "> </option>
-            <option value="A">A</option>
-            <option value="DT">DT</option>
-            <option value="FT">FT</option>
-            <option value="LG">LG</option>
-            <option value="DM">DM</option>
-            <option value="V">V</option>
-            <option value="LSG">LSG</option>
-            <option value="F">F</option>
-            <option value="SU">SU</option>
-            <option value="CE">CE</option>
-            <option value="FG">FG</option>
-            <option value="LD">LD</option>
-            <option value="DC">DC</option>
-            <option value="AP">AP</option>
-            <option value="LP">LP</option>
-            <option value="TC">TC</option>`;
+            ? `<option value=" " title="Sin Asignar"> </option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>`
+            : `<option value=" " title="Sin Asignar"> </option>
+               <option value="A" title="DÍA ASISTIDO">A</option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>
+               <option value="LG" title="LICENCIA CON GOCE DE HABER">LG</option>
+               <option value="DM" title="DESCANSO MÉDICO">DM</option>
+               <option value="V" title="VACACIONES">V</option>
+               <option value="LSG" title="LICENCIA SIN GOCE DE HABER">LSG</option>
+               <option value="F" title="FALTA">F</option>
+               <option value="R" title="RENUNCIÓ">R</option>
+               <option value="SU" title="SUSP. PERFECTA LABORES">SU</option>
+               <option value="CE" title="CESE">CE</option>
+               <option value="FG" title="FERIADO GANADO">FG</option>
+               <option value="LD" title="LICENCIA POR DEFUNCION">LD</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="AP" title="ASISTENCIA PROYECTADA">AP</option>
+               <option value="LP" title="LICENCIA PATERNIDAD">LP</option>
+               <option value="TC" title="TERMINO DE CONTRATO">TC</option>`;
     }
 
     // Añadir empleado seleccionado a la tabla para la sección Lecturas
@@ -2962,31 +3321,43 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const nuevaFilaInspecciones = document.createElement('tr');
         nuevaFilaInspecciones.innerHTML = `
-            <td>${tbodyInspecciones.children.length + 1}</td>
-            <td>${dni}</td>
-            <td>${nombresApellidos}</td>
-            <td>${cargo}</td>
+            <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${tbodyInspecciones.children.length + 1}</td>
+            <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${dni}</span></td>
+            <td style="color: #0369a1; font-weight: 700;">${nombresApellidos}</td>
+            <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${cargo}</td>
             
-            <td>
-            <select name="estado">${opcionesEstado}</select>
-            <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
+            <td style="width: 130px;">
+                <select name="estado">${opcionesEstado}</select>
+                <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
             </td>
-
-            <td>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
+            
+            <td style="width: 170px;">
+                <div class="ui-merged-group">
+                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
                         value="${empleadoSeleccionado.pasajes !== 'PR' ? empleadoSeleccionado.pasajes || '' : ''}" 
-                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''}>
-                    <select name="pasajes" class="pasajes-select">
-                        <option value="">Seleccione</option>
+                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                    <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                        <option value="">Sel.</option>
                         <option value="PR" ${empleadoSeleccionado.pasajes === "PR" ? "selected" : ""}>PR</option>
                     </select>
                 </div>
             </td>
-            <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleadoSeleccionado.viaticos || ''}"></td>
-            <td><input type="text" name="ruta" placeholder="Ruta" value="${empleadoSeleccionado.ruta || ''}"></td>
+            
+            <td style="width: 110px;">
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                    <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleadoSeleccionado.viaticos || ''}" style="padding-left: 30px !important;">
+                </div>
+            </td>
+            
             <td>
-                <button type="button" class="eliminar-fila-btn">X</button>
+                <input type="text" name="ruta" placeholder="Destino..." value="${empleadoSeleccionado.ruta || ''}">
+            </td>
+            
+            <td style="text-align: center; width: 60px;">
+                <button type="button" class="eliminar-fila-btn ui-btn-delete-icon" title="Eliminar Registro">
+                    <i class="far fa-trash-alt"></i>
+                </button>
             </td>
         `;
 
@@ -3222,7 +3593,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         tbodyInspecciones.querySelectorAll('tr').forEach(fila => {
             const idEmpleado = fila.querySelector('input[name="id_empleado"]').value;
             const estadoSelect = fila.querySelector('select[name="estado"]');
-            const estado = estadoSelect ? estadoSelect.value : 'A';
+            const estado = estadoSelect ? estadoSelect.value.trim() : '';
 
             const pasajesInput = fila.querySelector('input[name="pasajes"]');
             const pasajesSelect = fila.querySelector('select[name="pasajes"]');
@@ -3235,16 +3606,29 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             const rutaInput = fila.querySelector('input[name="ruta"]');
             const viaticosInput = fila.querySelector('input[name="viaticos"]');
-    
+            const ruta = rutaInput ? rutaInput.value.trim() : '';
+            const viaticos = viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0;
+
+            // ✅ VALIDACIÓN CRÍTICA: Si no hay estado ni otros datos, saltamos esta fila
+            if (estado === "" && pasajes === 0 && viaticos === 0 && ruta === "") {
+                return; // El return dentro de un forEach funciona como un "continue"
+            }
+
             empleadosParaGuardarInspecciones.push({
                 id_empleado: idEmpleado,
                 estado: estado,
                 pasajes: pasajes,
-                ruta: rutaInput ? rutaInput.value.trim() : '',
-                viaticos: viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0,
-                es_extra: empleadosSeleccionadosInspecciones.some(e => e.id_empleado == idEmpleado) // Verificar si es extra
+                ruta: ruta,
+                viaticos: viaticos,
+                es_extra: empleadosSeleccionadosInspecciones.some(e => e.id_empleado == idEmpleado)
             });
         });
+
+        // ✅ Evitar hacer peticiones al backend si todas las filas estaban vacías
+        if (empleadosParaGuardarInspecciones.length === 0) {
+            alert("No hay asistencias registradas para guardar.");
+            return;
+        }
         
         console.log('Empleados para guardar:', empleadosParaGuardarInspecciones);
     
@@ -3274,7 +3658,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             const result = await response.json(); // Obtener respuesta del backend
 
             if (!response.ok) {
-                throw new Error(result.message || 'Error al guardar la asistencia');
+                // Mostrar el mensaje directamente en pantalla y detenerse
+                alert(result.message || 'Error al guardar la asistencia');
+                return; // <-- Esto reemplaza al throw new Error
             }
 
             alert(result.message || 'Asistencia guardada correctamente.');
@@ -3292,14 +3678,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
             
         } catch (error) {
-            // Si el error viene del backend, lo mostramos en pantalla
-            if (error.message.includes('ya cuenta con asistencia')) {
-                alert(error.message);
-            } else {
-                alert('Hubo un problema al guardar la asistencia.');
-            }
+            // Este catch AHORA solo se activa si hay un error de internet o servidor caído
+            console.error('Error de red o de ejecución:', error);
+            alert('Fallo de conexión con el servidor.');
         }
-    
         empleadosSeleccionadosInspecciones = []; // Limpiar la lista de empleados seleccionados
         console.log('Empleados seleccionados después de guardar:', empleadosSeleccionadosInspecciones);
     });
@@ -3365,58 +3747,74 @@ async function cargarEmpleadosCatastro() {
         // Iteramos sobre los empleados y los agregamos a la tabla
         empleados.forEach((empleado, index) => {
             const row = document.createElement('tr');
-            // 📌 Generamos las opciones del select según si es domingo
+            const estiloOpcion = 'style="color: #1e293b; font-weight: 500; background: #ffffff;"';
+
+            // 📌 Generamos las opciones del select con Tooltips para Catastro
             const estadoOptions = diaSemana === 0  
-                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
+                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>  
                 `
                 : `
-                    <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="A" ${empleado.estado === "A" ? "selected" : ""}>A</option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
-                    <option value="LG" ${empleado.estado === "LG" ? "selected" : ""}>LG</option>
-                    <option value="DM" ${empleado.estado === "DM" ? "selected" : ""}>DM</option>
-                    <option value="V" ${empleado.estado === "V" ? "selected" : ""}>V</option>
-                    <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""}>LSG</option>
-                    <option value="F" ${empleado.estado === "F" ? "selected" : ""}>F</option>
-                    <option value="R" ${empleado.estado === "R" ? "selected" : ""}>R</option>
-                    <option value="SU" ${empleado.estado === "SU" ? "selected" : ""}>SU</option>
-                    <option value="CE" ${empleado.estado === "CE" ? "selected" : ""}>CE</option>
-                    <option value="FG" ${empleado.estado === "FG" ? "selected" : ""}>FG</option>
-                    <option value="LD" ${empleado.estado === "LD" ? "selected" : ""}>LD</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="AP" ${empleado.estado === "AP" ? "selected" : ""}>AP</option>
-                    <option value="LP" ${empleado.estado === "LP" ? "selected" : ""}>LP</option>
-                    <option value="TC" ${empleado.estado === "TC" ? "selected" : ""}>TC</option>
+                   <option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="A" ${empleado.estado === "A" ? "selected" : ""} ${estiloOpcion} title="DÍA ASISTIDO">A</option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>
+                   <option value="LG" ${empleado.estado === "LG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA CON GOCE DE HABER">LG</option>
+                   <option value="DM" ${empleado.estado === "DM" ? "selected" : ""} ${estiloOpcion} title="DESCANSO MÉDICO">DM</option>
+                   <option value="V" ${empleado.estado === "V" ? "selected" : ""} ${estiloOpcion} title="VACACIONES">V</option>
+                   <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA SIN GOCE DE HABER">LSG</option>
+                   <option value="F" ${empleado.estado === "F" ? "selected" : ""} ${estiloOpcion} title="FALTA">F</option>
+                   <option value="R" ${empleado.estado === "R" ? "selected" : ""} ${estiloOpcion} title="RENUNCIÓ">R</option>
+                   <option value="SU" ${empleado.estado === "SU" ? "selected" : ""} ${estiloOpcion} title="SUSP. PERFECTA LABORES">SU</option>
+                   <option value="CE" ${empleado.estado === "CE" ? "selected" : ""} ${estiloOpcion} title="CESE">CE</option>
+                   <option value="FG" ${empleado.estado === "FG" ? "selected" : ""} ${estiloOpcion} title="FERIADO GANADO">FG</option>
+                   <option value="LD" ${empleado.estado === "LD" ? "selected" : ""} ${estiloOpcion} title="LICENCIA POR DEFUNCION">LD</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="AP" ${empleado.estado === "AP" ? "selected" : ""} ${estiloOpcion} title="ASISTENCIA PROYECTADA">AP</option>
+                   <option value="LP" ${empleado.estado === "LP" ? "selected" : ""} ${estiloOpcion} title="LICENCIA PATERNIDAD">LP</option>
+                   <option value="TC" ${empleado.estado === "TC" ? "selected" : ""} ${estiloOpcion} title="TERMINO DE CONTRATO">TC</option>
                 `;
 
             row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${empleado.dni}</td>
-                <td>${empleado.nombre_visual}</td>
-                <td>${empleado.cargo}</td>
-                <td>
+                <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${index + 1}</td>
+                <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleado.dni}</span></td>
+                <td style="color: #0369a1; font-weight: 700;">${empleado.nombre_visual}</td>
+                <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleado.cargo}</td>
+                
+                <td style="width: 130px;">
                     <select name="estado">${estadoOptions}</select>
                     <input type="hidden" name="id_empleado" value="${empleado.id_empleado}">
                 </td>
-
-                <td>
-                    <div style="display: flex; gap: 5px;">
-                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
-                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" ${empleado.pasajes === 'PR' ? 'disabled' : ''}>
-                        <select name="pasajes" class="pasajes-select">
-                            <option value="">Seleccione</option>
+                
+                <td style="width: 170px;">
+                    <div class="ui-merged-group">
+                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" 
+                            ${empleado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                        <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                            <option value="">Sel.</option>
                             <option value="PR" ${empleado.pasajes === "PR" ? "selected" : ""}>PR</option>
                         </select>
                     </div>
                 </td>
-                <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleado.viaticos || ''}"></td>
-                <td><input type="text" name="ruta" placeholder="Ruta" value="${empleado.ruta || ''}"></td>
+                
+                <td style="width: 110px;">
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                        <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleado.viaticos || ''}" style="padding-left: 30px !important;">
+                    </div>
+                </td>
+                
                 <td>
-                    <button type="button" class="eliminar-fila-btn-5">X</button>
+                    <input type="text" name="ruta" placeholder="Destino..." value="${empleado.ruta || ''}">
+                </td>
+                
+                <td style="text-align: center; width: 60px;">
+                    <button type="button" class="eliminar-fila-btn-5 ui-btn-delete-icon" title="Eliminar Registro">
+                        <i class="far fa-trash-alt"></i>
+                    </button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -3696,26 +4094,28 @@ document.addEventListener('DOMContentLoaded', async function () {
     // 🟢 Modificar opciones del select según el día de la semana
     function obtenerOpcionesEstado(diaSemana) {
         return diaSemana === 0 // Si es domingo
-            ? `<option value=" "> </option>
-            <option value="DT">DT</option>
-            <option value="DC">DC</option>`
-            : `<option value=" "> </option>
-            <option value="A">A</option>
-            <option value="DT">DT</option>
-            <option value="FT">FT</option>
-            <option value="LG">LG</option>
-            <option value="DM">DM</option>
-            <option value="V">V</option>
-            <option value="LSG">LSG</option>
-            <option value="F">F</option>
-            <option value="SU">SU</option>
-            <option value="CE">CE</option>
-            <option value="FG">FG</option>
-            <option value="LD">LD</option>
-            <option value="DC">DC</option>
-            <option value="AP">AP</option>
-            <option value="LP">LP</option>
-            <option value="TC">TC</option>`;
+            ? `<option value=" " title="Sin Asignar"> </option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>`
+            : `<option value=" " title="Sin Asignar"> </option>
+               <option value="A" title="DÍA ASISTIDO">A</option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>
+               <option value="LG" title="LICENCIA CON GOCE DE HABER">LG</option>
+               <option value="DM" title="DESCANSO MÉDICO">DM</option>
+               <option value="V" title="VACACIONES">V</option>
+               <option value="LSG" title="LICENCIA SIN GOCE DE HABER">LSG</option>
+               <option value="F" title="FALTA">F</option>
+               <option value="R" title="RENUNCIÓ">R</option>
+               <option value="SU" title="SUSP. PERFECTA LABORES">SU</option>
+               <option value="CE" title="CESE">CE</option>
+               <option value="FG" title="FERIADO GANADO">FG</option>
+               <option value="LD" title="LICENCIA POR DEFUNCION">LD</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="AP" title="ASISTENCIA PROYECTADA">AP</option>
+               <option value="LP" title="LICENCIA PATERNIDAD">LP</option>
+               <option value="TC" title="TERMINO DE CONTRATO">TC</option>`;
     }
 
     // Añadir empleado seleccionado a la tabla para la sección Lecturas
@@ -3751,31 +4151,43 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const nuevaFilaCatastro = document.createElement('tr');
         nuevaFilaCatastro.innerHTML = `
-            <td>${tbodyCatastro.children.length + 1}</td>
-            <td>${dni}</td>
-            <td>${nombresApellidos}</td>
-            <td>${cargo}</td>
+            <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${tbodyCatastro.children.length + 1}</td>
+            <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${dni}</span></td>
+            <td style="color: #0369a1; font-weight: 700;">${nombresApellidos}</td>
+            <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${cargo}</td>
             
-            <td>
-            <select name="estado">${opcionesEstado}</select>
-            <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
+            <td style="width: 130px;">
+                <select name="estado">${opcionesEstado}</select>
+                <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
             </td>
-
-            <td>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
+            
+            <td style="width: 170px;">
+                <div class="ui-merged-group">
+                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
                         value="${empleadoSeleccionado.pasajes !== 'PR' ? empleadoSeleccionado.pasajes || '' : ''}" 
-                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''}>
-                    <select name="pasajes" class="pasajes-select">
-                        <option value="">Seleccione</option>
+                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                    <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                        <option value="">Sel.</option>
                         <option value="PR" ${empleadoSeleccionado.pasajes === "PR" ? "selected" : ""}>PR</option>
                     </select>
                 </div>
             </td>
-            <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleadoSeleccionado.viaticos || ''}"></td>
-            <td><input type="text" name="ruta" placeholder="Ruta" value="${empleadoSeleccionado.ruta || ''}"></td>
+            
+            <td style="width: 110px;">
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                    <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleadoSeleccionado.viaticos || ''}" style="padding-left: 30px !important;">
+                </div>
+            </td>
+            
             <td>
-                <button type="button" class="eliminar-fila-btn">X</button>
+                <input type="text" name="ruta" placeholder="Destino..." value="${empleadoSeleccionado.ruta || ''}">
+            </td>
+            
+            <td style="text-align: center; width: 60px;">
+                <button type="button" class="eliminar-fila-btn ui-btn-delete-icon" title="Eliminar Registro">
+                    <i class="far fa-trash-alt"></i>
+                </button>
             </td>
         `;
 
@@ -4011,7 +4423,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         tbodyCatastro.querySelectorAll('tr').forEach(fila => {
             const idEmpleado = fila.querySelector('input[name="id_empleado"]').value;
             const estadoSelect = fila.querySelector('select[name="estado"]');
-            const estado = estadoSelect ? estadoSelect.value : 'A';
+            const estado = estadoSelect ? estadoSelect.value.trim() : '';
 
             const pasajesInput = fila.querySelector('input[name="pasajes"]');
             const pasajesSelect = fila.querySelector('select[name="pasajes"]');
@@ -4024,16 +4436,29 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             const rutaInput = fila.querySelector('input[name="ruta"]');
             const viaticosInput = fila.querySelector('input[name="viaticos"]');
-    
+            const ruta = rutaInput ? rutaInput.value.trim() : '';
+            const viaticos = viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0;
+
+            // ✅ VALIDACIÓN CRÍTICA: Si no hay estado ni otros datos, saltamos esta fila
+            if (estado === "" && pasajes === 0 && viaticos === 0 && ruta === "") {
+                return; // El return dentro de un forEach funciona como un "continue"
+            }
+
             empleadosParaGuardarCatastro.push({
                 id_empleado: idEmpleado,
                 estado: estado,
                 pasajes: pasajes,
-                ruta: rutaInput ? rutaInput.value.trim() : '',
-                viaticos: viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0,
-                es_extra: empleadosSeleccionadosCatastro.some(e => e.id_empleado == idEmpleado) // Verificar si es extra
+                ruta: ruta,
+                viaticos: viaticos,
+                es_extra: empleadosSeleccionadosCatastro.some(e => e.id_empleado == idEmpleado)
             });
         });
+
+        // ✅ Evitar hacer peticiones al backend si todas las filas estaban vacías
+        if (empleadosParaGuardarCatastro.length === 0) {
+            alert("No hay asistencias registradas para guardar.");
+            return;
+        }
         
         console.log('Empleados para guardar:', empleadosParaGuardarCatastro);
     
@@ -4063,9 +4488,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             const result = await response.json(); // Obtener respuesta del backend
 
             if (!response.ok) {
-                throw new Error(result.message || 'Error al guardar la asistencia');
+                // Mostrar el mensaje directamente en pantalla y detenerse
+                alert(result.message || 'Error al guardar la asistencia');
+                return; // <-- Esto reemplaza al throw new Error
             }
-
             alert(result.message || 'Asistencia guardada correctamente.');
 
             // Auditar que se guardó la asistencia
@@ -4081,12 +4507,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
             
         } catch (error) {
-            // Si el error viene del backend, lo mostramos en pantalla
-            if (error.message.includes('ya cuenta con asistencia')) {
-                alert(error.message);
-            } else {
-                alert('Hubo un problema al guardar la asistencia.');
-            }
+            // Este catch AHORA solo se activa si hay un error de internet o servidor caído
+            console.error('Error de red o de ejecución:', error);
+            alert('Fallo de conexión con el servidor.');
         }
     
         empleadosSeleccionadosCatastro = []; // Limpiar la lista de empleados seleccionados
@@ -4155,59 +4578,74 @@ async function cargarEmpleadosMedidores() {
         empleados.forEach((empleado, index) => {
             const row = document.createElement('tr');
             
-            // 📌 Generamos las opciones del select según si es domingo
+            const estiloOpcion = 'style="color: #1e293b; font-weight: 500; background: #ffffff;"';
+
+            // 📌 Generamos las opciones del select con Tooltips para Medidores
             const estadoOptions = diaSemana === 0  
-                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
+                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>  
                 `
                 : `
-                    <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="A" ${empleado.estado === "A" ? "selected" : ""}>A</option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
-                    <option value="LG" ${empleado.estado === "LG" ? "selected" : ""}>LG</option>
-                    <option value="DM" ${empleado.estado === "DM" ? "selected" : ""}>DM</option>
-                    <option value="V" ${empleado.estado === "V" ? "selected" : ""}>V</option>
-                    <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""}>LSG</option>
-                    <option value="F" ${empleado.estado === "F" ? "selected" : ""}>F</option>
-                    <option value="R" ${empleado.estado === "R" ? "selected" : ""}>R</option>
-                    <option value="SU" ${empleado.estado === "SU" ? "selected" : ""}>SU</option>
-                    <option value="CE" ${empleado.estado === "CE" ? "selected" : ""}>CE</option>
-                    <option value="FG" ${empleado.estado === "FG" ? "selected" : ""}>FG</option>
-                    <option value="LD" ${empleado.estado === "LD" ? "selected" : ""}>LD</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="AP" ${empleado.estado === "AP" ? "selected" : ""}>AP</option>
-                    <option value="LP" ${empleado.estado === "LP" ? "selected" : ""}>LP</option>
-                    <option value="TC" ${empleado.estado === "TC" ? "selected" : ""}>TC</option>
+                   <option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="A" ${empleado.estado === "A" ? "selected" : ""} ${estiloOpcion} title="DÍA ASISTIDO">A</option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>
+                   <option value="LG" ${empleado.estado === "LG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA CON GOCE DE HABER">LG</option>
+                   <option value="DM" ${empleado.estado === "DM" ? "selected" : ""} ${estiloOpcion} title="DESCANSO MÉDICO">DM</option>
+                   <option value="V" ${empleado.estado === "V" ? "selected" : ""} ${estiloOpcion} title="VACACIONES">V</option>
+                   <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA SIN GOCE DE HABER">LSG</option>
+                   <option value="F" ${empleado.estado === "F" ? "selected" : ""} ${estiloOpcion} title="FALTA">F</option>
+                   <option value="R" ${empleado.estado === "R" ? "selected" : ""} ${estiloOpcion} title="RENUNCIÓ">R</option>
+                   <option value="SU" ${empleado.estado === "SU" ? "selected" : ""} ${estiloOpcion} title="SUSP. PERFECTA LABORES">SU</option>
+                   <option value="CE" ${empleado.estado === "CE" ? "selected" : ""} ${estiloOpcion} title="CESE">CE</option>
+                   <option value="FG" ${empleado.estado === "FG" ? "selected" : ""} ${estiloOpcion} title="FERIADO GANADO">FG</option>
+                   <option value="LD" ${empleado.estado === "LD" ? "selected" : ""} ${estiloOpcion} title="LICENCIA POR DEFUNCION">LD</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="AP" ${empleado.estado === "AP" ? "selected" : ""} ${estiloOpcion} title="ASISTENCIA PROYECTADA">AP</option>
+                   <option value="LP" ${empleado.estado === "LP" ? "selected" : ""} ${estiloOpcion} title="LICENCIA PATERNIDAD">LP</option>
+                   <option value="TC" ${empleado.estado === "TC" ? "selected" : ""} ${estiloOpcion} title="TERMINO DE CONTRATO">TC</option>
                 `;
 
             row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${empleado.dni}</td>
-                <td>${empleado.nombre_visual}</td>
-                <td>${empleado.cargo}</td>
-
-                <td>
+                <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${index + 1}</td>
+                <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleado.dni}</span></td>
+                <td style="color: #0369a1; font-weight: 700;">${empleado.nombre_visual}</td>
+                <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleado.cargo}</td>
+                
+                <td style="width: 130px;">
                     <select name="estado">${estadoOptions}</select>
                     <input type="hidden" name="id_empleado" value="${empleado.id_empleado}">
                 </td>
-
-                <td>
-                    <div style="display: flex; gap: 5px;">
-                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
-                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" ${empleado.pasajes === 'PR' ? 'disabled' : ''}>
-                        <select name="pasajes" class="pasajes-select">
-                            <option value="">Seleccione</option>
+                
+                <td style="width: 170px;">
+                    <div class="ui-merged-group">
+                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" 
+                            ${empleado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                        <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                            <option value="">Sel.</option>
                             <option value="PR" ${empleado.pasajes === "PR" ? "selected" : ""}>PR</option>
                         </select>
                     </div>
                 </td>
-                <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleado.viaticos || ''}"></td>
-                <td><input type="text" name="ruta" placeholder="Ruta" value="${empleado.ruta || ''}"></td>
+                
+                <td style="width: 110px;">
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                        <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleado.viaticos || ''}" style="padding-left: 30px !important;">
+                    </div>
+                </td>
+                
                 <td>
-                    <button type="button" class="eliminar-fila-btn-6">X</button>
+                    <input type="text" name="ruta" placeholder="Destino..." value="${empleado.ruta || ''}">
+                </td>
+                
+                <td style="text-align: center; width: 60px;">
+                    <button type="button" class="eliminar-fila-btn-6 ui-btn-delete-icon" title="Eliminar Registro">
+                        <i class="far fa-trash-alt"></i>
+                    </button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -4487,26 +4925,28 @@ document.addEventListener('DOMContentLoaded', async function () {
     // 🟢 Modificar opciones del select según el día de la semana
     function obtenerOpcionesEstado(diaSemana) {
         return diaSemana === 0 // Si es domingo
-            ? `<option value=" "> </option>
-            <option value="DT">DT</option>
-            <option value="DC">DC</option>`
-            : `<option value=" "> </option>
-            <option value="A">A</option>
-            <option value="DT">DT</option>
-            <option value="FT">FT</option>
-            <option value="LG">LG</option>
-            <option value="DM">DM</option>
-            <option value="V">V</option>
-            <option value="LSG">LSG</option>
-            <option value="F">F</option>
-            <option value="SU">SU</option>
-            <option value="CE">CE</option>
-            <option value="FG">FG</option>
-            <option value="LD">LD</option>
-            <option value="DC">DC</option>
-            <option value="AP">AP</option>
-            <option value="LP">LP</option>
-            <option value="TC">TC</option>`;
+            ? `<option value=" " title="Sin Asignar"> </option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>`
+            : `<option value=" " title="Sin Asignar"> </option>
+               <option value="A" title="DÍA ASISTIDO">A</option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>
+               <option value="LG" title="LICENCIA CON GOCE DE HABER">LG</option>
+               <option value="DM" title="DESCANSO MÉDICO">DM</option>
+               <option value="V" title="VACACIONES">V</option>
+               <option value="LSG" title="LICENCIA SIN GOCE DE HABER">LSG</option>
+               <option value="F" title="FALTA">F</option>
+               <option value="R" title="RENUNCIÓ">R</option>
+               <option value="SU" title="SUSP. PERFECTA LABORES">SU</option>
+               <option value="CE" title="CESE">CE</option>
+               <option value="FG" title="FERIADO GANADO">FG</option>
+               <option value="LD" title="LICENCIA POR DEFUNCION">LD</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="AP" title="ASISTENCIA PROYECTADA">AP</option>
+               <option value="LP" title="LICENCIA PATERNIDAD">LP</option>
+               <option value="TC" title="TERMINO DE CONTRATO">TC</option>`;
     }
 
     // Añadir empleado seleccionado a la tabla para la sección Lecturas
@@ -4542,34 +4982,45 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const nuevaFilaMedidores = document.createElement('tr');
         nuevaFilaMedidores.innerHTML = `
-            <td>${tbodyMedidores.children.length + 1}</td>
-            <td>${dni}</td>
-            <td>${nombresApellidos}</td>
-            <td>${cargo}</td>
+            <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${tbodyMedidores.children.length + 1}</td>
+            <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${dni}</span></td>
+            <td style="color: #0369a1; font-weight: 700;">${nombresApellidos}</td>
+            <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${cargo}</td>
             
-            <td>
-            <select name="estado">${opcionesEstado}</select>
-            <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
+            <td style="width: 130px;">
+                <select name="estado">${opcionesEstado}</select>
+                <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
             </td>
-        
-            <td>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
+            
+            <td style="width: 170px;">
+                <div class="ui-merged-group">
+                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
                         value="${empleadoSeleccionado.pasajes !== 'PR' ? empleadoSeleccionado.pasajes || '' : ''}" 
-                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''}>
-                    <select name="pasajes" class="pasajes-select">
-                        <option value="">Seleccione</option>
+                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                    <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                        <option value="">Sel.</option>
                         <option value="PR" ${empleadoSeleccionado.pasajes === "PR" ? "selected" : ""}>PR</option>
                     </select>
                 </div>
             </td>
-            <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleadoSeleccionado.viaticos || ''}"></td>
-            <td><input type="text" name="ruta" placeholder="Ruta" value="${empleadoSeleccionado.ruta || ''}"></td>
+            
+            <td style="width: 110px;">
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                    <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleadoSeleccionado.viaticos || ''}" style="padding-left: 30px !important;">
+                </div>
+            </td>
+            
             <td>
-                <button type="button" class="eliminar-fila-btn">X</button>
+                <input type="text" name="ruta" placeholder="Destino..." value="${empleadoSeleccionado.ruta || ''}">
+            </td>
+            
+            <td style="text-align: center; width: 60px;">
+                <button type="button" class="eliminar-fila-btn ui-btn-delete-icon" title="Eliminar Registro">
+                    <i class="far fa-trash-alt"></i>
+                </button>
             </td>
         `;
-
         const inputPasajes = nuevaFilaMedidores.querySelector('.pasajes-input');
         const selectPasajes = nuevaFilaMedidores.querySelector('.pasajes-select');
 
@@ -4802,7 +5253,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         tbodyMedidores.querySelectorAll('tr').forEach(fila => {
             const idEmpleado = fila.querySelector('input[name="id_empleado"]').value;
             const estadoSelect = fila.querySelector('select[name="estado"]');
-            const estado = estadoSelect ? estadoSelect.value : 'A';
+            const estado = estadoSelect ? estadoSelect.value.trim() : '';
 
             const pasajesInput = fila.querySelector('input[name="pasajes"]');
             const pasajesSelect = fila.querySelector('select[name="pasajes"]');
@@ -4815,16 +5266,29 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             const rutaInput = fila.querySelector('input[name="ruta"]');
             const viaticosInput = fila.querySelector('input[name="viaticos"]');
-    
+            const ruta = rutaInput ? rutaInput.value.trim() : '';
+            const viaticos = viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0;
+
+            // ✅ VALIDACIÓN CRÍTICA: Si no hay estado ni otros datos, saltamos esta fila
+            if (estado === "" && pasajes === 0 && viaticos === 0 && ruta === "") {
+                return; // El return dentro de un forEach funciona como un "continue"
+            }
+
             empleadosParaGuardarMedidores.push({
                 id_empleado: idEmpleado,
                 estado: estado,
                 pasajes: pasajes,
-                ruta: rutaInput ? rutaInput.value.trim() : '',
-                viaticos: viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0,
-                es_extra: empleadosSeleccionadosMedidores.some(e => e.id_empleado == idEmpleado) // Verificar si es extra
+                ruta: ruta,
+                viaticos: viaticos,
+                es_extra: empleadosSeleccionadosMedidores.some(e => e.id_empleado == idEmpleado)
             });
         });
+
+        // ✅ Evitar hacer peticiones al backend si todas las filas estaban vacías
+        if (empleadosParaGuardarMedidores.length === 0) {
+            alert("No hay asistencias registradas para guardar.");
+            return;
+        }
         
         console.log('Empleados para guardar:', empleadosParaGuardarMedidores);
     
@@ -4854,7 +5318,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             const result = await response.json(); // Obtener respuesta del backend
 
             if (!response.ok) {
-                throw new Error(result.message || 'Error al guardar la asistencia');
+                // Mostrar el mensaje directamente en pantalla y detenerse
+                alert(result.message || 'Error al guardar la asistencia');
+                return; // <-- Esto reemplaza al throw new Error
             }
 
             alert(result.message || 'Asistencia guardada correctamente.');
@@ -4872,12 +5338,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
             
         } catch (error) {
-            // Si el error viene del backend, lo mostramos en pantalla
-            if (error.message.includes('ya cuenta con asistencia')) {
-                alert(error.message);
-            } else {
-                alert('Hubo un problema al guardar la asistencia.');
-            }
+            // Este catch AHORA solo se activa si hay un error de internet o servidor caído
+            console.error('Error de red o de ejecución:', error);
+            alert('Fallo de conexión con el servidor.');
         }
     
         empleadosSeleccionadosMedidores = []; // Limpiar la lista de empleados seleccionados
@@ -4945,57 +5408,74 @@ async function cargarEmpleadosPersuasivas() {
         // Iteramos sobre los empleados y los agregamos a la tabla
         empleados.forEach((empleado, index) => {
             const row = document.createElement('tr');
-            // 📌 Generamos las opciones del select según si es domingo
+            const estiloOpcion = 'style="color: #1e293b; font-weight: 500; background: #ffffff;"';
+
+            // 📌 Generamos las opciones del select con Tooltips para Persuasivas
             const estadoOptions = diaSemana === 0  
-                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
+                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>  
                 `
                 : `
-                    <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="A" ${empleado.estado === "A" ? "selected" : ""}>A</option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
-                    <option value="LG" ${empleado.estado === "LG" ? "selected" : ""}>LG</option>
-                    <option value="DM" ${empleado.estado === "DM" ? "selected" : ""}>DM</option>
-                    <option value="V" ${empleado.estado === "V" ? "selected" : ""}>V</option>
-                    <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""}>LSG</option>
-                    <option value="F" ${empleado.estado === "F" ? "selected" : ""}>F</option>
-                    <option value="R" ${empleado.estado === "R" ? "selected" : ""}>R</option>
-                    <option value="SU" ${empleado.estado === "SU" ? "selected" : ""}>SU</option>
-                    <option value="CE" ${empleado.estado === "CE" ? "selected" : ""}>CE</option>
-                    <option value="FG" ${empleado.estado === "FG" ? "selected" : ""}>FG</option>
-                    <option value="LD" ${empleado.estado === "LD" ? "selected" : ""}>LD</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="AP" ${empleado.estado === "AP" ? "selected" : ""}>AP</option>
-                    <option value="LP" ${empleado.estado === "LP" ? "selected" : ""}>LP</option>
-                    <option value="TC" ${empleado.estado === "TC" ? "selected" : ""}>TC</option>
+                   <option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="A" ${empleado.estado === "A" ? "selected" : ""} ${estiloOpcion} title="DÍA ASISTIDO">A</option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>
+                   <option value="LG" ${empleado.estado === "LG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA CON GOCE DE HABER">LG</option>
+                   <option value="DM" ${empleado.estado === "DM" ? "selected" : ""} ${estiloOpcion} title="DESCANSO MÉDICO">DM</option>
+                   <option value="V" ${empleado.estado === "V" ? "selected" : ""} ${estiloOpcion} title="VACACIONES">V</option>
+                   <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA SIN GOCE DE HABER">LSG</option>
+                   <option value="F" ${empleado.estado === "F" ? "selected" : ""} ${estiloOpcion} title="FALTA">F</option>
+                   <option value="R" ${empleado.estado === "R" ? "selected" : ""} ${estiloOpcion} title="RENUNCIÓ">R</option>
+                   <option value="SU" ${empleado.estado === "SU" ? "selected" : ""} ${estiloOpcion} title="SUSP. PERFECTA LABORES">SU</option>
+                   <option value="CE" ${empleado.estado === "CE" ? "selected" : ""} ${estiloOpcion} title="CESE">CE</option>
+                   <option value="FG" ${empleado.estado === "FG" ? "selected" : ""} ${estiloOpcion} title="FERIADO GANADO">FG</option>
+                   <option value="LD" ${empleado.estado === "LD" ? "selected" : ""} ${estiloOpcion} title="LICENCIA POR DEFUNCION">LD</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="AP" ${empleado.estado === "AP" ? "selected" : ""} ${estiloOpcion} title="ASISTENCIA PROYECTADA">AP</option>
+                   <option value="LP" ${empleado.estado === "LP" ? "selected" : ""} ${estiloOpcion} title="LICENCIA PATERNIDAD">LP</option>
+                   <option value="TC" ${empleado.estado === "TC" ? "selected" : ""} ${estiloOpcion} title="TERMINO DE CONTRATO">TC</option>
                 `;
 
             row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${empleado.dni}</td>
-                <td>${empleado.nombre_visual}</td>
-                <td>${empleado.cargo}</td>
-                <td>
+                <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${index + 1}</td>
+                <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleado.dni}</span></td>
+                <td style="color: #0369a1; font-weight: 700;">${empleado.nombre_visual}</td>
+                <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleado.cargo}</td>
+                
+                <td style="width: 130px;">
                     <select name="estado">${estadoOptions}</select>
                     <input type="hidden" name="id_empleado" value="${empleado.id_empleado}">
                 </td>
-                <td>
-                    <div style="display: flex; gap: 5px;">
-                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
-                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" ${empleado.pasajes === 'PR' ? 'disabled' : ''}>
-                        <select name="pasajes" class="pasajes-select">
-                            <option value="">Seleccione</option>
+                
+                <td style="width: 170px;">
+                    <div class="ui-merged-group">
+                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" 
+                            ${empleado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                        <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                            <option value="">Sel.</option>
                             <option value="PR" ${empleado.pasajes === "PR" ? "selected" : ""}>PR</option>
                         </select>
                     </div>
                 </td>
-                <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleado.viaticos || ''}"></td>
-                <td><input type="text" name="ruta" placeholder="Ruta" value="${empleado.ruta || ''}"></td>
+                
+                <td style="width: 110px;">
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                        <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleado.viaticos || ''}" style="padding-left: 30px !important;">
+                    </div>
+                </td>
+                
                 <td>
-                    <button type="button" class="eliminar-fila-btn-7">X</button>
+                    <input type="text" name="ruta" placeholder="Destino..." value="${empleado.ruta || ''}">
+                </td>
+                
+                <td style="text-align: center; width: 60px;">
+                    <button type="button" class="eliminar-fila-btn-7 ui-btn-delete-icon" title="Eliminar Registro">
+                        <i class="far fa-trash-alt"></i>
+                    </button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -5275,26 +5755,28 @@ document.addEventListener('DOMContentLoaded', async function () {
     // 🟢 Modificar opciones del select según el día de la semana
     function obtenerOpcionesEstado(diaSemana) {
         return diaSemana === 0 // Si es domingo
-            ? `<option value=" "> </option>
-            <option value="DT">DT</option>
-            <option value="DC">DC</option>`
-            : `<option value=" "> </option>
-            <option value="A">A</option>
-            <option value="DT">DT</option>
-            <option value="FT">FT</option>
-            <option value="LG">LG</option>
-            <option value="DM">DM</option>
-            <option value="V">V</option>
-            <option value="LSG">LSG</option>
-            <option value="F">F</option>
-            <option value="SU">SU</option>
-            <option value="CE">CE</option>
-            <option value="FG">FG</option>
-            <option value="LD">LD</option>
-            <option value="DC">DC</option>
-            <option value="AP">AP</option>
-            <option value="LP">LP</option>
-            <option value="TC">TC</option>`;
+            ? `<option value=" " title="Sin Asignar"> </option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>`
+            : `<option value=" " title="Sin Asignar"> </option>
+               <option value="A" title="DÍA ASISTIDO">A</option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>
+               <option value="LG" title="LICENCIA CON GOCE DE HABER">LG</option>
+               <option value="DM" title="DESCANSO MÉDICO">DM</option>
+               <option value="V" title="VACACIONES">V</option>
+               <option value="LSG" title="LICENCIA SIN GOCE DE HABER">LSG</option>
+               <option value="F" title="FALTA">F</option>
+               <option value="R" title="RENUNCIÓ">R</option>
+               <option value="SU" title="SUSP. PERFECTA LABORES">SU</option>
+               <option value="CE" title="CESE">CE</option>
+               <option value="FG" title="FERIADO GANADO">FG</option>
+               <option value="LD" title="LICENCIA POR DEFUNCION">LD</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="AP" title="ASISTENCIA PROYECTADA">AP</option>
+               <option value="LP" title="LICENCIA PATERNIDAD">LP</option>
+               <option value="TC" title="TERMINO DE CONTRATO">TC</option>`;
     }
     // Añadir empleado seleccionado a la tabla para la sección Lecturas
     agregarBtnPersuasivas.addEventListener('click', function () {
@@ -5329,31 +5811,43 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const nuevaFilaPersuasivas = document.createElement('tr');
         nuevaFilaPersuasivas.innerHTML = `
-            <td>${tbodyPersuasivas.children.length + 1}</td>
-            <td>${dni}</td>
-            <td>${nombresApellidos}</td>
-            <td>${cargo}</td>
-
-            <td>
-            <select name="estado">${opcionesEstado}</select>
-            <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
+            <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${tbodyPersuasivas.children.length + 1}</td>
+            <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${dni}</span></td>
+            <td style="color: #0369a1; font-weight: 700;">${nombresApellidos}</td>
+            <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${cargo}</td>
+            
+            <td style="width: 130px;">
+                <select name="estado">${opcionesEstado}</select>
+                <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
             </td>
-
-            <td>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
+            
+            <td style="width: 170px;">
+                <div class="ui-merged-group">
+                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
                         value="${empleadoSeleccionado.pasajes !== 'PR' ? empleadoSeleccionado.pasajes || '' : ''}" 
-                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''}>
-                    <select name="pasajes" class="pasajes-select">
-                        <option value="">Seleccione</option>
+                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                    <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                        <option value="">Sel.</option>
                         <option value="PR" ${empleadoSeleccionado.pasajes === "PR" ? "selected" : ""}>PR</option>
                     </select>
                 </div>
             </td>
-            <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleadoSeleccionado.viaticos || ''}"></td>
-            <td><input type="text" name="ruta" placeholder="Ruta" value="${empleadoSeleccionado.ruta || ''}"></td>
+            
+            <td style="width: 110px;">
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                    <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleadoSeleccionado.viaticos || ''}" style="padding-left: 30px !important;">
+                </div>
+            </td>
+            
             <td>
-                <button type="button" class="eliminar-fila-btn">X</button>
+                <input type="text" name="ruta" placeholder="Destino..." value="${empleadoSeleccionado.ruta || ''}">
+            </td>
+            
+            <td style="text-align: center; width: 60px;">
+                <button type="button" class="eliminar-fila-btn ui-btn-delete-icon" title="Eliminar Registro">
+                    <i class="far fa-trash-alt"></i>
+                </button>
             </td>
         `;
 
@@ -5588,7 +6082,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         tbodyPersuasivas.querySelectorAll('tr').forEach(fila => {
             const idEmpleado = fila.querySelector('input[name="id_empleado"]').value;
             const estadoSelect = fila.querySelector('select[name="estado"]');
-            const estado = estadoSelect ? estadoSelect.value : 'A';
+            const estado = estadoSelect ? estadoSelect.value.trim() : '';
 
             const pasajesInput = fila.querySelector('input[name="pasajes"]');
             const pasajesSelect = fila.querySelector('select[name="pasajes"]');
@@ -5601,16 +6095,29 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             const rutaInput = fila.querySelector('input[name="ruta"]');
             const viaticosInput = fila.querySelector('input[name="viaticos"]');
-    
+            const ruta = rutaInput ? rutaInput.value.trim() : '';
+            const viaticos = viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0;
+
+            // ✅ VALIDACIÓN CRÍTICA: Si no hay estado ni otros datos, saltamos esta fila
+            if (estado === "" && pasajes === 0 && viaticos === 0 && ruta === "") {
+                return; // El return dentro de un forEach funciona como un "continue"
+            }
+
             empleadosParaGuardarPersuasivas.push({
                 id_empleado: idEmpleado,
                 estado: estado,
                 pasajes: pasajes,
-                ruta: rutaInput ? rutaInput.value.trim() : '',
-                viaticos: viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0,
-                es_extra: empleadosSeleccionadosPersuasivas.some(e => e.id_empleado == idEmpleado) // Verificar si es extra
+                ruta: ruta,
+                viaticos: viaticos,
+                es_extra: empleadosSeleccionadosPersuasivas.some(e => e.id_empleado == idEmpleado)
             });
         });
+
+        // ✅ Evitar hacer peticiones al backend si todas las filas estaban vacías
+        if (empleadosParaGuardarPersuasivas.length === 0) {
+            alert("No hay asistencias registradas para guardar.");
+            return;
+        }
         
         console.log('Empleados para guardar:', empleadosParaGuardarPersuasivas);
     
@@ -5640,9 +6147,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             const result = await response.json(); // Obtener respuesta del backend
 
             if (!response.ok) {
-                throw new Error(result.message || 'Error al guardar la asistencia');
+                // Mostrar el mensaje directamente en pantalla y detenerse
+                alert(result.message || 'Error al guardar la asistencia');
+                return; // <-- Esto reemplaza al throw new Error
             }
-
             alert(result.message || 'Asistencia guardada correctamente.');
 
             // Auditar que se guardó la asistencia
@@ -5658,14 +6166,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
             
         } catch (error) {
-            // Si el error viene del backend, lo mostramos en pantalla
-            if (error.message.includes('ya cuenta con asistencia')) {
-                alert(error.message);
-            } else {
-                alert('Hubo un problema al guardar la asistencia.');
-            }
+            // Este catch AHORA solo se activa si hay un error de internet o servidor caído
+            console.error('Error de red o de ejecución:', error);
+            alert('Fallo de conexión con el servidor.');
         }
-    
         empleadosSeleccionadosPersuasivas = []; // Limpiar la lista de empleados seleccionados
         console.log('Empleados seleccionados después de guardar:', empleadosSeleccionadosPersuasivas);
     });
@@ -5752,58 +6256,74 @@ async function cargarEmpleadosNorte() {
         empleados.forEach((empleado, index) => {
             const row = document.createElement('tr');
 
-            // 📌 Generamos las opciones del select según si es domingo
+            const estiloOpcion = 'style="color: #1e293b; font-weight: 500; background: #ffffff;"';
+
+            // 📌 Generamos las opciones del select con Tooltips para Zona Norte
             const estadoOptions = diaSemana === 0  
-                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
+                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>  
                 `
                 : `
-                    <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                    <option value="A" ${empleado.estado === "A" ? "selected" : ""}>A</option>
-                    <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                    <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
-                    <option value="LG" ${empleado.estado === "LG" ? "selected" : ""}>LG</option>
-                    <option value="DM" ${empleado.estado === "DM" ? "selected" : ""}>DM</option>
-                    <option value="V" ${empleado.estado === "V" ? "selected" : ""}>V</option>
-                    <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""}>LSG</option>
-                    <option value="F" ${empleado.estado === "F" ? "selected" : ""}>F</option>
-                    <option value="R" ${empleado.estado === "R" ? "selected" : ""}>R</option>
-                    <option value="SU" ${empleado.estado === "SU" ? "selected" : ""}>SU</option>
-                    <option value="CE" ${empleado.estado === "CE" ? "selected" : ""}>CE</option>
-                    <option value="FG" ${empleado.estado === "FG" ? "selected" : ""}>FG</option>
-                    <option value="LD" ${empleado.estado === "LD" ? "selected" : ""}>LD</option>
-                    <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                    <option value="AP" ${empleado.estado === "AP" ? "selected" : ""}>AP</option>
-                    <option value="LP" ${empleado.estado === "LP" ? "selected" : ""}>LP</option>
-                    <option value="TC" ${empleado.estado === "TC" ? "selected" : ""}>TC</option>
+                   <option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="A" ${empleado.estado === "A" ? "selected" : ""} ${estiloOpcion} title="DÍA ASISTIDO">A</option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>
+                   <option value="LG" ${empleado.estado === "LG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA CON GOCE DE HABER">LG</option>
+                   <option value="DM" ${empleado.estado === "DM" ? "selected" : ""} ${estiloOpcion} title="DESCANSO MÉDICO">DM</option>
+                   <option value="V" ${empleado.estado === "V" ? "selected" : ""} ${estiloOpcion} title="VACACIONES">V</option>
+                   <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA SIN GOCE DE HABER">LSG</option>
+                   <option value="F" ${empleado.estado === "F" ? "selected" : ""} ${estiloOpcion} title="FALTA">F</option>
+                   <option value="R" ${empleado.estado === "R" ? "selected" : ""} ${estiloOpcion} title="RENUNCIÓ">R</option>
+                   <option value="SU" ${empleado.estado === "SU" ? "selected" : ""} ${estiloOpcion} title="SUSP. PERFECTA LABORES">SU</option>
+                   <option value="CE" ${empleado.estado === "CE" ? "selected" : ""} ${estiloOpcion} title="CESE">CE</option>
+                   <option value="FG" ${empleado.estado === "FG" ? "selected" : ""} ${estiloOpcion} title="FERIADO GANADO">FG</option>
+                   <option value="LD" ${empleado.estado === "LD" ? "selected" : ""} ${estiloOpcion} title="LICENCIA POR DEFUNCION">LD</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="AP" ${empleado.estado === "AP" ? "selected" : ""} ${estiloOpcion} title="ASISTENCIA PROYECTADA">AP</option>
+                   <option value="LP" ${empleado.estado === "LP" ? "selected" : ""} ${estiloOpcion} title="LICENCIA PATERNIDAD">LP</option>
+                   <option value="TC" ${empleado.estado === "TC" ? "selected" : ""} ${estiloOpcion} title="TERMINO DE CONTRATO">TC</option>
                 `;
 
             row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${empleado.dni}</td>
-                <td>${empleado.nombre_visual}</td>
-                <td>${empleado.cargo}</td>
-                <td>
+                <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${index + 1}</td>
+                <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleado.dni}</span></td>
+                <td style="color: #0369a1; font-weight: 700;">${empleado.nombre_visual}</td>
+                <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleado.cargo}</td>
+                
+                <td style="width: 130px;">
                     <select name="estado">${estadoOptions}</select>
                     <input type="hidden" name="id_empleado" value="${empleado.id_empleado}">
                 </td>
-
-                <td>
-                    <div style="display: flex; gap: 5px;">
-                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
-                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" ${empleado.pasajes === 'PR' ? 'disabled' : ''}>
-                        <select name="pasajes" class="pasajes-select">
-                            <option value="">Seleccione</option>
+                
+                <td style="width: 170px;">
+                    <div class="ui-merged-group">
+                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" 
+                            ${empleado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                        <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                            <option value="">Sel.</option>
                             <option value="PR" ${empleado.pasajes === "PR" ? "selected" : ""}>PR</option>
                         </select>
                     </div>
                 </td>
-                <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleado.viaticos || ''}"></td>
-                <td><input type="text" name="ruta" placeholder="Ruta" value="${empleado.ruta || ''}"></td>
+                
+                <td style="width: 110px;">
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                        <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleado.viaticos || ''}" style="padding-left: 30px !important;">
+                    </div>
+                </td>
+                
                 <td>
-                    <button type="button" class="eliminar-fila-btn-10">X</button>
+                    <input type="text" name="ruta" placeholder="Destino..." value="${empleado.ruta || ''}">
+                </td>
+                
+                <td style="text-align: center; width: 60px;">
+                    <button type="button" class="eliminar-fila-btn-10 ui-btn-delete-icon" title="Eliminar Registro">
+                        <i class="far fa-trash-alt"></i>
+                    </button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -6085,26 +6605,28 @@ document.addEventListener('DOMContentLoaded', async function () {
     // 🟢 Modificar opciones del select según el día de la semana
     function obtenerOpcionesEstado(diaSemana) {
         return diaSemana === 0 // Si es domingo
-            ? `<option value=" "> </option>
-            <option value="DT">DT</option>
-            <option value="DC">DC</option>`
-            : `<option value=" "> </option>
-            <option value="A">A</option>
-            <option value="DT">DT</option>
-            <option value="FT">FT</option>
-            <option value="LG">LG</option>
-            <option value="DM">DM</option>
-            <option value="V">V</option>
-            <option value="LSG">LSG</option>
-            <option value="F">F</option>
-            <option value="SU">SU</option>
-            <option value="CE">CE</option>
-            <option value="FG">FG</option>
-            <option value="LD">LD</option>
-            <option value="DC">DC</option>
-            <option value="AP">AP</option>
-            <option value="LP">LP</option>
-            <option value="TC">TC</option>`;
+            ? `<option value=" " title="Sin Asignar"> </option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>`
+            : `<option value=" " title="Sin Asignar"> </option>
+               <option value="A" title="DÍA ASISTIDO">A</option>
+               <option value="DT" title="DOMINGO TRABAJADO">DT</option>
+               <option value="FT" title="FERIADO TRABAJADO">FT</option>
+               <option value="LG" title="LICENCIA CON GOCE DE HABER">LG</option>
+               <option value="DM" title="DESCANSO MÉDICO">DM</option>
+               <option value="V" title="VACACIONES">V</option>
+               <option value="LSG" title="LICENCIA SIN GOCE DE HABER">LSG</option>
+               <option value="F" title="FALTA">F</option>
+               <option value="R" title="RENUNCIÓ">R</option>
+               <option value="SU" title="SUSP. PERFECTA LABORES">SU</option>
+               <option value="CE" title="CESE">CE</option>
+               <option value="FG" title="FERIADO GANADO">FG</option>
+               <option value="LD" title="LICENCIA POR DEFUNCION">LD</option>
+               <option value="DC" title="DIA COMPENSADO">DC</option>
+               <option value="AP" title="ASISTENCIA PROYECTADA">AP</option>
+               <option value="LP" title="LICENCIA PATERNIDAD">LP</option>
+               <option value="TC" title="TERMINO DE CONTRATO">TC</option>`;
     }
 
     // Añadir empleado seleccionado a la tabla para la sección Lecturas
@@ -6140,31 +6662,43 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const nuevaFilaNorte = document.createElement('tr');
         nuevaFilaNorte.innerHTML = `
-            <td>${tbodyNorte.children.length + 1}</td>
-            <td>${dni}</td>
-            <td>${nombresApellidos}</td>
-            <td>${cargo}</td>
+            <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${tbodyNorte.children.length + 1}</td>
+            <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${dni}</span></td>
+            <td style="color: #0369a1; font-weight: 700;">${nombresApellidos}</td>
+            <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${cargo}</td>
             
-            <td>
-            <select name="estado">${opcionesEstado}</select>
-            <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
+            <td style="width: 130px;">
+                <select name="estado">${opcionesEstado}</select>
+                <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
             </td>
-
-            <td>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="Ingrese monto" 
+            
+            <td style="width: 170px;">
+                <div class="ui-merged-group">
+                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
                         value="${empleadoSeleccionado.pasajes !== 'PR' ? empleadoSeleccionado.pasajes || '' : ''}" 
-                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''}>
-                    <select name="pasajes" class="pasajes-select">
-                        <option value="">Seleccione</option>
+                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                    <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                        <option value="">Sel.</option>
                         <option value="PR" ${empleadoSeleccionado.pasajes === "PR" ? "selected" : ""}>PR</option>
                     </select>
                 </div>
             </td>
-            <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleadoSeleccionado.viaticos || ''}"></td>
-            <td><input type="text" name="ruta" placeholder="Ruta" value="${empleadoSeleccionado.ruta || ''}"></td>
+            
+            <td style="width: 110px;">
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                    <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleadoSeleccionado.viaticos || ''}" style="padding-left: 30px !important;">
+                </div>
+            </td>
+            
             <td>
-                <button type="button" class="eliminar-fila-btn">X</button>
+                <input type="text" name="ruta" placeholder="Destino..." value="${empleadoSeleccionado.ruta || ''}">
+            </td>
+            
+            <td style="text-align: center; width: 60px;">
+                <button type="button" class="eliminar-fila-btn ui-btn-delete-icon" title="Eliminar Registro">
+                    <i class="far fa-trash-alt"></i>
+                </button>
             </td>
         `;
 
@@ -6487,93 +7021,115 @@ document.addEventListener('DOMContentLoaded', async function () {
 
 
 
+// ==========================================
 // ASISTENCIA ADMINISTRATIVO
-document.addEventListener('DOMContentLoaded', function () {
-});
+// ==========================================
+document.addEventListener('DOMContentLoaded', function () {});
 
 async function cargarEmpleadosadministrativo_1() { 
     console.log("Ejecutando cargarEmpleadosAdministrativos...");
 
     try {
-        // Obtener la fecha seleccionada
         const fechaSeleccionada = document.getElementById('fecha-administrativo_1').value;
         if (!fechaSeleccionada) {
             alert("Seleccione una fecha válida.");
             return;
         }
 
-        console.log("Fecha seleccionada:", fechaSeleccionada);
+        const fechaObj = new Date(fechaSeleccionada + 'T00:00:00');
+        const diaSemana = fechaObj.getDay();
 
-        // Llamar a /cargar-asistencia con la fecha
         const response = await fetch(`/cargar-asistencia-administrativo_1?fecha=${fechaSeleccionada}`);
-        if (!response.ok) throw new Error('Error al obtener los empleados sin asistencia');
+        if (!response.ok) throw new Error('Error al obtener los empleados');
 
         const responseData = await response.json();
-        console.log('Respuesta del servidor:', responseData);
-
-        // Extraer el array de empleados
         const empleados = responseData.datos;
 
-        // Verificar si es un array antes de usar forEach
-        if (!Array.isArray(empleados)) {
-            console.error('La respuesta del servidor no contiene un array en "datos":', empleados);
-            return;
-        }
+        if (!Array.isArray(empleados)) return;
 
-        console.log('Respuesta del servidor:', empleados);
-
-        empleados.forEach(emp => {
-            emp.nombre_visual = formatearNombreVisual(emp.nombres);
-        });
-
-        // Ordenamos el array alfabéticamente usando el nombre visual
+        empleados.forEach(emp => { emp.nombre_visual = formatearNombreVisual(emp.nombres); });
         empleados.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
 
-        // Seleccionamos el cuerpo de la tabla
         const tbody = document.querySelector('#administrativo_1 .empleados-table-administrativo_1 tbody');
-        tbody.innerHTML = ''; // Limpiamos la tabla
+        tbody.innerHTML = ''; 
 
         if (empleados.length === 0) {
             alert("No hay empleados sin asistencia para esta fecha.");
             return;
         }
 
-        // Iteramos sobre los empleados y los agregamos a la tabla
         empleados.forEach((empleado, index) => {
             const row = document.createElement('tr');
+            
+            const estiloOpcion = 'style="color: #1e293b; font-weight: 500; background: #ffffff;"';
+
+            // 📌 Generamos las opciones del select con Tooltips para Administrativo
+            const estadoOptions = diaSemana === 0  
+                ? `<option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>  
+                `
+                : `
+                   <option value=" " ${empleado.estado === " " ? "selected" : ""} ${estiloOpcion} title="Sin Asignar"> </option>
+                   <option value="A" ${empleado.estado === "A" ? "selected" : ""} ${estiloOpcion} title="DÍA ASISTIDO">A</option>
+                   <option value="DT" ${empleado.estado === "DT" ? "selected" : ""} ${estiloOpcion} title="DOMINGO TRABAJADO">DT</option>
+                   <option value="FT" ${empleado.estado === "FT" ? "selected" : ""} ${estiloOpcion} title="FERIADO TRABAJADO">FT</option>
+                   <option value="LG" ${empleado.estado === "LG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA CON GOCE DE HABER">LG</option>
+                   <option value="DM" ${empleado.estado === "DM" ? "selected" : ""} ${estiloOpcion} title="DESCANSO MÉDICO">DM</option>
+                   <option value="V" ${empleado.estado === "V" ? "selected" : ""} ${estiloOpcion} title="VACACIONES">V</option>
+                   <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""} ${estiloOpcion} title="LICENCIA SIN GOCE DE HABER">LSG</option>
+                   <option value="F" ${empleado.estado === "F" ? "selected" : ""} ${estiloOpcion} title="FALTA">F</option>
+                   <option value="R" ${empleado.estado === "R" ? "selected" : ""} ${estiloOpcion} title="RENUNCIÓ">R</option>
+                   <option value="SU" ${empleado.estado === "SU" ? "selected" : ""} ${estiloOpcion} title="SUSP. PERFECTA LABORES">SU</option>
+                   <option value="CE" ${empleado.estado === "CE" ? "selected" : ""} ${estiloOpcion} title="CESE">CE</option>
+                   <option value="FG" ${empleado.estado === "FG" ? "selected" : ""} ${estiloOpcion} title="FERIADO GANADO">FG</option>
+                   <option value="LD" ${empleado.estado === "LD" ? "selected" : ""} ${estiloOpcion} title="LICENCIA POR DEFUNCION">LD</option>
+                   <option value="DC" ${empleado.estado === "DC" ? "selected" : ""} ${estiloOpcion} title="DIA COMPENSADO">DC</option>
+                   <option value="AP" ${empleado.estado === "AP" ? "selected" : ""} ${estiloOpcion} title="ASISTENCIA PROYECTADA">AP</option>
+                   <option value="LP" ${empleado.estado === "LP" ? "selected" : ""} ${estiloOpcion} title="LICENCIA PATERNIDAD">LP</option>
+                   <option value="TC" ${empleado.estado === "TC" ? "selected" : ""} ${estiloOpcion} title="TERMINO DE CONTRATO">TC</option>
+                `;
+
+            // HTML CON DISEÑO CLEAR
             row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${empleado.dni}</td>
-                <td>${empleado.nombre_visual}</td>
-                <td>${empleado.cargo}</td>
-                <td>
-                    <select name="estado">
-                        <option value=" " ${empleado.estado === " " ? "selected" : ""}> </option>
-                        <option value="A" ${empleado.estado === "A" ? "selected" : ""}>A</option>
-                        <option value="DT" ${empleado.estado === "DT" ? "selected" : ""}>DT</option>
-                        <option value="FT" ${empleado.estado === "FT" ? "selected" : ""}>FT</option>
-                        <option value="LG" ${empleado.estado === "LG" ? "selected" : ""}>LG</option>
-                        <option value="DM" ${empleado.estado === "DM" ? "selected" : ""}>DM</option>
-                        <option value="V" ${empleado.estado === "V" ? "selected" : ""}>V</option>
-                        <option value="LSG" ${empleado.estado === "LSG" ? "selected" : ""}>LSG</option>
-                        <option value="F" ${empleado.estado === "F" ? "selected" : ""}>F</option>
-                        <option value="R" ${empleado.estado === "R" ? "selected" : ""}>R</option>
-                        <option value="SU" ${empleado.estado === "SU" ? "selected" : ""}>SU</option>
-                        <option value="CE" ${empleado.estado === "CE" ? "selected" : ""}>CE</option>
-                        <option value="FG" ${empleado.estado === "FG" ? "selected" : ""}>FG</option>
-                        <option value="LD" ${empleado.estado === "LD" ? "selected" : ""}>LD</option>
-                        <option value="DC" ${empleado.estado === "DC" ? "selected" : ""}>DC</option>
-                        <option value="AP" ${empleado.estado === "AP" ? "selected" : ""}>AP</option>
-                        <option value="LP" ${empleado.estado === "LP" ? "selected" : ""}>LP</option>
-                        <option value="TC" ${empleado.estado === "TC" ? "selected" : ""}>TC</option>
-                    </select>
+                <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${index + 1}</td>
+                <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleado.dni}</span></td>
+                <td style="color: #0369a1; font-weight: 700;">${empleado.nombre_visual}</td>
+                <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleado.cargo}</td>
+                
+                <td style="width: 130px;">
+                    <select name="estado">${estadoOptions}</select>
                     <input type="hidden" name="id_empleado" value="${empleado.id_empleado}">
                 </td>
-                <td><input type="number" name="pasajes" step="0.01" min="0" placeholder="Pasajes" value="${empleado.pasajes || ''}"></td>
-                <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos" value="${empleado.viaticos || ''}"></td>
-                <td><input type="text" name="ruta" placeholder="Ruta" value="${empleado.ruta || ''}"></td>
+                
+                <td style="width: 170px;">
+                    <div class="ui-merged-group">
+                        <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                            value="${empleado.pasajes !== 'PR' ? empleado.pasajes || '' : ''}" 
+                            ${empleado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                        <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                            <option value="">Sel.</option>
+                            <option value="PR" ${empleado.pasajes === "PR" ? "selected" : ""}>PR</option>
+                        </select>
+                    </div>
+                </td>
+                
+                <td style="width: 110px;">
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                        <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleado.viaticos || ''}" style="padding-left: 30px !important;">
+                    </div>
+                </td>
+                
                 <td>
-                    <button type="button" class="eliminar-fila-btn-8">X</button>
+                    <input type="text" name="ruta" placeholder="Destino..." value="${empleado.ruta || ''}">
+                </td>
+                
+                <td style="text-align: center; width: 60px;">
+                    <button type="button" class="eliminar-fila-btn-8 ui-btn-delete-icon" title="Eliminar Registro">
+                        <i class="far fa-trash-alt"></i>
+                    </button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -6581,440 +7137,327 @@ async function cargarEmpleadosadministrativo_1() {
             // 🔹 Auditar cambios en ESTADO
             const selectEstado = row.querySelector('select[name="estado"]');
             let valorAnteriorEstado = selectEstado.value;
-
             selectEstado.addEventListener('change', () => {
                 const nuevoValor = selectEstado.value;
-
                 if (nuevoValor !== valorAnteriorEstado) {
                     fetch('/auditar-cambio-pasajes', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id_empleado: empleado.id_empleado,
-                            tipo: 'estado',
-                            valor_anterior: valorAnteriorEstado,
-                            nuevo_valor: nuevoValor
-                        })
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id_empleado: empleado.id_empleado, tipo: 'estado', valor_anterior: valorAnteriorEstado, nuevo_valor: nuevoValor })
                     });
-
                     valorAnteriorEstado = nuevoValor;
                 }
             });
 
-            const inputPasajes = row.querySelector('input[name="pasajes"]');
-            const inputViaticos = row.querySelector('input[name="viaticos"]');
-            const inputRuta = row.querySelector('input[name="ruta"]');
-
+            // 🔹 Auditar cambios PASAJES
+            const inputPasajes = row.querySelector('.pasajes-input');
+            const selectPasajes = row.querySelector('.pasajes-select');
             let valorAnteriorPasaje = inputPasajes.value;
             inputPasajes.addEventListener('change', () => {
                 const nuevoValor = inputPasajes.value.trim();
-
                 if (nuevoValor !== valorAnteriorPasaje) {
-                    const anterior = valorAnteriorPasaje; // guardar antes de actualizar
-
-                    valorAnteriorPasaje = nuevoValor;
-
+                    const anterior = valorAnteriorPasaje; valorAnteriorPasaje = nuevoValor;
                     fetch('/auditar-cambio-pasajes', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id_empleado: empleado.id_empleado,
-                            tipo: 'monto',
-                            valor_anterior: anterior,
-                            nuevo_valor: nuevoValor
-                        })
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id_empleado: empleado.id_empleado, tipo: 'monto', valor_anterior: anterior, nuevo_valor: nuevoValor })
                     });
                 }
             });
 
+            let valorAnteriorSelect = selectPasajes.value;
+            selectPasajes.addEventListener('change', () => {
+                const nuevoValor = selectPasajes.value;
+                if (nuevoValor !== valorAnteriorSelect) {
+                    valorAnteriorSelect = nuevoValor; 
+                    fetch('/auditar-cambio-pasajes', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id_empleado: empleado.id_empleado, nuevo_valor: nuevoValor, tipo: 'select' })
+                    });
+                }
+                if (nuevoValor === "PR") {
+                    inputPasajes.value = ""; inputPasajes.disabled = true;
+                } else { inputPasajes.disabled = false; }
+            });
 
-            
-            // Función para habilitar o deshabilitar los campos
+            // 🔹 Auditar cambios en VIÁTICOS y RUTA
+            const inputViaticos = row.querySelector('input[name="viaticos"]');
+            let valorAnteriorViaticos = inputViaticos.value;
+            inputViaticos.addEventListener('change', () => {
+                const nuevoValor = inputViaticos.value;
+                if (nuevoValor !== valorAnteriorViaticos) {
+                    fetch('/auditar-cambio-pasajes', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id_empleado: empleado.id_empleado, tipo: 'viaticos', valor_anterior: valorAnteriorViaticos, nuevo_valor: nuevoValor })
+                    });
+                    valorAnteriorViaticos = nuevoValor;
+                }
+            });
+
+            const inputRuta = row.querySelector('input[name="ruta"]');
+            let valorAnteriorRuta = inputRuta.value;
+            inputRuta.addEventListener('change', () => {
+                const nuevoValor = inputRuta.value.trim();
+                if (nuevoValor !== valorAnteriorRuta) {
+                    fetch('/auditar-cambio-pasajes', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id_empleado: empleado.id_empleado, tipo: 'ruta', valor_anterior: valorAnteriorRuta, nuevo_valor: nuevoValor })
+                    });
+                    valorAnteriorRuta = nuevoValor;
+                }
+            });
+
             function actualizarCampos() {
                 const estadoSeleccionado = selectEstado.value;
-                const habilitado = ["A", "DT", "FT"].includes(estadoSeleccionado);
-
+                const habilitado = ["A", "DT", "FT", "DC"].includes(estadoSeleccionado);
                 inputPasajes.disabled = !habilitado;
                 inputViaticos.disabled = !habilitado;
                 inputRuta.disabled = !habilitado;
-
-                // Si se deshabilitan los campos, limpiar los valores
                 if (!habilitado) {
                     inputPasajes.value = "";
                     inputViaticos.value = "";
                     inputRuta.value = "";
                 }
             }
-
-            // Llamar a la función inicialmente para aplicar la regla al cargar
             actualizarCampos();
-
-            // Agregar evento para cambiar el estado
             selectEstado.addEventListener("change", actualizarCampos);
 
-            // ✅ Evento para eliminar la fila y el registro en la base de datos 
+            // Eliminar
             const eliminarBtn = row.querySelector('.eliminar-fila-btn-8');
             eliminarBtn.addEventListener('click', async () => {
                 const idEmpleado = empleado.id_empleado;
                 const fechaSeleccionada = document.getElementById('fecha-administrativo_1').value;
-
-                if (!confirm(`¿Estás seguro de eliminar a ${empleado.nombres} de la asistencia del ${fechaSeleccionada}?`)) {
-                    return;
-                }
+                if (!confirm(`¿Estás seguro de eliminar a ${empleado.nombres}?`)) return;
 
                 try {
                     await fetch('/eliminar-asistencia-administrativo_1', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ id_empleado: idEmpleado, fecha: fechaSeleccionada }),
                     });
-
-                    row.remove(); // ✅ Elimina la fila de la tabla sin depender de la respuesta del servidor
-                    actualizarNumeracion(tbody); // ✅ Actualiza la numeración
+                    row.remove(); 
+                    actualizarNumeracion(tbody);
                 } catch (error) {
                     console.error('Error:', error);
-                    alert('No se pudieron cargar los empleados.');
                 }
             });
         });
 
     } catch (error) {
-        console.error('Error en cargarEmpleadosMedidores:', error);
-        alert('Ocurrió un error al cargar los empleados.');
+        console.error('Error en cargarEmpleados:', error);
     }
 } 
 
-// Función para actualizar la numeración de las filas en la tabla
-function actualizarNumeracion(tbody) {
-    Array.from(tbody.children).forEach((fila, index) => {
-        const celdaNumero = fila.querySelector('td:first-child');
-        if (celdaNumero) celdaNumero.textContent = index + 1;
-    });
-}
-
 document.getElementById('fecha-administrativo_1').addEventListener('change', () => {
     cargarEmpleadosadministrativo_1();
-
-    // 👇 Registrar evento de selección de fecha
     const fecha = document.getElementById('fecha-administrativo_1').value;
     if (fecha) {
         fetch('/registrar-modulo', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                modulo: 'asistencias_administrativo',
-                detalle: `Fecha seleccionada: ${fecha}`
-            })
-        }).catch(err => console.error('Error al registrar evento de fecha:', err));
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ modulo: 'asistencias_administrativo', detalle: `Fecha seleccionada: ${fecha}` })
+        }).catch(err => console.error('Error:', err));
     }
 });
 
-
 document.addEventListener('DOMContentLoaded', async function () {
-    const selectorEmpleadoadministrativo_1 = document.getElementById('nuevo-empleado-selector-administrativo_1');
-    const agregarBtnadministrativo_1 = document.getElementById('agregar-empleado-btn-administrativo_1');
-    const guardarAsistenciaBtnadministrativo_1 = document.querySelector('.btn-administrativo_1'); // El botón "GUARDAR ASISTENCIA"
-    const tbodyadministrativo_1 = document.querySelector('.empleados-table-administrativo_1 tbody');
-    const filaAgregarEmpleadoadministrativo_1 = document.getElementById('fila-agregar-empleado-administrativo_1');
+    const selectorEmpleado = document.getElementById('nuevo-empleado-selector-administrativo_1');
+    const agregarBtn = document.getElementById('agregar-empleado-btn-administrativo_1');
+    const guardarBtn = document.querySelector('.btn-administrativo_1'); 
+    const tbody = document.querySelector('.empleados-table-administrativo_1 tbody');
 
-    // Inicializar Choices.js
-    const choicesadministrativo_1 = new Choices(selectorEmpleadoadministrativo_1, {
-        searchEnabled: true,
-        removeItemButton: true,
-        placeholder: true,
-        noResultsText: 'No se encontraron empleados',
+    const choices = new Choices(selectorEmpleado, {
+        searchEnabled: true, removeItemButton: true, placeholder: true, noResultsText: 'No se encontraron empleados',
     });
 
-    let empleadosCargadosadministrativo_1 = []; // Variable para almacenar los empleados cargados
-    let empleadosSeleccionadosadministrativo_1 = []; // Almacenar los empleados añadidos solo en la tabla
+    let empleadosCargados = []; 
+    let empleadosSeleccionados = []; 
 
-    // Cargar empleados en el selector
-    async function cargarEmpleadosEnSelectoradministrativo_1() {
+    async function cargarEmpleadosEnSelector() {
         try {
             const response = await fetch('/añadir-empleados');
             if (!response.ok) throw new Error('Error al obtener los empleados');
-
             const empleados = await response.json();
-            empleadosCargadosadministrativo_1 = empleados; // Guardar empleados cargados
-
-            console.log('Empleados cargados:', empleadosCargadosadministrativo_1);
-
-            // Vaciar Choices antes de rellenarlo
-            choicesadministrativo_1.clearChoices();
-
-            // Añadir opciones a Choices.js
+            empleadosCargados = empleados; 
+            choices.clearChoices();
             const opcionesFormateadas = empleados.map(empleado => ({
-                value: empleado.id_empleado,
-                label: formatearNombreVisual(empleado.nombres), // <-- FORMATEAMOS AQUÍ
-                customProperties: {
-                    dni: empleado.dni,
-                    cargo: empleado.cargo,
-                },
+                value: empleado.id_empleado, label: formatearNombreVisual(empleado.nombres),
+                customProperties: { dni: empleado.dni, cargo: empleado.cargo },
             }));
-
-            // Ordenamos el desplegable alfabéticamente
             opcionesFormateadas.sort((a, b) => a.label.localeCompare(b.label));
-
-            choicesadministrativo_1.setChoices(
-                opcionesFormateadas,
-                'value',
-                'label',
-                false
-            );
+            choices.setChoices(opcionesFormateadas, 'value', 'label', false);
         } catch (error) {
             console.error('Error:', error);
-            alert('No se pudieron cargar los empleados en el selector.');
         }
     }
 
-    // Añadir empleado seleccionado a la tabla para la sección Lecturas
-    agregarBtnadministrativo_1.addEventListener('click', function () {
-        const selectedValue = choicesadministrativo_1.getValue(true);
-        console.log('Empleado seleccionado:', selectedValue); // Log para ver el valor seleccionado
-
-        if (!selectedValue) {
-            alert('Seleccione un empleado válido.');
-            return;
-        }
+    agregarBtn.addEventListener('click', function () {
+        const selectedValue = choices.getValue(true);
+        if (!selectedValue) { alert('Seleccione un empleado válido.'); return; }
     
-        const empleadoSeleccionado = empleadosCargadosadministrativo_1.find(empleado => empleado.id_empleado == selectedValue);
+        const empleadoSeleccionado = empleadosCargados.find(empleado => empleado.id_empleado == selectedValue);
+        if (!empleadoSeleccionado) { alert('Empleado no válido.'); return; }
     
-        if (!empleadoSeleccionado) {
-            console.error('Empleado no válido. Opciones cargadas:', empleadosCargadosadministrativo_1);
-            alert('Empleado no válido.');
-            return;
-        }
-    
-        // Verificar si el empleado ya está en la tabla
-        if (empleadosSeleccionadosadministrativo_1.some(e => e.id_empleado == empleadoSeleccionado.id_empleado)) {
-            alert('El empleado ya ha sido añadido a la tabla.');
-            return;
+        if (empleadosSeleccionados.some(e => e.id_empleado == empleadoSeleccionado.id_empleado)) {
+            alert('El empleado ya ha sido añadido a la tabla.'); return;
         }
 
+        const diaSemana = obtenerDiaSeleccionado('fecha-administrativo_1'); 
+        const opcionesEstado = obtenerOpcionesEstado(diaSemana);
         const nombresApellidos = formatearNombreVisual(empleadoSeleccionado.nombres);
-        const dni = empleadoSeleccionado.dni;
-        const cargo = empleadoSeleccionado.cargo;
 
-        const nuevaFilaadministrativo_1 = document.createElement('tr');
-        nuevaFilaadministrativo_1.innerHTML = `
-            <td>${tbodyadministrativo_1.children.length + 1}</td>
-            <td>${dni}</td>
-            <td>${nombresApellidos}</td>
-            <td>${cargo}</td>
-            <td>
-                <select name="estado" class="estado-select">
-                    <option value=" "> </option>
-                    <option value="A">A</option>
-                    <option value="DT">DT</option>
-                    <option value="FT">FT</option>
-                    <option value="LG">LG</option>
-                    <option value="DM">DM</option>
-                    <option value="V">V</option>
-                    <option value="LSG">LSG</option>
-                    <option value="F">F</option>
-                    <option value="SU">SU</option>
-                    <option value="CE">CE</option>
-                    <option value="FG">FG</option>
-                    <option value="LD">LD</option>
-                    <option value="DC">DC</option>
-                    <option value="AP">AP</option>
-                    <option value="LP">LP</option>
-                    <option value="TC">TC</option>
-                </select>
+        const nuevaFila = document.createElement('tr');
+        
+        // HTML CON DISEÑO CLEAR PARA NUEVA FILA
+        nuevaFila.innerHTML = `
+            <td style="color: #94a3b8; font-weight: bold; font-size: 14px;">${tbody.children.length + 1}</td>
+            <td><span style="background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #64748b;">${empleadoSeleccionado.dni}</span></td>
+            <td style="color: #0369a1; font-weight: 700;">${nombresApellidos}</td>
+            <td style="color: #64748b; font-size: 12px; letter-spacing: 0.3px;">${empleadoSeleccionado.cargo}</td>
+            
+            <td style="width: 130px;">
+                <select name="estado">${opcionesEstado}</select>
                 <input type="hidden" name="id_empleado" value="${empleadoSeleccionado.id_empleado}">
             </td>
-            <td><input type="number" name="pasajes" step="0.01" min="0" placeholder="Pasajes"></td>
-            <td><input type="number" name="viaticos" step="0.01" min="0" placeholder="Viáticos"></td>
-            <td><input type="text" name="ruta" placeholder="Ruta"></td>
+            
+            <td style="width: 170px;">
+                <div class="ui-merged-group">
+                    <input type="number" name="pasajes" class="pasajes-input" step="0.01" min="0" placeholder="0.00" 
+                        value="${empleadoSeleccionado.pasajes !== 'PR' ? empleadoSeleccionado.pasajes || '' : ''}" 
+                        ${empleadoSeleccionado.pasajes === 'PR' ? 'disabled' : ''} style="width: 60%;">
+                    <select name="pasajes" class="pasajes-select" style="width: 40%; padding-left: 5px !important;">
+                        <option value="">Sel.</option>
+                        <option value="PR" ${empleadoSeleccionado.pasajes === "PR" ? "selected" : ""}>PR</option>
+                    </select>
+                </div>
+            </td>
+            
+            <td style="width: 110px;">
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 11px; color: #94a3b8; font-weight: bold; font-size: 12px; pointer-events: none;">S/</span>
+                    <input type="number" name="viaticos" step="0.01" min="0" placeholder="0.00" value="${empleadoSeleccionado.viaticos || ''}" style="padding-left: 30px !important;">
+                </div>
+            </td>
+            
             <td>
-            <button type="button" class="eliminar-fila-btn">X</button>
+                <input type="text" name="ruta" placeholder="Destino..." value="${empleadoSeleccionado.ruta || ''}">
+            </td>
+            
+            <td style="text-align: center; width: 60px;">
+                <button type="button" class="eliminar-fila-btn ui-btn-delete-icon" title="Eliminar Registro">
+                    <i class="far fa-trash-alt"></i>
+                </button>
             </td>
         `;
 
-        // Insertar la nueva fila antes de la fila de agregar empleado
-        if (tbodyadministrativo_1.contains(filaAgregarEmpleadoadministrativo_1)) {
-            tbodyadministrativo_1.insertBefore(nuevaFilaadministrativo_1, filaAgregarEmpleadoadministrativo_1);
-            console.log('Fila añadida antes de fila-agregar-empleado-administrativo_1');
-        } else {
-            tbodyadministrativo_1.appendChild(nuevaFilaadministrativo_1);
-            console.log('Fila añadida al final de la tabla');
-        }
-
-        empleadosSeleccionadosadministrativo_1.push(empleadoSeleccionado);
+        tbody.appendChild(nuevaFila);
+        empleadosSeleccionados.push(empleadoSeleccionado);
 
         fetch('/auditar-agregar-empleado', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id_empleado: empleadoSeleccionado.id_empleado })
         });
 
-        // Añadir evento al botón de eliminación
-        const eliminarBtn = nuevaFilaadministrativo_1.querySelector('.eliminar-fila-btn');
+        const eliminarBtn = nuevaFila.querySelector('.eliminar-fila-btn');
         eliminarBtn.addEventListener('click', function () {
-            const index = empleadosSeleccionadosadministrativo_1.findIndex(e => e.id_empleado == empleadoSeleccionado.id_empleado);
-            if (index !== -1) empleadosSeleccionadosadministrativo_1.splice(index, 1); // Eliminar del array de seleccionados
-            nuevaFilaadministrativo_1.remove(); // Eliminar la fila de la tabla
-            actualizarNumeracion(); // Actualizar la numeración de las filas
+            const index = empleadosSeleccionados.findIndex(e => e.id_empleado == empleadoSeleccionado.id_empleado);
+            if (index !== -1) empleadosSeleccionados.splice(index, 1); 
+            nuevaFila.remove(); 
+            actualizarNumeracion(tbody); 
         });
-        
-        // Evento para controlar la restricción de campos
-        const selectEstado = nuevaFilaadministrativo_1.querySelector('.estado-select');
+
+        const selectEstadoNueva = nuevaFila.querySelector('select[name="estado"]');
         const camposRestringidos = [
-            nuevaFilaadministrativo_1.querySelector('input[name="pasajes"]'),
-            nuevaFilaadministrativo_1.querySelector('input[name="viaticos"]'),
-            nuevaFilaadministrativo_1.querySelector('input[name="ruta"]')
-        ].filter(campo => campo); // Filtra elementos nulos para evitar errores
+            nuevaFila.querySelector('.pasajes-input'),
+            nuevaFila.querySelector('input[name="viaticos"]'),
+            nuevaFila.querySelector('input[name="ruta"]')
+        ].filter(c => c); 
         
-        selectEstado.addEventListener('change', function () {
-            if (["A", "DT", "FT"].includes(selectEstado.value)) {
-                camposRestringidos.forEach(campo => {
-                    campo.disabled = false;
-                });
+        selectEstadoNueva.addEventListener('change', function () {
+            if (["A", "DT", "FT", "DC"].includes(selectEstadoNueva.value)) {
+                camposRestringidos.forEach(c => c.disabled = false);
             } else {
-                camposRestringidos.forEach(campo => {
-                    campo.disabled = true;
-                    campo.value = ""; // Limpiar los campos al deshabilitarlos
-                });
+                camposRestringidos.forEach(c => { c.disabled = true; c.value = ""; });
             }
         });
-        
-        // Aplicar la restricción inicialmente si el estado no es "A", "DT" o "FT"
-        selectEstado.dispatchEvent(new Event('change'));
+        selectEstadoNueva.dispatchEvent(new Event('change'));
     });
 
-    // Función para actualizar la numeración de las filas en la tabla
-    function actualizarNumeracion() {
-        Array.from(tbodyadministrativo_1.children).forEach((fila, index) => {
-            const celdaNumero = fila.querySelector('td:first-child');
-            if (celdaNumero) celdaNumero.textContent = index + 1;
-        });
-    }
-
-    guardarAsistenciaBtnadministrativo_1.addEventListener('click', async function (event) {
-        event.preventDefault(); // Prevenir el comportamiento por defecto del formulario
+    guardarBtn.addEventListener('click', async function (event) {
+        event.preventDefault(); 
     
-        if (tbodyadministrativo_1.children.length === 0) {
+        if (tbody.children.length === 0) {
             alert('No hay empleados añadidos.');
             return;
         }
 
-        // Obtener la fecha seleccionada
-        const fechaSeleccionada = document.getElementById('fecha-administrativo_1').value;
-        if (!fechaSeleccionada) {
-            alert("Seleccione una fecha válida.");
-            return;
-        }
-
-        // Convertir la fecha seleccionada a un objeto Date
-        //const fecha = new Date(fechaSeleccionada);
-
-        // Obtener la fecha actual y construir los límites del rango
-        //const hoy = new Date();
-        //const mesActual = hoy.getMonth() + 1;
-        //const añoActual = hoy.getFullYear();
-
-        // Definir el rango permitido
-        //let inicioRango, finRango;
-        //if (hoy.getDate() >= 26) {
-            // Estamos entre el 26 y el final del mes actual
-            //inicioRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-26`);
-            //finRango = new Date(`${añoActual}-${(mesActual + 1).toString().padStart(2, '0')}-25`);
-        //} else {
-            // Estamos antes del 26, entonces el rango es del mes anterior al actual
-            //const mesAnterior = mesActual - 1 || 12;
-            //const añoAnterior = mesAnterior === 12 ? añoActual - 1 : añoActual;
-
-            //inicioRango = new Date(`${añoAnterior}-${mesAnterior.toString().padStart(2, '0')}-26`);
-            //finRango = new Date(`${añoActual}-${mesActual.toString().padStart(2, '0')}-25`);
-       //}
-
-        // Validar si la fecha seleccionada está dentro del rango permitido
-        //if (fecha < inicioRango || fecha > finRango) {
-            //alert(`La fecha seleccionada está fuera del rango permitido.\nSolo se puede registrar asistencia desde el ${inicioRango.toISOString().split('T')[0]} hasta el ${finRango.toISOString().split('T')[0]}.`);
-            //return;
-        //}
-    
-        // Recoger los datos de los empleados y sus estados
-        const empleadosParaGuardaradministrativo_1 = [];
-        tbodyadministrativo_1.querySelectorAll('tr').forEach(fila => {
+        const empleadosParaGuardar = [];
+        tbody.querySelectorAll('tr').forEach(fila => {
             const idEmpleado = fila.querySelector('input[name="id_empleado"]').value;
             const estadoSelect = fila.querySelector('select[name="estado"]');
-            const estado = estadoSelect ? estadoSelect.value : 'A';
-            const pasajesInput = fila.querySelector('input[name="pasajes"]');
+            const estado = estadoSelect ? estadoSelect.value.trim() : '';
+            const pasajesInput = fila.querySelector('.pasajes-input');
+            const pasajesSelect = fila.querySelector('.pasajes-select');
+            let pasajes = 0; 
+            if (pasajesSelect && pasajesSelect.value === "PR") { pasajes = "PR"; } 
+            else if (pasajesInput && pasajesInput.value.trim() !== "") { pasajes = parseFloat(pasajesInput.value) || 0; }
             const rutaInput = fila.querySelector('input[name="ruta"]');
             const viaticosInput = fila.querySelector('input[name="viaticos"]');
-    
-            empleadosParaGuardaradministrativo_1.push({
-                id_empleado: idEmpleado,
-                estado: estado,
-                pasajes: pasajesInput ? parseFloat(pasajesInput.value) || 0 : 0,
-                ruta: rutaInput ? rutaInput.value.trim() : '',
-                viaticos: viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0,
-                es_extra: empleadosSeleccionadosadministrativo_1.some(e => e.id_empleado == idEmpleado) // Verificar si es extra
+            const ruta = rutaInput ? rutaInput.value.trim() : '';
+            const viaticos = viaticosInput ? parseFloat(viaticosInput.value) || 0 : 0;
+
+            if (estado === "" && pasajes === 0 && viaticos === 0 && ruta === "") return; 
+
+            empleadosParaGuardar.push({
+                id_empleado: idEmpleado, estado: estado, pasajes: pasajes, ruta: ruta, viaticos: viaticos,
+                es_extra: empleadosSeleccionados.some(e => e.id_empleado == idEmpleado)
             });
         });
-        
-        console.log('Empleados para guardar:', empleadosParaGuardaradministrativo_1);
+
+        if (empleadosParaGuardar.length === 0) {
+            alert("No hay asistencias registradas para guardar.");
+            return;
+        }
     
-        // Preparar los datos para el backend
-        const asistenciasadministrativo_1 = empleadosParaGuardaradministrativo_1.map(empleado => ({
+        const asistencias = empleadosParaGuardar.map(emp => ({
             mes: document.getElementById('mes-administrativo_1').value,
             fecha: document.getElementById('fecha-administrativo_1').value,
-            estado: empleado.estado,
-            pasajes: empleado.pasajes,
-            ruta: empleado.ruta,
-            viaticos: empleado.viaticos,
-            id_empleado: empleado.id_empleado,
-            es_extra: empleado.es_extra
+            estado: emp.estado, pasajes: emp.pasajes, ruta: emp.ruta, viaticos: emp.viaticos,
+            id_empleado: emp.id_empleado, es_extra: emp.es_extra
         }));
-
-        console.log('Asistencias preparadas para guardar:', asistenciasadministrativo_1);
     
         try {
             const response = await fetch('/guardar-asistencia-detalle-administrativo_1', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ asistencias: asistenciasadministrativo_1}),
+                method: 'POST', headers: { 'Content-Type': 'application/json', },
+                body: JSON.stringify({ asistencias: asistencias }),
             });
     
-            const result = await response.json(); // Obtener respuesta del backend
+            const result = await response.json(); 
 
             if (!response.ok) {
-                throw new Error(result.message || 'Error al guardar la asistencia');
+                // 🚨 MENSAJE MOSTRADO DIRECTO COMO PEDISTE 🚨
+                alert(result.message || 'Error al guardar la asistencia');
+                return; 
             }
 
             alert(result.message || 'Asistencia guardada correctamente.');
-
-            // Auditar que se guardó la asistencia
-            const fechaAuditoria = document.getElementById('fecha-administrativo_1').value;
-            console.log('Fecha usada para auditoría:', fechaAuditoria);  // ✅ <-- ESTA ES LA LÍNEA QUE QUERÍAS
-
             fetch('/auditar-guardar-asistencia', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fecha: fechaAuditoria
-                })
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fecha: document.getElementById('fecha-administrativo_1').value })
             });
             
         } catch (error) {
-            // Si el error viene del backend, lo mostramos en pantalla
-            if (error.message.includes('ya cuenta con asistencia')) {
-                alert(error.message);
-            } else {
-                alert('Hubo un problema al guardar la asistencia.');
-            }
+            console.error('Error:', error);
+            alert('Fallo de conexión con el servidor.');
         }
-    
-        empleadosSeleccionadosadministrativo_1 = []; // Limpiar la lista de empleados seleccionados
-        console.log('Empleados seleccionados después de guardar:', empleadosSeleccionadosadministrativo_1);
+        empleadosSeleccionados = []; 
     });
-    await cargarEmpleadosEnSelectoradministrativo_1();
+    
+    await cargarEmpleadosEnSelector();
 });
+
+function obtenerDiaSeleccionado(idInput) {
+    const fechaSeleccionada = document.getElementById(idInput).value;
+    if (!fechaSeleccionada) return null;
+    const fechaObj = new Date(fechaSeleccionada + 'T00:00:00'); 
+    return fechaObj.getDay(); 
+}
 
 
 //ADMINISTRATIVO
@@ -7345,7 +7788,6 @@ document.addEventListener('DOMContentLoaded', () => {
         filasOrdenadas.forEach(tr => tbody.appendChild(tr));
     });
 });
-
 
 document.getElementById('btn-asistencias').addEventListener('click', () => actualizarTabla('asistencias'));
 document.getElementById('btn-pasajes').addEventListener('click', () => actualizarTabla('pasajes'));
@@ -12028,7 +12470,27 @@ const EMPLEADOS_DB = [
     "163 TISNADO JAIME ROSAS VICO", "106 TUCTO JULCA JORGE ROLANDO", "25 TUFINIO LOPEZ WILDER ELI",
     "26 VASQUEZ FERNANDEZ JUAN CARLOS", "82 VASQUEZ SALAS ANA CECILIA", "27 VEGA QUISPE EDWARD WILLIAM",
     "83 VILLACORTA ROBLES KEVIN ALONSO", "29 VILLACORTA RODRIGUEZ WALDIR", "107 YBAÑEZ ROJAS LUIS ALEXANDER",
-    "48 ZUMAETA BORDOY JUDY DEL CARMEN", "506 CONTRERAS SANTA CRUZ MARCO NOE", "488 MONTES VALLES NAZIA", "487 ORTIZA BAZAN ANDERSON", "486 TERRONES BARRIOS TATIANA JUDITH", "426 AGUILAR MENDOZA JEYSON ABIMAEL"
+    "48 ZUMAETA BORDOY JUDY DEL CARMEN", "506 CONTRERAS SANTA CRUZ MARCO NOE", "488 MONTES VALLES NAZIA", "487 ORTIZA BAZAN ANDERSON", "486 TERRONES BARRIOS TATIANA JUDITH", "426 AGUILAR MENDOZA JEYSON ABIMAEL",
+    "706 PEREZ ZAVALETA ROXANA GERALDINE", "726 BAUTISTA DELCY ROSALES", "746 CASTILLA TORRES ROBERTO CARLOS","407 CRUZ SUAREZ SAYDI",
+    "408 MARTINEZ SANTOS XIOMARA BRIGITTE",
+    "426 AGUILAR MENDOZA JEYSON ABIMAEL",
+    "446 ESTRADA VILLANUEVA HAROLD",
+    "466 AGUILAR ALEGRE HENRY DANIEL",
+    "486 TERRONES BARRIOS TATINA JUDITH",
+    "487 ORTIZ BAZAN ANDERSON",
+    "488 MONTES VALLES NAZIA",
+    "506 CONTRERAS SANTA CRUZ MARCO NOE",
+    "526 GONZALES DIAZ ARNOI YANPOL SANDRO",
+    "527 AGUILAR CENTENO STEPHANY LISSETH",
+    "546 CORREA CUEVA SANTOS PABLO",
+    "566 LEYDDY YANELI CHUQUIVIGUEL CRISOLOGO",
+    "567 MENDOZA NACARINO AARON FRANCO",
+    "568 VARGAS ZAVALETA ROGER BRANDY",
+    "586 MENDOZA RIVAS ALEXANDER MICHAEL",
+    "606 CHUNGA SAONA EMMANUEL SALVADOR",
+    "626 BRIONES CASTILLO ANGEL VICTOR",
+    "627 CHARCAPE HUERTAS RONALD JOSE",
+    "325 RUIZ CHIGUALA SERGIO"
 ];
 
 // 1. FUNCIÓN PARA CREAR EL DATALIST (Solo una vez)
@@ -15391,12 +15853,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // ==========================================
-    // 4. EJECUTAR CONSULTA A BD AL INICIAR
-    // ==========================================
+
     cargarDatosMaestros();
     cargarHistorialKardex(1);
-
+    
     // 1. Detectar cuando el contenedor del Select2 recibe el foco y forzar su apertura
     $(document).on('focus', '.select2-selection.select2-selection--single', function() {
         $(this).closest('.select2-container').siblings('select:enabled').select2('open');
@@ -16446,6 +16906,7 @@ function exportarExcelKardex() {
 }
 
 
+
 /* =========================================
        REVALIDACION DE LECTURAS
     ========================================= */
@@ -17469,7 +17930,6 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 
-
 //// GESTION DE CARTAS ////
 let cartasGlobalesBD = []; 
 
@@ -18118,6 +18578,7 @@ function dibujarControlesPaginacion(meta, container) {
     html += `</div>`;
     container.innerHTML = html;
 }
+
 // =====================================================================
 // LÓGICA DEL VISOR DE PDF
 // =====================================================================
@@ -18481,181 +18942,6 @@ document.addEventListener('click', function(e) {
         listaFiltro.style.display = 'none';
     }
 });
-
-
-
-
-//////////////// SISTEMA DE ALERTAS //////////////////
-
-// 1. Lógica del Menú Desplegable (Cierra al hacer clic afuera)
-function toggleAlertas(event) {
-    const panelAlertas = document.getElementById('panel-alertas');
-    const campanaContainer = document.getElementById('campana-noti'); // Importante: Asegúrate de que el div de tu campana tenga id="campana-noti"
-    
-    if (!panelAlertas || !campanaContainer) return;
-
-    const isVisible = panelAlertas.style.display === 'block';
-    panelAlertas.style.display = isVisible ? 'none' : 'block';
-    
-    if (!isVisible) {
-        campanaContainer.classList.add('active');
-    } else {
-        campanaContainer.classList.remove('active');
-    }
-    
-    if (event) {
-        event.stopPropagation(); // Detiene el clic para que el document no lo detecte y lo cierre al instante
-    }
-}
-
-// Listener global para cerrar la campana al hacer clic en CUALQUIER lugar
-document.addEventListener('click', function(event) {
-    const panelAlertas = document.getElementById('panel-alertas');
-    const campanaContainer = document.getElementById('campana-noti');
-    
-    if (panelAlertas && campanaContainer) {
-        // Si el panel está abierto y el clic no fue ni en la campana ni dentro del panel
-        if (panelAlertas.style.display === 'block' && !campanaContainer.contains(event.target) && !panelAlertas.contains(event.target)) {
-            panelAlertas.style.display = 'none';
-            campanaContainer.classList.remove('active');
-        }
-    }
-});
-
-// 2. Lógica del Sistema de Toasts Flotantes Futuristas
-function mostrarToast(alertaData, duracion = 5000) {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-    
-    // Verificamos si recibimos el objeto completo (alerta real) o solo un texto (mensaje de excedente)
-    const esObjeto = typeof alertaData === 'object';
-    const textoMensaje = esObjeto ? alertaData.mensaje : alertaData;
-    
-    // Crear el elemento toast
-    const toast = document.createElement('div');
-    toast.className = 'toast-alerta';
-    toast.innerHTML = `
-        <div class="toast-icon">
-            <i class="fa-solid fa-bell-slash"></i>
-        </div>
-        <div class="toast-content">
-            ${textoMensaje}
-        </div>
-    `;
-    
-    // ---> AQUÍ AGREGAMOS EL CLIC Y LOS DATOS <---
-    if (esObjeto && alertaData.id_empleado && alertaData.fecha_cruda) {
-        toast.style.cursor = 'pointer'; // Manito para indicar que es clickeable
-        toast.onclick = function() {
-            abrirDetalleAlerta(alertaData.id_empleado, alertaData.fecha_cruda);
-        };
-        // Efecto hover sutil con CSS en línea para que se vea más interactivo
-        toast.onmouseover = () => toast.style.transform = 'scale(1.02)';
-        toast.onmouseout = () => toast.style.transform = 'scale(1)';
-        toast.style.transition = 'transform 0.2s ease';
-    }
-    
-    // Agregar al contenedor (la animación CSS se encarga de la entrada)
-    container.appendChild(toast);
-    
-    // Temporizador para la animación de salida (hacia arriba)
-    setTimeout(() => {
-        toast.style.animation = 'slideOutUp 0.5s ease forwards';
-        // Eliminar del DOM después de que termine la animación
-        setTimeout(() => {
-            toast.remove();
-        }, 500);
-    }, duracion);
-}
-
-// 3. Disparador Automático de Alertas al iniciar la app
-window.addEventListener('DOMContentLoaded', () => {
-    // Leemos la variable global creada en el HTML
-    const alertasPendientes = window.alertasSistema || [];
-    
-    if (alertasPendientes.length > 0) {
-        // Límite de 3 notificaciones flotantes (Regla UX para no saturar)
-        const maxToasts = Math.min(alertasPendientes.length, 3);
-        
-        for(let i = 0; i < maxToasts; i++) {
-            // Efecto cascada visual
-            setTimeout(() => {
-                mostrarToast(alertasPendientes[i], 6000 + (i * 1000));
-            }, i * 600); 
-        }
-
-        // Si exceden el límite, mostramos un mensaje aglomerado final
-        if (alertasPendientes.length > 3) {
-            setTimeout(() => {
-                const excedente = alertasPendientes.length - 3;
-                mostrarToast(`... y ${excedente} alertas más. Revisa la campana para ver el detalle completo.`, 8000);
-            }, maxToasts * 600);
-        }
-    }
-});
-
-
-// Función para abrir el modal y consultar datos
-function abrirDetalleAlerta(id_empleado, fecha_cruda) {
-    // 1. Mostrar el modal inmediatamente
-    document.getElementById('modalDetalleAlerta').style.display = 'flex';
-    document.getElementById('modalNombre').innerText = "Cargando...";
-    document.getElementById('modalArea').innerText = "Buscando...";
-    
-    // 2. Extraer el "Diagnóstico Inteligente" directamente de los datos que ya cargó Jinja2
-    let alertaSeleccionada = window.alertasSistema.find(a => a.id_empleado === id_empleado && a.fecha_cruda === fecha_cruda);
-    let mensajeReal = alertaSeleccionada ? alertaSeleccionada.mensaje : "Verificando incidencias...";
-    
-    // Inyectar el texto real en el HTML (¡Adiós al "Falta o registro vacío"!)
-    document.getElementById('modalEstado').innerText = mensajeReal;
-    document.getElementById('modalFecha').innerText = fecha_cruda;
-    
-    // 3. Consultar la API para traer datos personales y activar WhatsApp
-    fetch(`/api/detalle_alerta?id=${id_empleado}&fecha=${fecha_cruda}`)
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) return;
-        
-        // Llenar tarjeta personal
-        document.getElementById('modalNombre').innerText = data.nombre_completo;
-        document.getElementById('modalArea').innerText = data.area;
-        document.getElementById('modalAvatar').innerText = data.nombre_completo.charAt(0).toUpperCase();
-        
-        // Activar Botón de WhatsApp
-        let btnWsp = document.getElementById('modalWhatsApp');
-        if (data.telefono && data.telefono !== '') {
-            btnWsp.style.display = 'block';
-            btnWsp.href = `https://wa.me/${data.telefono}`;
-            btnWsp.innerText = "Contactar por WhatsApp";
-            btnWsp.style.background = "rgba(37, 211, 102, 0.8)";
-            btnWsp.style.pointerEvents = "auto";
-        } else {
-            // Si el operario no tiene teléfono en la BD, deshabilitamos el botón pero lo mostramos
-            btnWsp.style.display = 'block';
-            btnWsp.href = "#";
-            btnWsp.innerText = "Sin número registrado";
-            btnWsp.style.background = "rgba(100, 100, 100, 0.8)";
-            btnWsp.style.pointerEvents = "none";
-        }
-    })
-    .catch(error => {
-        console.error('Error al cargar la API:', error);
-    });
-}
-
-// Función para cerrar
-function cerrarModalAlerta() {
-    document.getElementById('modalDetalleAlerta').style.display = 'none';
-}
-
-// Vinculamos el click a las alertas existentes (Suponiendo que tu div de alerta tiene una clase 'toast-alerta')
-// Asegúrate de imprimir en tu HTML atributos data (data-id y data-fecha) en el div de la alerta.
-document.addEventListener("DOMContentLoaded", function() {
-    // Si estás renderizando las alertas con un bucle Jinja en tu HTML, asegúrate de que el contenedor 
-    // de la alerta tenga el evento onclick="abrirDetalleAlerta('{{ alerta.id_empleado }}', '{{ alerta.fecha_cruda }}')"
-});
-
-
 
 
 /* ==========================================
@@ -19814,3 +20100,560 @@ function guardarCargasDiarias() {
         btnGuardar.innerHTML = `Guardar Cargas`;
     });
 }
+
+//////////////// SISTEMA DE ALERTAS //////////////////
+
+// 1. Lógica del Menú Desplegable (Cierra al hacer clic afuera)
+function toggleAlertas(event) {
+    const panelAlertas = document.getElementById('panel-alertas');
+    const campanaContainer = document.getElementById('campana-noti'); // Importante: Asegúrate de que el div de tu campana tenga id="campana-noti"
+    
+    if (!panelAlertas || !campanaContainer) return;
+
+    const isVisible = panelAlertas.style.display === 'block';
+    panelAlertas.style.display = isVisible ? 'none' : 'block';
+    
+    if (!isVisible) {
+        campanaContainer.classList.add('active');
+    } else {
+        campanaContainer.classList.remove('active');
+    }
+    
+    if (event) {
+        event.stopPropagation(); // Detiene el clic para que el document no lo detecte y lo cierre al instante
+    }
+}
+
+// Listener global para cerrar la campana al hacer clic en CUALQUIER lugar
+document.addEventListener('click', function(event) {
+    const panelAlertas = document.getElementById('panel-alertas');
+    const campanaContainer = document.getElementById('campana-noti');
+    
+    if (panelAlertas && campanaContainer) {
+        // Si el panel está abierto y el clic no fue ni en la campana ni dentro del panel
+        if (panelAlertas.style.display === 'block' && !campanaContainer.contains(event.target) && !panelAlertas.contains(event.target)) {
+            panelAlertas.style.display = 'none';
+            campanaContainer.classList.remove('active');
+        }
+    }
+});
+
+// 2. Lógica del Sistema de Toasts Flotantes Futuristas
+function mostrarToast(alertaData, duracion = 5000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    
+    // Verificamos si recibimos el objeto completo (alerta real) o solo un texto (mensaje de excedente)
+    const esObjeto = typeof alertaData === 'object';
+    const textoMensaje = esObjeto ? alertaData.mensaje : alertaData;
+    
+    // Crear el elemento toast
+    const toast = document.createElement('div');
+    toast.className = 'toast-alerta';
+    toast.innerHTML = `
+        <div class="toast-icon">
+            <i class="fa-solid fa-bell-slash"></i>
+        </div>
+        <div class="toast-content">
+            ${textoMensaje}
+        </div>
+    `;
+    
+    // ---> AQUÍ AGREGAMOS EL CLIC Y LOS DATOS <---
+    if (esObjeto && alertaData.id_empleado && alertaData.fecha_cruda) {
+        toast.style.cursor = 'pointer'; // Manito para indicar que es clickeable
+        toast.onclick = function() {
+            abrirDetalleAlerta(alertaData.id_empleado, alertaData.fecha_cruda);
+        };
+        // Efecto hover sutil con CSS en línea para que se vea más interactivo
+        toast.onmouseover = () => toast.style.transform = 'scale(1.02)';
+        toast.onmouseout = () => toast.style.transform = 'scale(1)';
+        toast.style.transition = 'transform 0.2s ease';
+    }
+    
+    // Agregar al contenedor (la animación CSS se encarga de la entrada)
+    container.appendChild(toast);
+    
+    // Temporizador para la animación de salida (hacia arriba)
+    setTimeout(() => {
+        toast.style.animation = 'slideOutUp 0.5s ease forwards';
+        // Eliminar del DOM después de que termine la animación
+        setTimeout(() => {
+            toast.remove();
+        }, 500);
+    }, duracion);
+}
+
+// 3. Disparador Automático de Alertas al iniciar la app
+window.addEventListener('DOMContentLoaded', () => {
+    // Leemos la variable global creada en el HTML
+    const alertasPendientes = window.alertasSistema || [];
+    
+    if (alertasPendientes.length > 0) {
+        // Límite de 3 notificaciones flotantes (Regla UX para no saturar)
+        const maxToasts = Math.min(alertasPendientes.length, 3);
+        
+        for(let i = 0; i < maxToasts; i++) {
+            // Efecto cascada visual
+            setTimeout(() => {
+                mostrarToast(alertasPendientes[i], 6000 + (i * 1000));
+            }, i * 600); 
+        }
+
+        // Si exceden el límite, mostramos un mensaje aglomerado final
+        if (alertasPendientes.length > 3) {
+            setTimeout(() => {
+                const excedente = alertasPendientes.length - 3;
+                mostrarToast(`... y ${excedente} alertas más. Revisa la campana para ver el detalle completo.`, 8000);
+            }, maxToasts * 600);
+        }
+    }
+});
+
+
+// Función para abrir el modal y consultar datos
+function abrirDetalleAlerta(id_empleado, fecha_cruda) {
+    // 1. Mostrar el modal inmediatamente
+    document.getElementById('modalDetalleAlerta').style.display = 'flex';
+    document.getElementById('modalNombre').innerText = "Cargando...";
+    document.getElementById('modalArea').innerText = "Buscando...";
+    
+    // 2. Extraer el "Diagnóstico Inteligente" directamente de los datos que ya cargó Jinja2
+    let alertaSeleccionada = window.alertasSistema.find(a => a.id_empleado === id_empleado && a.fecha_cruda === fecha_cruda);
+    let mensajeReal = alertaSeleccionada ? alertaSeleccionada.mensaje : "Verificando incidencias...";
+    
+    // Inyectar el texto real en el HTML (¡Adiós al "Falta o registro vacío"!)
+    document.getElementById('modalEstado').innerText = mensajeReal;
+    document.getElementById('modalFecha').innerText = fecha_cruda;
+    
+    // 3. Consultar la API para traer datos personales y activar WhatsApp
+    fetch(`/api/detalle_alerta?id=${id_empleado}&fecha=${fecha_cruda}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) return;
+        
+        // Llenar tarjeta personal
+        document.getElementById('modalNombre').innerText = data.nombre_completo;
+        document.getElementById('modalArea').innerText = data.area;
+        document.getElementById('modalAvatar').innerText = data.nombre_completo.charAt(0).toUpperCase();
+        
+        // Activar Botón de WhatsApp
+        let btnWsp = document.getElementById('modalWhatsApp');
+        if (data.telefono && data.telefono !== '') {
+            btnWsp.style.display = 'block';
+            btnWsp.href = `https://wa.me/${data.telefono}`;
+            btnWsp.innerText = "Contactar por WhatsApp";
+            btnWsp.style.background = "rgba(37, 211, 102, 0.8)";
+            btnWsp.style.pointerEvents = "auto";
+        } else {
+            // Si el operario no tiene teléfono en la BD, deshabilitamos el botón pero lo mostramos
+            btnWsp.style.display = 'block';
+            btnWsp.href = "#";
+            btnWsp.innerText = "Sin número registrado";
+            btnWsp.style.background = "rgba(100, 100, 100, 0.8)";
+            btnWsp.style.pointerEvents = "none";
+        }
+    })
+    .catch(error => {
+        console.error('Error al cargar la API:', error);
+    });
+}
+
+// Función para cerrar
+function cerrarModalAlerta() {
+    document.getElementById('modalDetalleAlerta').style.display = 'none';
+}
+
+// Vinculamos el click a las alertas existentes (Suponiendo que tu div de alerta tiene una clase 'toast-alerta')
+// Asegúrate de imprimir en tu HTML atributos data (data-id y data-fecha) en el div de la alerta.
+document.addEventListener("DOMContentLoaded", function() {
+    // Si estás renderizando las alertas con un bucle Jinja en tu HTML, asegúrate de que el contenedor 
+    // de la alerta tenga el evento onclick="abrirDetalleAlerta('{{ alerta.id_empleado }}', '{{ alerta.fecha_cruda }}')"
+});
+
+
+
+// ==========================================
+// MÓDULO DE RUTAS (LÓGICA ACTUALIZADA MULTI-ARCHIVO)
+// ==========================================
+const rtApp = {
+    datosRutas: [],
+    columnasExcel: [],
+    map: null,
+    capaRuta: null,
+
+    abrirModal: function() {
+        document.getElementById('rt-modal-upload').style.display = 'flex';
+    },
+
+    cerrarModal: function() {
+        document.getElementById('rt-modal-upload').style.display = 'none';
+        document.getElementById('rt-form-upload').reset();
+        
+        // Resetear visualmente los cajones
+        document.getElementById('rt-file-name-1').innerHTML = 'Subir Excel Principal';
+        document.getElementById('rt-file-name-1').style.color = '#334155';
+        
+        const fn2 = document.getElementById('rt-file-name-2');
+        if (fn2) {
+            fn2.innerHTML = 'Subir Excel Secundario';
+            fn2.style.color = '#334155';
+        }
+        
+        document.getElementById('panel-mapeo-manual').style.display = 'none';
+        this.cambiarActividad(); // Resetea el segundo cajón si aplica
+        this.columnasExcel = [];
+    },
+
+    // 🔥 NUEVA FUNCIÓN: Muestra u oculta el 2do archivo según la actividad 🔥
+    cambiarActividad: function() {
+        const select = document.getElementById('rt-actividad-select');
+        if(!select) return;
+        
+        const box2 = document.getElementById('rt-box-file-2');
+        const input2 = document.getElementById('rt-file-input-2');
+        
+        if (select.value === 'ACCIONES PERSUASIVAS') {
+            box2.style.display = 'block';
+            input2.setAttribute('required', 'true');
+        } else {
+            box2.style.display = 'none';
+            input2.removeAttribute('required');
+            input2.value = ''; // Limpiar si había un archivo cargado
+            document.getElementById('rt-file-name-2').innerHTML = 'Subir Excel Secundario';
+            document.getElementById('rt-file-name-2').style.color = '#334155';
+        }
+    },
+
+    // Función adaptada para recibir de qué input viene el archivo
+    actualizarNombreArchivo: function(input, labelId) {
+        if(input.files && input.files.length > 0) {
+            const file = input.files[0];
+            document.getElementById(labelId).innerHTML = file.name;
+            document.getElementById(labelId).style.color = '#2563eb';
+
+            // Extraer columnas SOLAMENTE si es el archivo principal
+            if (input.id === 'rt-file-input-1') {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const ws = workbook.Sheets[workbook.SheetNames[0]];
+                    this.columnasExcel = XLSX.utils.sheet_to_json(ws, {header: 1})[0] || [];
+                    
+                    if (document.querySelector('input[name="tipo_mapeo"][value="manual"]').checked) {
+                        this.poblarSelects();
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+    },
+
+    toggleMapeoManual: function() {
+        const esManual = document.querySelector('input[name="tipo_mapeo"][value="manual"]').checked;
+        const panel = document.getElementById('panel-mapeo-manual');
+        if (panel) panel.style.display = esManual ? 'block' : 'none';
+        
+        if (esManual && this.columnasExcel.length > 0) {
+            this.poblarSelects();
+        }
+    },
+
+    poblarSelects: function() {
+        const selects = document.querySelectorAll('#panel-mapeo-manual select');
+        selects.forEach(select => {
+            const valorIdeal = select.getAttribute('data-ideal');
+            select.innerHTML = '<option value="">-- No usar (Vacío) --</option>';
+            
+            this.columnasExcel.forEach(columna => {
+                if(columna) {
+                    const opt = document.createElement('option');
+                    opt.value = columna;
+                    opt.textContent = columna;
+                    if(valorIdeal && columna.toUpperCase().includes(valorIdeal)) {
+                        opt.selected = true;
+                    }
+                    select.appendChild(opt);
+                }
+            });
+        });
+    },
+
+    cerrarDetalle: function() {
+        const layout = document.getElementById('rt-layout');
+        if (layout) layout.classList.remove('rt-open');
+        
+        const panelIzq = document.querySelector('.rt-panel-izq') || document.getElementById('rt-panel-izq');
+        const panelDer = document.querySelector('.rt-panel-der') || document.getElementById('rt-panel-der');
+        
+        if (panelIzq) {
+            panelIzq.style.width = '100%';
+            panelIzq.style.borderRight = '1px solid transparent';
+        }
+        if (panelDer) {
+            panelDer.style.width = '0%';
+            panelDer.style.opacity = '0';
+        }
+        
+        document.querySelectorAll('.rt-row-hover').forEach(el => el.classList.remove('rt-row-active'));
+        if(this.capaRuta) this.capaRuta.clearLayers();
+    },
+
+    procesarArchivo: async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('rt-btn-submit');
+        const limite = document.getElementById('rt-limite-input').value;
+        const form = e.target;
+        
+        const esManual = document.querySelector('input[name="tipo_mapeo"][value="manual"]').checked;
+        if (esManual) {
+            const sum = form.querySelector('select[name="col_suministro"]').value;
+            if(!sum) return alert("⚠️ ERROR: Debes seleccionar obligatoriamente la columna de Suministro.");
+        }
+
+        // FormData agarrará automáticamente 'archivo' y 'archivo_secundario' (si está visible)
+        const formData = new FormData(form);
+        formData.append('limite_carga', limite);
+
+        try {
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+                btn.disabled = true;
+            }
+
+            const response = await fetch('/api/generar_rutas', { method: 'POST', body: formData });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Error en el servidor');
+
+            this.cerrarModal();
+            let rutasGeneradas = data.rutas;
+            
+            // 🔥 ORDENAMIENTO CRONOLÓGICO ASCENDENTE INFALIBLE 🔥
+            rutasGeneradas.sort((a, b) => {
+                const obtenerMinutos = (horaStr) => {
+                    if (!horaStr) return 9999;
+                    const s = horaStr.toString().toUpperCase();
+                    if (s.includes('SIN') || s.includes('JORNADA')) return 9999; 
+                    
+                    const match = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/);
+                    if (match) {
+                        let h = parseInt(match[1], 10);
+                        let m = parseInt(match[2], 10);
+                        let ampm = match[3]; 
+
+                        if (ampm === 'PM' && h < 12) h += 12;
+                        if (ampm === 'AM' && h === 12) h = 0;
+                        
+                        return (h * 60) + m;
+                    }
+                    return 9999;
+                };
+
+                const fechaA = (a.fecha || "").toString().trim();
+                const fechaB = (b.fecha || "").toString().trim();
+                
+                if (fechaA !== fechaB) {
+                    return fechaA.localeCompare(fechaB);
+                }
+                return obtenerMinutos(a.hora) - obtenerMinutos(b.hora);
+            });
+
+            rutasGeneradas.forEach((ruta, index) => {
+                ruta.id = index + 1;
+            });
+
+            this.datosRutas = rutasGeneradas; 
+            this.renderizarListaCargas();
+            
+        } catch (error) {
+            alert("Error al procesar: " + error.message);
+        } finally {
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-magic"></i> Procesar Data';
+                btn.disabled = false;
+            }
+        }
+    },
+
+    renderizarListaCargas: function() {
+        const contenedor = document.getElementById('rt-lista-cargas');
+        if (!contenedor) return;
+        
+        contenedor.innerHTML = '';
+        const badge = document.getElementById('rt-badge-total');
+        if (badge) badge.textContent = `${this.datosRutas.length} Cargas`;
+
+        const colores = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#0ea5e9'];
+
+        this.datosRutas.forEach((ruta, i) => {
+            const colorRuta = colores[i % colores.length];
+
+            const row = document.createElement('div');
+            row.className = 'rt-row-hover'; 
+            row.id = `rt-row-${ruta.id}`;
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.padding = '12px 15px';
+            row.style.borderBottom = '1px solid #e2e8f0';
+            row.style.cursor = 'pointer';
+            
+            row.onclick = () => this.abrirDetalleMapa(ruta.id, ruta.hora, colorRuta);
+
+            row.innerHTML = `
+                <div style="width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; font-size: 1.1rem; background: ${colorRuta}15; color: ${colorRuta}; flex-shrink: 0;">
+                    C${ruta.id}
+                </div>
+                <div style="flex: 1; overflow: hidden;">
+                    <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem;">${ruta.cantidad} Suministros</div>
+                    <div style="color: #64748b; font-size: 0.75rem; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
+                        <i class="fas fa-clock"></i> ${ruta.hora} | <i class="fas fa-calendar-alt"></i> ${ruta.fecha}
+                    </div>
+                </div>
+                <i class="fas fa-chevron-right" style="color: #cbd5e1; font-size: 0.9rem;"></i>
+            `;
+            contenedor.appendChild(row);
+        });
+    },
+
+    inicializarMapa: function() {
+        const contenedorMapa = document.getElementById('mapa-visor');
+        if (!contenedorMapa) return;
+
+        if (!this.map) {
+            proj4.defs("EPSG:32717","+proj=utm +zone=17 +south +datum=WGS84 +units=m +no_defs");
+
+            this.map = L.map('mapa-visor').setView([-8.11599, -79.02998], 13);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(this.map);
+            
+            this.capaRuta = L.featureGroup().addTo(this.map);
+        }
+        
+        setTimeout(() => {
+            this.map.invalidateSize();
+        }, 350);
+    },
+
+    abrirDetalleMapa: function(id, hora, colorHex) {
+        const layout = document.getElementById('rt-layout');
+        if (layout) layout.classList.add('rt-open');
+        
+        const panelIzq = document.querySelector('.rt-panel-izq') || document.getElementById('rt-panel-izq');
+        const panelDer = document.querySelector('.rt-panel-der') || document.getElementById('rt-panel-der');
+        
+        if (panelIzq) {
+            panelIzq.style.width = '35%';
+            panelIzq.style.borderRight = '3px solid #cbd5e1';
+        }
+        if (panelDer) {
+            panelDer.style.width = '65%';
+            panelDer.style.opacity = '1';
+        }
+        
+        document.querySelectorAll('.rt-row-hover').forEach(el => el.classList.remove('rt-row-active'));
+        const filaActiva = document.getElementById(`rt-row-${id}`);
+        if (filaActiva) filaActiva.classList.add('rt-row-active');
+
+        const titulo = document.getElementById('rt-detalle-titulo');
+        const subtitulo = document.getElementById('rt-detalle-sub');
+        if (titulo) titulo.innerHTML = `<i class="fas fa-route" style="color:${colorHex}"></i> Carga N° ${id}`;
+        if (subtitulo) subtitulo.textContent = `${hora.includes('Inicia') ? 'Ruta Cronológica: ' + hora : 'Horario: ' + hora}`;
+
+        this.inicializarMapa();
+        this.capaRuta.clearLayers();
+        
+        const dataRuta = this.datosRutas.find(r => r.id === id);
+        if (!dataRuta) return;
+
+        const tarjetas = document.getElementById('rt-scroll-tarjetas');
+        if (tarjetas) tarjetas.innerHTML = '';
+        
+        let latlngs = [];
+
+        dataRuta.registros.forEach((item, index) => {
+            const numOrden = index + 1;
+            const dirCompleta = `${item.via} ${item.numero !== 'S/N' ? item.numero : ''}`.trim();
+            
+            const badgeHora = item.franja_horaria 
+                ? `<div style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; font-weight: 600;"><i class="fas fa-clock"></i> ${item.franja_horaria}</div>` 
+                : '';
+
+            if (tarjetas) {
+                tarjetas.innerHTML += `
+                    <div class="rt-card-hover" style="min-width: 220px; max-width: 250px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; flex-shrink: 0;" onclick="rtApp.centrarMapaEnPunto(${index})">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="font-weight: 800; font-size: 0.85rem; color: #1e293b;">${item.suministro}</span>
+                            <span style="background: ${colorHex}; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.7rem;">#${numOrden}</span>
+                        </div>
+                        <div style="font-size: 0.7rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px;" title="${dirCompleta}">
+                            <i class="fas fa-map-marker-alt"></i> ${dirCompleta || 'Sin dirección'}
+                        </div>
+                        <div style="font-size: 0.65rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            <i class="fas fa-city"></i> ${item.urbanizacion || item.distrito || 'Sin distrito'}
+                        </div>
+                        ${badgeHora}
+                    </div>
+                `;
+            }
+
+            try {
+                let puntoLatLng;
+                const coordX = parseFloat(item.coord_x);
+                const coordY = parseFloat(item.coord_y);
+
+                if (coordY < 0 && coordY > -20) {
+                    puntoLatLng = [coordY, coordX]; 
+                } else {
+                    const coordsConvertidas = proj4("EPSG:32717", "EPSG:4326", [coordX, coordY]);
+                    puntoLatLng = [coordsConvertidas[1], coordsConvertidas[0]];
+                }
+
+                if (puntoLatLng[0] > 0 || puntoLatLng[0] < -20 || puntoLatLng[1] > -65 || puntoLatLng[1] < -85) {
+                    return; 
+                }
+
+                latlngs.push(puntoLatLng);
+
+                const marcador = L.circleMarker(puntoLatLng, {
+                    radius: 9, fillColor: colorHex, color: "#ffffff", weight: 2, fillOpacity: 1
+                });
+
+                marcador.bindTooltip(`${numOrden}`, {
+                    permanent: true, direction: 'center', className: 'map-label-orden'
+                });
+
+                marcador.bindPopup(`
+                    <div style="text-align: center;">
+                        <b style="color: ${colorHex}; font-size: 1.1rem;">Orden #${numOrden}</b><br>
+                        <strong>SUM: ${item.suministro}</strong><br>
+                        <span style="color: #64748b; display: block; margin-bottom: 5px;">${dirCompleta}</span>
+                        ${item.franja_horaria ? `<b><i class="fas fa-clock"></i> ${item.franja_horaria}</b>` : ''}
+                    </div>
+                `);
+                
+                this.capaRuta.addLayer(marcador);
+            } catch(e) {}
+        });
+
+        if (latlngs.length > 1) {
+            L.polyline(latlngs, {color: colorHex, weight: 3, opacity: 0.7, dashArray: '8, 8'}).addTo(this.capaRuta);
+            this.map.fitBounds(this.capaRuta.getBounds(), {padding: [50, 50]});
+        } else if (latlngs.length === 1) {
+            this.map.setView(latlngs[0], 17);
+        }
+    },
+
+    centrarMapaEnPunto: function(index) {
+        if (!this.capaRuta || !this.map) return;
+        const capas = this.capaRuta.getLayers();
+        const marcadores = capas.filter(c => c instanceof L.CircleMarker);
+        
+        if (marcadores[index]) {
+            const latLng = marcadores[index].getLatLng();
+            this.map.setView(latLng, 18, {animate: true, duration: 0.5});
+            marcadores[index].openPopup();
+        }
+    }
+};
