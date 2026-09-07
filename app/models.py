@@ -745,5 +745,21 @@ class CargaDiaria(db.Model):
     empleado = db.relationship('Empleado', backref=db.backref('cargas_diarias', lazy=True))
 
 
+class CoordenadasCatastro(db.Model):
+    __tablename__ = 'coordenadas_catastro'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    localidad = db.Column(db.String(100))
+    urbaniza = db.Column(db.String(100))
+    calle = db.Column(db.String(150))
+    clicodfac = db.Column(db.String(50), index=True) # Indexado para búsquedas rápidas
+    nombre = db.Column(db.String(150))
+    nromuni = db.Column(db.String(20))
+    medidor = db.Column(db.String(50))
+    ciclo = db.Column(db.Integer)
+    coord_x = db.Column(db.Numeric(20, 8))
+    coord_y = db.Column(db.Numeric(20, 8))
+
+
 
 
