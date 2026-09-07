@@ -516,6 +516,735 @@ h2 {
     to { transform: translateY(-30px); opacity: 0; }
 }
 
+.smart-btn-volver {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+.smart-btn-volver:hover {
+    background-color: #e2e8f0;
+    color: #0f172a;
+}
+
+/* =========================================
+   NUEVOS ESTILOS: SMART ATTENDANCE MODULE 
+   ========================================= */
+#smart-attn-section {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #f8fafc;
+    padding: 24px;
+    border-radius: 12px;
+}
+
+.smart-attn-header {
+    margin-bottom: 24px;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 16px;
+}
+
+.smart-attn-title {
+    margin: 0;
+    color: #1e293b;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.smart-attn-subtitle {
+    margin: 4px 0 0 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.smart-attn-controls {
+    display: flex;
+    gap: 20px;
+    background: #ffffff;
+    padding: 16px 24px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 24px;
+}
+
+.smart-attn-control-group {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.smart-attn-control-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+
+.smart-attn-control-group select,
+.smart-attn-control-group input {
+    padding: 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.smart-attn-control-group select:focus,
+.smart-attn-control-group input:focus {
+    border-color: #3b82f6;
+}
+
+/* Heatmap Grid */
+.smart-attn-heatmap-container {
+    background: #ffffff;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 24px;
+}
+
+.smart-attn-heatmap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.smart-attn-heatmap-header h3 {
+    margin: 0;
+    color: #0f172a;
+}
+
+.smart-attn-badge {
+    background: #e2e8f0;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    color: #475569;
+    margin-left: 8px;
+}
+
+.smart-attn-leyenda-cal {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: #64748b;
+    align-items: center;
+}
+
+.smart-cal-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    display: inline-block;
+}
+.dot-completo { background: #10b981; } /* Verde */
+.dot-parcial { background: #f59e0b; } /* Naranja */
+.dot-vacio { background: #f1f5f9; border: 1px solid #cbd5e1; } /* Gris */
+
+/* El Calendario en sí */
+.smart-attn-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+}
+
+.smart-attn-day {
+    aspect-ratio: 1;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 16px;
+    transition: transform 0.1s, box-shadow 0.1s;
+    user-select: none;
+}
+
+.smart-attn-day:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.smart-attn-day-name {
+    font-size: 10px;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+/* Estados del bloque del calendario */
+.status-completo { background: #10b981; color: white; border: 1px solid #059669; }
+.status-parcial { background: #f59e0b; color: white; border: 1px solid #d97706; }
+.status-vacio { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+.status-domingo { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+
+/* =========================================
+   ESTILOS GENERALES Y MODALES
+   ========================================= */
+.smart-section {
+    display: none;
+    animation: fadeIn 0.3s ease-in-out;
+}
+.smart-section.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.smart-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.smart-header-titles h2 {
+    font-size: 20px;
+    color: #0f172a;
+    margin: 0 0 10px 0;
+}
+
+.smart-header-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.smart-btn-leyenda {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.smart-btn-leyenda:hover { background: #e2e8f0; color: #0f172a; }
+
+.smart-btn-guardar-principal {
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
+    transition: background 0.2s, transform 0.1s;
+}
+.smart-btn-guardar-principal:hover { background: #059669; transform: translateY(-1px); }
+
+/* Empujar el botón de guardar hacia el extremo derecho */
+.smart-add-employee-bar .smart-btn-guardar-principal {
+    margin-left: auto;
+}
+
+/* =========================================
+   DISEÑO DE TABLA ESTILO "CLEAR"
+   ========================================= */
+.smart-table-scroll-container {
+    max-height: 55vh;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.smart-table-scroll-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.smart-table-scroll-container::-webkit-scrollbar-track {
+    background: #f8fafc;
+    border-radius: 0 8px 8px 0;
+}
+.smart-table-scroll-container::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 10px;
+    border: 2px solid #f8fafc;
+}
+.smart-table-scroll-container::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8;
+}
+
+table.smart-table-modern {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+    color: #475569;
+}
+
+/* Cabecera clara y minimalista */
+table.smart-table-modern th {
+    position: sticky;
+    top: 0;
+    background: #f8fafc; 
+    color: #64748b; 
+    padding: 16px 20px;
+    font-weight: 600;
+    z-index: 10;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+table.smart-table-modern td {
+    padding: 14px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+table.smart-table-modern tbody tr:hover { 
+    background-color: #f8fafc; 
+}
+
+/* Textos e Inputs dentro de la tabla */
+.smart-name-text {
+    color: #0369a1; 
+    font-weight: 600;
+}
+
+.smart-input-clean {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #475569;
+    font-size: 13px;
+    outline: none;
+    transition: all 0.2s;
+    background: #ffffff;
+    width: 100%;
+}
+.smart-input-clean:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+.smart-input-clean:disabled {
+    background: #f1f5f9;
+    color: #94a3b8;
+}
+
+/* Botón basurero */
+.smart-action-btn-outline {
+    background: transparent;
+    border: 1px solid #e2e8f0;
+    color: #94a3b8;
+    padding: 8px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+.smart-action-btn-outline:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+    background: #fef2f2;
+}
+
+/* =========================================
+   BARRA PARA AGREGAR EMPLEADOS (INFERIOR)
+   ========================================= */
+.smart-add-employee-bar {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background: #f8fafc;
+    padding: 15px 20px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    margin-top: 15px;
+}
+
+.smart-add-employee-bar label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    margin: 0; /* Aseguramos que no haya márgenes extraños */
+}
+
+.smart-add-employee-inputs {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* Fijamos el ancho de la caja del buscador */
+.smart-search-wrapper {
+    width: 200px; 
+}
+
+.smart-btn-icon-add {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    flex-shrink: 0; /* Evita que el botón se aplaste si falta espacio */
+}
+.smart-btn-icon-add:hover { background: #2563eb; }
+
+/* =========================================
+   CORRECCIONES PARA EL BUSCADOR CHOICES.JS
+   ========================================= */
+
+/* Ajustar la altura para que encaje con tu botón de 36px */
+.smart-search-wrapper .choices {
+    margin-bottom: 0 !important;
+    width: 100%;
+}
+
+.smart-search-wrapper .choices__inner {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    padding: 0 10px !important; /* El 0 inicial evita que el alto crezca */
+    height: 36px !important;
+    min-height: 36px !important;
+    max-height: 36px !important; /* Congela la altura */
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+}
+
+/* Eliminar el texto "Press to select" */
+.choices[data-type*="select-one"] .choices__item--selectable::after {
+    display: none !important;
+}
+
+/* Evitar que los nombres largos creen 2 o 3 líneas */
+.choices__list--dropdown .choices__item {
+    font-size: 13px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Color corporativo al seleccionar opciones */
+.choices__list--dropdown .choices__item--selectable.is-highlighted {
+    background-color: #eff6ff !important;
+    color: #1d4ed8 !important;
+}
+
+/* =========================================
+   MODALES DE LEYENDAS
+   ========================================= */
+.smart-modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    /* Fondo negro con 45% de opacidad para igualar la segunda imagen */
+    background: rgba(0, 0, 0, 0.45); 
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    /* Se eliminó el backdrop-filter: blur() para mantener la nitidez del fondo */
+}
+
+.smart-modal-overlay.active { 
+    display: flex; 
+    animation: fadeInModal 0.2s ease-out; 
+}
+
+.smart-modal-content {
+    background: #ffffff;
+    padding: 30px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 800px;
+    position: relative;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.smart-modal-close {
+    position: absolute;
+    top: 15px; right: 15px;
+    background: transparent; border: none;
+    font-size: 20px; color: #94a3b8; cursor: pointer;
+}
+.smart-modal-close:hover { color: #ef4444; }
+
+.smart-legends-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+.smart-legend-box {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 15px;
+}
+.smart-legend-box table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.smart-legend-box th { background: #f8fafc; padding: 8px; border-bottom: 2px solid #cbd5e1; text-align: left; color: #475569; }
+.smart-legend-box td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+
+@keyframes fadeInModal { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+
+
+/* =========================================
+   FORZAR ESTILOS PREMIUM EN LA TABLA (ANTI-OVERRIDE)
+   ========================================= */
+
+/* Espaciado generoso para que no se vea apretado */
+table.smart-table-modern tbody td {
+    padding: 16px 20px !important;
+    vertical-align: middle !important;
+    color: #475569 !important;
+    font-size: 13px !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+}
+
+/* Inputs y Selects: Estilo Burbuja Moderna */
+table.smart-table-modern input, 
+table.smart-table-modern select {
+    border: 1px solid transparent !important; /* Sin borde por defecto */
+    background-color: #f1f5f9 !important; /* Fondo gris muy sutil */
+    border-radius: 6px !important;
+    padding: 10px 12px !important;
+    color: #1e293b !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    transition: all 0.2s ease !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    height: 38px !important; /* Altura uniforme */
+}
+
+/* Quitar la flecha fea por defecto de los Selects y poner una premium */
+table.smart-table-modern select {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 10px center !important;
+    background-size: 14px !important;
+    padding-right: 30px !important;
+}
+
+/* Efectos al pasar el ratón o hacer clic */
+table.smart-table-modern input:hover, 
+table.smart-table-modern select:hover {
+    background-color: #e2e8f0 !important;
+}
+
+table.smart-table-modern input:focus, 
+table.smart-table-modern select:focus {
+    background-color: #ffffff !important;
+    border: 1px solid #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+}
+
+/* Cuando un campo está deshabilitado */
+table.smart-table-modern input:disabled {
+    background-color: #f8fafc !important;
+    color: #cbd5e1 !important;
+    cursor: not-allowed !important;
+}
+
+/* Contenedor fusionado elegante para PASAJES (Monto + Select juntos) */
+.ui-merged-group {
+    display: flex !important;
+    background: #f1f5f9 !important;
+    border-radius: 6px !important;
+    overflow: hidden !important;
+    border: 1px solid transparent !important;
+    transition: all 0.2s ease !important;
+}
+.ui-merged-group:focus-within {
+    background: #ffffff !important;
+    border: 1px solid #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+}
+.ui-merged-group input, .ui-merged-group select {
+    background-color: transparent !important; /* Heredan el fondo del grupo */
+    border: none !important;
+    border-radius: 0 !important;
+    height: 36px !important;
+}
+.ui-merged-group input:hover, .ui-merged-group select:hover,
+.ui-merged-group input:focus, .ui-merged-group select:focus {
+    background-color: transparent !important; /* Evita que se pongan blancos al hover */
+    box-shadow: none !important;
+    border: none !important;
+}
+.ui-merged-group input { border-right: 2px solid #ffffff !important; }
+
+/* Botón Basurero Minimalista */
+.ui-btn-delete-icon {
+    background: #fee2e2 !important;
+    border: none !important;
+    color: #ef4444 !important;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+.ui-btn-delete-icon:hover {
+    background: #ef4444 !important;
+    color: #ffffff !important;
+}
+
+/* =========================================
+   DISEÑO PREMIUM PARA MENÚS DESPLEGABLES (OPTIONS)
+   ========================================= */
+
+/* Eliminar el borde azul nativo brillante al hacer clic */
+table.smart-table-modern select:focus,
+table.smart-table-modern select:focus-visible {
+    outline: none !important;
+    border: 1px solid #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+}
+
+/* Estilizar la lista de opciones que se despliega */
+table.smart-table-modern select option {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+    font-family: inherit !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    padding: 10px 12px !important; 
+    cursor: pointer !important;
+}
+
+/* Forzar el color de la opción resaltada/seleccionada */
+table.smart-table-modern select option:checked,
+table.smart-table-modern select option:hover {
+    background: linear-gradient(#eff6ff, #eff6ff) !important; /* Hack para Chrome */
+    background-color: #eff6ff !important;
+    color: #1d4ed8 !important;
+}
+
+/* Color especial para días feriados en el calendario */
+.smart-attn-day.status-feriado {
+    background-color: #fff7ed !important;
+    border: 1px solid #fdba74 !important;
+    color: #c2410c !important;
+}
+.smart-attn-day.status-feriado span {
+    color: #c2410c !important;
+}
+
+/* =========================================
+   DISEÑO PREMIUM PARA EL BUSCADOR DE PERSONAL (CHOICES.JS)
+   ========================================= */
+
+/* 1. Darle más ancho al contenedor para que entren los nombres largos */
+.smart-add-employee-inputs > div {
+    width: 450px !important; 
+}
+
+/* 2. Estilizar la caja principal del input */
+.choices {
+    margin-bottom: 0 !important;
+    width: 100%;
+}
+
+.choices__inner {
+    background-color: #f1f5f9 !important;
+    border: 1px solid transparent !important;
+    border-radius: 6px !important;
+    padding: 6px 14px !important;
+    min-height: 38px !important;
+    display: flex;
+    align-items: center;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    transition: all 0.2s ease !important;
+}
+
+/* Efecto focus al hacer clic en el buscador */
+.choices[data-type*="select-one"].is-open .choices__inner {
+    background-color: #ffffff !important;
+    border: 1px solid #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+    border-radius: 6px !important;
+}
+
+/* 3. Estilizar la lista que se despliega hacia abajo */
+.choices__list--dropdown {
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+    margin-top: 4px !important;
+    padding: 4px !important;
+    z-index: 9999 !important; /* Asegurar que flote sobre todo */
+}
+
+/* 4. ARREGLAR LOS NOMBRES: Evitar que se rompan en 3 líneas */
+.choices__list--dropdown .choices__item {
+    font-size: 13px !important;
+    padding: 10px 14px !important;
+    border-radius: 4px !important;
+    white-space: nowrap !important; /* Obliga al texto a estar en una sola línea */
+    overflow: hidden !important;    /* Oculta lo que no entre */
+    text-overflow: ellipsis !important; /* Pone "..." si el nombre es demasiado largo */
+}
+
+/* 5. ELIMINAR el molesto texto "Press to select" */
+.choices[data-type*="select-one"] .choices__item--selectable::after {
+    display: none !important;
+}
+
+/* 6. Color azul corporativo al pasar el ratón por los nombres */
+.choices__list--dropdown .choices__item--selectable.is-highlighted {
+    background-color: #eff6ff !important;
+    color: #1d4ed8 !important;
+    font-weight: 600 !important;
+}
+
+/* Ocultar scrollbar fea en Webkit (opcional, para más limpieza) */
+.choices__list--dropdown .choices__list::-webkit-scrollbar {
+    width: 6px;
+}
+.choices__list--dropdown .choices__list::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+
+
+
 
 /* RECAUDACIÓN */
 
@@ -865,95 +1594,7 @@ h2 {
     height: 45px;
 }
 
-/* Ajustes para el selector */
-#nuevo-empleado-selector {
-    width: 150px; /* Ajusta el ancho del selector */
-    height: 35px; /* Asegura que la altura coincida con los otros elementos */
-    padding: 5px; /* Espaciado interno */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 10px !important;
-}
 
-#fila-agregar-empleado {
-    background-color: #ffffff; /* Cambiar el fondo a blanco */
-    height: 10px;
-}
-
-#empleado-a-anadir-label {
-    color: #000000; /* Cambiar el color del texto a negro */
-    font-weight: bold; /* Poner el texto en negrita */
-}
-
-/* Estilo para el contenedor del botón */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 2px;
-}
-
-/* Estilo personalizado para el botón "Añadir Empleado" */
-#agregar-empleado-btn {
-    height: 35px; /* Altura igual al selector */
-    padding: 5px 10px; /* Espaciado interno */
-    background-color: #4CAF50; /* Fondo verde */
-    color: white; /* Texto blanco */
-    border: none; /* Sin borde */
-    border-radius: 5px; /* Bordes redondeados */
-    cursor: pointer; /* Cambiar el cursor a mano */
-    font-size: 10px;
-}
-
-#agregar-empleado-btn:hover {
-    background-color: #45a049; /* Efecto hover para el botón */
-}
-
-/* Estilo para el contenedor de Choices.js */
-.choices {
-    width: 50%; /* Ocupa todo el ancho del contenedor padre */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 10px !important; /* Tamaño de fuente pequeño */
-    height: 35px; /* Altura del contenedor pequeño */
-}
-
-/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
-.choices__input {
-    height: 35px; /* Ajustar la altura del input */
-    padding: 5px; /* Espaciado interno */
-    font-size: 10px !important; /* Tamaño de la fuente */
-}
-
-/* Estilo para las opciones de Choices.js */
-.choices__list--dropdown .choices__item {
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    padding: 5px 10px; /* Espaciado de las opciones */
-    font-size: 10px !important; /* Tamaño de fuente pequeño */
-}
-
-/* Estilo para la opción seleccionada */
-.choices__list--dropdown .choices__item--selectable.is-selected {
-    background-color: #184875; /* Fondo azul para la opción seleccionada */
-    color: white; /* Texto blanco */
-}
-
-/* Estilo al hacer hover sobre una opción */
-.choices__list--dropdown .choices__item--selectable:hover {
-    background-color: #184875; /* Fondo azul oscuro al hacer hover */
-    color: white; /* Texto blanco al hacer hover */
-}
-
-/* Estilo cuando la lista está abierta */
-.choices__list--dropdown {
-    max-height: 200px; /* Limitar la altura de la lista de opciones */
-    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
-}
 
 
 /* LECTURAS*/
@@ -1224,94 +1865,6 @@ h2 {
     height: 45px;
 }
 
-/* Ajustes para el selector */
-#nuevo-empleado-selector {
-    width: 150px; /* Ajusta el ancho del selector */
-    height: 35px; /* Asegura que la altura coincida con los otros elementos */
-    padding: 5px; /* Espaciado interno */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-}
-
-#fila-agregar-empleado-lectura {
-    background-color: #ffffff; /* Cambiar el fondo a blanco */
-    height: 10px;
-}
-
-#empleado-a-anadir-label {
-    color: #000000; /* Cambiar el color del texto a negro */
-    font-weight: bold; /* Poner el texto en negrita */
-}
-
-/* Estilo para el contenedor del botón */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 2px;
-}
-
-/* Estilo personalizado para el botón "Añadir Empleado" */
-#agregar-empleado-btn-lectura {
-    height: 35px; /* Altura igual al selector */
-    padding: 5px 10px; /* Espaciado interno */
-    background-color: #4CAF50; /* Fondo verde */
-    color: white; /* Texto blanco */
-    border: none; /* Sin borde */
-    border-radius: 5px; /* Bordes redondeados */
-    cursor: pointer; /* Cambiar el cursor a mano */
-    font-size: 20px;
-}
-
-#agregar-empleado-btn-lectura:hover {
-    background-color: #45a049; /* Efecto hover para el botón */
-}
-
-/* Estilo para el contenedor de Choices.js */
-.choices {
-    width: 50%; /* Ocupa todo el ancho del contenedor padre */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-    height: 35px; /* Altura del contenedor pequeño */
-}
-
-/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
-.choices__input {
-    height: 35px; /* Ajustar la altura del input */
-    padding: 5px; /* Espaciado interno */
-    font-size: 12px; /* Tamaño de la fuente */
-}
-
-/* Estilo para las opciones de Choices.js */
-.choices__list--dropdown .choices__item {
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    padding: 5px 10px; /* Espaciado de las opciones */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-}
-
-/* Estilo para la opción seleccionada */
-.choices__list--dropdown .choices__item--selectable.is-selected {
-    background-color: #184875; /* Fondo azul para la opción seleccionada */
-    color: white; /* Texto blanco */
-}
-
-/* Estilo al hacer hover sobre una opción */
-.choices__list--dropdown .choices__item--selectable:hover {
-    background-color: #184875; /* Fondo azul oscuro al hacer hover */
-    color: white; /* Texto blanco al hacer hover */
-}
-
-/* Estilo cuando la lista está abierta */
-.choices__list--dropdown {
-    max-height: 200px; /* Limitar la altura de la lista de opciones */
-    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
-}
 
 
 /* DISTRIBUCIÓN*/
@@ -1582,94 +2135,7 @@ h2 {
     height: 45px;
 }
 
-/* Ajustes para el selector */
-#nuevo-empleado-selector {
-    width: 150px; /* Ajusta el ancho del selector */
-    height: 35px; /* Asegura que la altura coincida con los otros elementos */
-    padding: 5px; /* Espaciado interno */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-}
 
-#fila-agregar-empleado-distribucion {
-    background-color: #ffffff; /* Cambiar el fondo a blanco */
-    height: 10px;
-}
-
-#empleado-a-anadir-label {
-    color: #000000; /* Cambiar el color del texto a negro */
-    font-weight: bold; /* Poner el texto en negrita */
-}
-
-/* Estilo para el contenedor del botón */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 2px;
-}
-
-/* Estilo personalizado para el botón "Añadir Empleado" */
-#agregar-empleado-btn-distribucion {
-    height: 35px; /* Altura igual al selector */
-    padding: 5px 10px; /* Espaciado interno */
-    background-color: #4CAF50; /* Fondo verde */
-    color: white; /* Texto blanco */
-    border: none; /* Sin borde */
-    border-radius: 5px; /* Bordes redondeados */
-    cursor: pointer; /* Cambiar el cursor a mano */
-    font-size: 20px;
-}
-
-#agregar-empleado-btn-distribucion:hover {
-    background-color: #45a049; /* Efecto hover para el botón */
-}
-
-/* Estilo para el contenedor de Choices.js */
-.choices {
-    width: 50%; /* Ocupa todo el ancho del contenedor padre */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-    height: 35px; /* Altura del contenedor pequeño */
-}
-
-/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
-.choices__input {
-    height: 35px; /* Ajustar la altura del input */
-    padding: 5px; /* Espaciado interno */
-    font-size: 12px; /* Tamaño de la fuente */
-}
-
-/* Estilo para las opciones de Choices.js */
-.choices__list--dropdown .choices__item {
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    padding: 5px 10px; /* Espaciado de las opciones */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-}
-
-/* Estilo para la opción seleccionada */
-.choices__list--dropdown .choices__item--selectable.is-selected {
-    background-color: #184875; /* Fondo azul para la opción seleccionada */
-    color: white; /* Texto blanco */
-}
-
-/* Estilo al hacer hover sobre una opción */
-.choices__list--dropdown .choices__item--selectable:hover {
-    background-color: #184875; /* Fondo azul oscuro al hacer hover */
-    color: white; /* Texto blanco al hacer hover */
-}
-
-/* Estilo cuando la lista está abierta */
-.choices__list--dropdown {
-    max-height: 200px; /* Limitar la altura de la lista de opciones */
-    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
-}
 
 
 /* CATASTRO*/
@@ -1940,94 +2406,6 @@ h2 {
     height: 45px;
 }
 
-/* Ajustes para el selector */
-#nuevo-empleado-selector {
-    width: 150px; /* Ajusta el ancho del selector */
-    height: 35px; /* Asegura que la altura coincida con los otros elementos */
-    padding: 5px; /* Espaciado interno */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-}
-
-#fila-agregar-empleado-catastro {
-    background-color: #ffffff; /* Cambiar el fondo a blanco */
-    height: 10px;
-}
-
-#empleado-a-anadir-label {
-    color: #000000; /* Cambiar el color del texto a negro */
-    font-weight: bold; /* Poner el texto en negrita */
-}
-
-/* Estilo para el contenedor del botón */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 2px;
-}
-
-/* Estilo personalizado para el botón "Añadir Empleado" */
-#agregar-empleado-btn-catastro {
-    height: 35px; /* Altura igual al selector */
-    padding: 5px 10px; /* Espaciado interno */
-    background-color: #4CAF50; /* Fondo verde */
-    color: white; /* Texto blanco */
-    border: none; /* Sin borde */
-    border-radius: 5px; /* Bordes redondeados */
-    cursor: pointer; /* Cambiar el cursor a mano */
-    font-size: 20px;
-}
-
-#agregar-empleado-btn-catastro:hover {
-    background-color: #45a049; /* Efecto hover para el botón */
-}
-
-/* Estilo para el contenedor de Choices.js */
-.choices {
-    width: 50%; /* Ocupa todo el ancho del contenedor padre */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-    height: 35px; /* Altura del contenedor pequeño */
-}
-
-/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
-.choices__input {
-    height: 35px; /* Ajustar la altura del input */
-    padding: 5px; /* Espaciado interno */
-    font-size: 12px; /* Tamaño de la fuente */
-}
-
-/* Estilo para las opciones de Choices.js */
-.choices__list--dropdown .choices__item {
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    padding: 5px 10px; /* Espaciado de las opciones */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-}
-
-/* Estilo para la opción seleccionada */
-.choices__list--dropdown .choices__item--selectable.is-selected {
-    background-color: #184875; /* Fondo azul para la opción seleccionada */
-    color: white; /* Texto blanco */
-}
-
-/* Estilo al hacer hover sobre una opción */
-.choices__list--dropdown .choices__item--selectable:hover {
-    background-color: #184875; /* Fondo azul oscuro al hacer hover */
-    color: white; /* Texto blanco al hacer hover */
-}
-
-/* Estilo cuando la lista está abierta */
-.choices__list--dropdown {
-    max-height: 200px; /* Limitar la altura de la lista de opciones */
-    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
-}
 
 
 /* INSPECCIONES*/
@@ -2298,94 +2676,7 @@ h2 {
     height: 45px;
 }
 
-/* Ajustes para el selector */
-#nuevo-empleado-selector {
-    width: 150px; /* Ajusta el ancho del selector */
-    height: 35px; /* Asegura que la altura coincida con los otros elementos */
-    padding: 5px; /* Espaciado interno */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-}
 
-#fila-agregar-empleado-inspecciones {
-    background-color: #ffffff; /* Cambiar el fondo a blanco */
-    height: 10px;
-}
-
-#empleado-a-anadir-label {
-    color: #000000; /* Cambiar el color del texto a negro */
-    font-weight: bold; /* Poner el texto en negrita */
-}
-
-/* Estilo para el contenedor del botón */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 2px;
-}
-
-/* Estilo personalizado para el botón "Añadir Empleado" */
-#agregar-empleado-btn-inspecciones {
-    height: 35px; /* Altura igual al selector */
-    padding: 5px 10px; /* Espaciado interno */
-    background-color: #4CAF50; /* Fondo verde */
-    color: white; /* Texto blanco */
-    border: none; /* Sin borde */
-    border-radius: 5px; /* Bordes redondeados */
-    cursor: pointer; /* Cambiar el cursor a mano */
-    font-size: 20px;
-}
-
-#agregar-empleado-btn-inspecciones:hover {
-    background-color: #45a049; /* Efecto hover para el botón */
-}
-
-/* Estilo para el contenedor de Choices.js */
-.choices {
-    width: 50%; /* Ocupa todo el ancho del contenedor padre */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-    height: 35px; /* Altura del contenedor pequeño */
-}
-
-/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
-.choices__input {
-    height: 35px; /* Ajustar la altura del input */
-    padding: 5px; /* Espaciado interno */
-    font-size: 12px; /* Tamaño de la fuente */
-}
-
-/* Estilo para las opciones de Choices.js */
-.choices__list--dropdown .choices__item {
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    padding: 5px 10px; /* Espaciado de las opciones */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-}
-
-/* Estilo para la opción seleccionada */
-.choices__list--dropdown .choices__item--selectable.is-selected {
-    background-color: #184875; /* Fondo azul para la opción seleccionada */
-    color: white; /* Texto blanco */
-}
-
-/* Estilo al hacer hover sobre una opción */
-.choices__list--dropdown .choices__item--selectable:hover {
-    background-color: #184875; /* Fondo azul oscuro al hacer hover */
-    color: white; /* Texto blanco al hacer hover */
-}
-
-/* Estilo cuando la lista está abierta */
-.choices__list--dropdown {
-    max-height: 200px; /* Limitar la altura de la lista de opciones */
-    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
-}
 
 
 /* MEDIDORES*/
@@ -2656,94 +2947,7 @@ h2 {
     height: 45px;
 }
 
-/* Ajustes para el selector */
-#nuevo-empleado-selector {
-    width: 150px; /* Ajusta el ancho del selector */
-    height: 35px; /* Asegura que la altura coincida con los otros elementos */
-    padding: 5px; /* Espaciado interno */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-}
 
-#fila-agregar-empleado-medidores {
-    background-color: #ffffff; /* Cambiar el fondo a blanco */
-    height: 10px;
-}
-
-#empleado-a-anadir-label {
-    color: #000000; /* Cambiar el color del texto a negro */
-    font-weight: bold; /* Poner el texto en negrita */
-}
-
-/* Estilo para el contenedor del botón */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 2px;
-}
-
-/* Estilo personalizado para el botón "Añadir Empleado" */
-#agregar-empleado-btn-medidores {
-    height: 35px; /* Altura igual al selector */
-    padding: 5px 10px; /* Espaciado interno */
-    background-color: #4CAF50; /* Fondo verde */
-    color: white; /* Texto blanco */
-    border: none; /* Sin borde */
-    border-radius: 5px; /* Bordes redondeados */
-    cursor: pointer; /* Cambiar el cursor a mano */
-    font-size: 20px;
-}
-
-#agregar-empleado-btn-medidores:hover {
-    background-color: #45a049; /* Efecto hover para el botón */
-}
-
-/* Estilo para el contenedor de Choices.js */
-.choices {
-    width: 50%; /* Ocupa todo el ancho del contenedor padre */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-    height: 35px; /* Altura del contenedor pequeño */
-}
-
-/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
-.choices__input {
-    height: 35px; /* Ajustar la altura del input */
-    padding: 5px; /* Espaciado interno */
-    font-size: 12px; /* Tamaño de la fuente */
-}
-
-/* Estilo para las opciones de Choices.js */
-.choices__list--dropdown .choices__item {
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    padding: 5px 10px; /* Espaciado de las opciones */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-}
-
-/* Estilo para la opción seleccionada */
-.choices__list--dropdown .choices__item--selectable.is-selected {
-    background-color: #184875; /* Fondo azul para la opción seleccionada */
-    color: white; /* Texto blanco */
-}
-
-/* Estilo al hacer hover sobre una opción */
-.choices__list--dropdown .choices__item--selectable:hover {
-    background-color: #184875; /* Fondo azul oscuro al hacer hover */
-    color: white; /* Texto blanco al hacer hover */
-}
-
-/* Estilo cuando la lista está abierta */
-.choices__list--dropdown {
-    max-height: 200px; /* Limitar la altura de la lista de opciones */
-    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
-}
 
 
 /* PERSUASIVAS*/
@@ -3014,94 +3218,7 @@ h2 {
     height: 45px;
 }
 
-/* Ajustes para el selector */
-#nuevo-empleado-selector {
-    width: 150px; /* Ajusta el ancho del selector */
-    height: 35px; /* Asegura que la altura coincida con los otros elementos */
-    padding: 5px; /* Espaciado interno */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-}
 
-#fila-agregar-empleado-persuasivas {
-    background-color: #ffffff; /* Cambiar el fondo a blanco */
-    height: 10px;
-}
-
-#empleado-a-anadir-label {
-    color: #000000; /* Cambiar el color del texto a negro */
-    font-weight: bold; /* Poner el texto en negrita */
-}
-
-/* Estilo para el contenedor del botón */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 2px;
-}
-
-/* Estilo personalizado para el botón "Añadir Empleado" */
-#agregar-empleado-btn-persuasivas {
-    height: 35px; /* Altura igual al selector */
-    padding: 5px 10px; /* Espaciado interno */
-    background-color: #4CAF50; /* Fondo verde */
-    color: white; /* Texto blanco */
-    border: none; /* Sin borde */
-    border-radius: 5px; /* Bordes redondeados */
-    cursor: pointer; /* Cambiar el cursor a mano */
-    font-size: 20px;
-}
-
-#agregar-empleado-btn-persuasivas:hover {
-    background-color: #45a049; /* Efecto hover para el botón */
-}
-
-/* Estilo para el contenedor de Choices.js */
-.choices {
-    width: 50%; /* Ocupa todo el ancho del contenedor padre */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-    height: 35px; /* Altura del contenedor pequeño */
-}
-
-/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
-.choices__input {
-    height: 35px; /* Ajustar la altura del input */
-    padding: 5px; /* Espaciado interno */
-    font-size: 12px; /* Tamaño de la fuente */
-}
-
-/* Estilo para las opciones de Choices.js */
-.choices__list--dropdown .choices__item {
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    padding: 5px 10px; /* Espaciado de las opciones */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-}
-
-/* Estilo para la opción seleccionada */
-.choices__list--dropdown .choices__item--selectable.is-selected {
-    background-color: #184875; /* Fondo azul para la opción seleccionada */
-    color: white; /* Texto blanco */
-}
-
-/* Estilo al hacer hover sobre una opción */
-.choices__list--dropdown .choices__item--selectable:hover {
-    background-color: #184875; /* Fondo azul oscuro al hacer hover */
-    color: white; /* Texto blanco al hacer hover */
-}
-
-/* Estilo cuando la lista está abierta */
-.choices__list--dropdown {
-    max-height: 200px; /* Limitar la altura de la lista de opciones */
-    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
-}
 
 /* ADMINISTRITVO ASISTENCIAS*/
 .input-container {
@@ -3371,94 +3488,7 @@ h2 {
     height: 45px;
 }
 
-/* Ajustes para el selector */
-#nuevo-empleado-selector {
-    width: 150px; /* Ajusta el ancho del selector */
-    height: 35px; /* Asegura que la altura coincida con los otros elementos */
-    padding: 5px; /* Espaciado interno */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-}
 
-#fila-agregar-empleado-administrativo_1 {
-    background-color: #ffffff; /* Cambiar el fondo a blanco */
-    height: 10px;
-}
-
-#empleado-a-anadir-label {
-    color: #000000; /* Cambiar el color del texto a negro */
-    font-weight: bold; /* Poner el texto en negrita */
-}
-
-/* Estilo para el contenedor del botón */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 2px;
-}
-
-/* Estilo personalizado para el botón "Añadir Empleado" */
-#agregar-empleado-btn-administrativo_1 {
-    height: 35px; /* Altura igual al selector */
-    padding: 5px 10px; /* Espaciado interno */
-    background-color: #4CAF50; /* Fondo verde */
-    color: white; /* Texto blanco */
-    border: none; /* Sin borde */
-    border-radius: 5px; /* Bordes redondeados */
-    cursor: pointer; /* Cambiar el cursor a mano */
-    font-size: 20px;
-}
-
-#agregar-empleado-btn-administrativo_1:hover {
-    background-color: #45a049; /* Efecto hover para el botón */
-}
-
-/* Estilo para el contenedor de Choices.js */
-.choices {
-    width: 50%; /* Ocupa todo el ancho del contenedor padre */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-    height: 35px; /* Altura del contenedor pequeño */
-}
-
-/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
-.choices__input {
-    height: 35px; /* Ajustar la altura del input */
-    padding: 5px; /* Espaciado interno */
-    font-size: 12px; /* Tamaño de la fuente */
-}
-
-/* Estilo para las opciones de Choices.js */
-.choices__list--dropdown .choices__item {
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    padding: 5px 10px; /* Espaciado de las opciones */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-}
-
-/* Estilo para la opción seleccionada */
-.choices__list--dropdown .choices__item--selectable.is-selected {
-    background-color: #184875; /* Fondo azul para la opción seleccionada */
-    color: white; /* Texto blanco */
-}
-
-/* Estilo al hacer hover sobre una opción */
-.choices__list--dropdown .choices__item--selectable:hover {
-    background-color: #184875; /* Fondo azul oscuro al hacer hover */
-    color: white; /* Texto blanco al hacer hover */
-}
-
-/* Estilo cuando la lista está abierta */
-.choices__list--dropdown {
-    max-height: 200px; /* Limitar la altura de la lista de opciones */
-    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
-}
 
 /* Estilos minimalistas para las cabeceras ordenables */
 .th-sortable {
@@ -4057,94 +4087,7 @@ h2 {
     height: 45px;
 }
 
-/* Ajustes para el selector */
-#nuevo-empleado-selector {
-    width: 150px; /* Ajusta el ancho del selector */
-    height: 35px; /* Asegura que la altura coincida con los otros elementos */
-    padding: 5px; /* Espaciado interno */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-}
 
-#fila-agregar-empleado-norte {
-    background-color: #ffffff; /* Cambiar el fondo a blanco */
-    height: 10px;
-}
-
-#empleado-a-anadir-label {
-    color: #000000; /* Cambiar el color del texto a negro */
-    font-weight: bold; /* Poner el texto en negrita */
-}
-
-/* Estilo para el contenedor del botón */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 2px;
-}
-
-/* Estilo personalizado para el botón "Añadir Empleado" */
-#agregar-empleado-btn-norte {
-    height: 35px; /* Altura igual al selector */
-    padding: 5px 10px; /* Espaciado interno */
-    background-color: #4CAF50; /* Fondo verde */
-    color: white; /* Texto blanco */
-    border: none; /* Sin borde */
-    border-radius: 5px; /* Bordes redondeados */
-    cursor: pointer; /* Cambiar el cursor a mano */
-    font-size: 20px;
-}
-
-#agregar-empleado-btn-norte:hover {
-    background-color: #45a049; /* Efecto hover para el botón */
-}
-
-/* Estilo para el contenedor de Choices.js */
-.choices {
-    width: 50%; /* Ocupa todo el ancho del contenedor padre */
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    border: 1px solid #ccc; /* Borde gris claro */
-    border-radius: 5px; /* Bordes redondeados */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-    height: 35px; /* Altura del contenedor pequeño */
-}
-
-/* Estilo para la entrada de búsqueda dentro del selector de Choices.js */
-.choices__input {
-    height: 35px; /* Ajustar la altura del input */
-    padding: 5px; /* Espaciado interno */
-    font-size: 12px; /* Tamaño de la fuente */
-}
-
-/* Estilo para las opciones de Choices.js */
-.choices__list--dropdown .choices__item {
-    background-color: white; /* Fondo blanco */
-    color: black; /* Texto negro */
-    padding: 5px 10px; /* Espaciado de las opciones */
-    font-size: 12px; /* Tamaño de fuente pequeño */
-}
-
-/* Estilo para la opción seleccionada */
-.choices__list--dropdown .choices__item--selectable.is-selected {
-    background-color: #184875; /* Fondo azul para la opción seleccionada */
-    color: white; /* Texto blanco */
-}
-
-/* Estilo al hacer hover sobre una opción */
-.choices__list--dropdown .choices__item--selectable:hover {
-    background-color: #184875; /* Fondo azul oscuro al hacer hover */
-    color: white; /* Texto blanco al hacer hover */
-}
-
-/* Estilo cuando la lista está abierta */
-.choices__list--dropdown {
-    max-height: 200px; /* Limitar la altura de la lista de opciones */
-    overflow-y: auto; /* Agregar barra de desplazamiento si es necesario */
-}
 
 
 /* BOLETAS */
