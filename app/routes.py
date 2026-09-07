@@ -1,6 +1,6 @@
 import os
 from flask import Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CargaDiaria
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CoordenadasCatastro, CargaDiaria
 from flask_bcrypt import check_password_hash 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func, case
@@ -85,6 +85,14 @@ from google.oauth2.service_account import Credentials
 # ========================================
 
 from pdf2image import convert_from_path
+
+import numpy as np
+import math
+from sklearn.cluster import KMeans
+from geopy.geocoders import Nominatim
+import codecs
+codecs.register(lambda name: codecs.lookup('utf-8') if name == 'unknown_codepage_65001' else None)
+import math
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
@@ -357,7 +365,6 @@ def inicio():
     )
 
 
-
 # Ruta para cerrar sesión
 @app.route('/logout')
 def logout():
@@ -524,6 +531,66 @@ def auditar_busqueda_fecha():
     return jsonify({"status": "ok"})
 
 
+@app.route('/verificar-asistencias-mes', methods=['GET'])
+def verificar_asistencias_mes():
+    area = request.args.get('area')
+    anio = request.args.get('anio', type=int)
+    mes = request.args.get('mes', type=int)
+
+    if not all([area, anio, mes]):
+        return jsonify({"error": "Parámetros incompletos"}), 400
+
+    modelos_map = {
+        'lecturas': EmpleadoLectura,
+        'recaudacion': EmpleadoRecaudacion,
+        'distribucion': EmpleadoDistribucion,
+        'inspecciones': EmpleadoInspecciones,
+        'catastro': EmpleadoCatastro,
+        'persuasivas': EmpleadoPersuasivas,
+        'medidores': EmpleadoMedidores,
+        'norte': EmpleadoNorte,
+        'administrativo_1': EmpleadoAdministrativo
+    }
+
+    Modelo = modelos_map.get(area)
+    if not Modelo:
+        return jsonify({"error": "Área no válida"}), 400
+
+    try:
+        start_date = datetime(anio, mes, 1)
+        last_day = calendar.monthrange(anio, mes)[1]
+        end_date = datetime(anio, mes, last_day)
+    except ValueError:
+        return jsonify({"error": "Año o mes inválidos"}), 400
+
+    # Consultar asistencias reales
+    registros = db.session.query(Modelo.fec_asist).filter(
+        Modelo.fec_asist >= start_date,
+        Modelo.fec_asist <= end_date,
+        Modelo.fec_asist.isnot(None)
+    ).all()
+
+    dias_asistencia = sorted(list(set(r.fec_asist.day for r in registros if r.fec_asist)))
+
+    # Feriados nacionales oficiales (Perú) por mes (Días del mes)
+    feriados_fijos = {
+        1: [1],         # Año Nuevo
+        5: [1],         # Día del Trabajador
+        6: [29],        # San Pedro y San Pablo
+        7: [23, 28, 29],# Día de la Fuerza Aérea y Fiestas Patrias
+        8: [6, 30],     # Batalla de Junín y Santa Rosa de Lima
+        10: [8],        # Combate de Angamos
+        11: [1],        # Día de Todos los Santos
+        12: [8, 9, 25]  # Inmaculada Concepción, Batalla de Ayacucho y Navidad
+    }
+
+    dias_feriados = feriados_fijos.get(mes, [])
+
+    return jsonify({
+        "dias": dias_asistencia,
+        "feriados": dias_feriados
+    })
+
 
 
 # MÓDULO RECAUDACIÓN
@@ -658,53 +725,110 @@ def guardar_asistencia_detalle():
         data = request.get_json()
         print("Datos recibidos:", data)  # Depuración
 
-        if "asistencias" not in data:
+        if not data or "asistencias" not in data:
             return jsonify({'success': False, 'message': "Clave 'asistencias' no encontrada en JSON"}), 400
 
-        asistencias = data['asistencias']
+        asistencias_crudas = data['asistencias']
+        if not asistencias_crudas:
+            return jsonify({'success': False, 'message': "Lista de asistencias vacía"}), 400
 
-        for asistencia in asistencias:
-            print("Asistencia procesada:", asistencia)
+        # ====================================================================
+        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS
+        # ====================================================================
+        asistencias_validas = []
+        for a in asistencias_crudas:
+            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
+                return jsonify({'success': False, 'message': "Faltan datos obligatorios (fecha, id_empleado, mes)"}), 400
 
-            if "fecha" not in asistencia:
-                return jsonify({'success': False, 'message': "Clave 'fecha' no encontrada en asistencia"}), 400
+            estado_val = a.get('estado', '')
+            estado = estado_val.strip() if estado_val else ''
+            pasajes = a.get('pasajes')
+            ruta = a.get('ruta', '').strip()
+            viaticos = float(a.get('viaticos') or 0.0)
 
-            fecha = asistencia['fecha']
+            # 🚫 Ignorar registros totalmente en blanco
+            if not estado and not pasajes and not ruta and viaticos == 0.0:
+                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
+                continue
+            
+            asistencias_validas.append(a)
+
+        if not asistencias_validas:
+            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
+
+        # ====================================================================
+        # 2. CONSULTAS MASIVAS (EVITAR N+1)
+        # ====================================================================
+        try:
+            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+
+        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
+
+        # Traer empleados de la base de datos principal de una sola vez
+        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
+        dict_empleados = {e.id_empleado: e for e in empleados_db}
+
+        # Traer las asistencias que ya existen en EmpleadoRecaudacion
+        asistencias_existentes = EmpleadoRecaudacion.query.filter(
+            EmpleadoRecaudacion.fec_asist == fecha_obj,
+            EmpleadoRecaudacion.id_empleado.in_(ids_empleados)
+        ).all()
+        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
+
+        # ====================================================================
+        # 3. GUARDADO EN BASE DE DATOS
+        # ====================================================================
+        for asistencia in asistencias_validas:
             id_empleado = asistencia['id_empleado']
+            estado = asistencia.get('estado', '').strip() or None
+            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
+            ruta = asistencia.get('ruta', '').strip() or None
+            viaticos = float(asistencia.get('viaticos') or 0.0)
 
-            # Buscar si ya existe un registro de asistencia para ese empleado en esa fecha
-            asistencia_existente = EmpleadoRecaudacion.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
+            registro_existente = dict_asistencias.get(id_empleado)
 
-            if asistencia_existente:
-                asistencia_existente.estado = asistencia.get('estado', asistencia_existente.estado)
-                asistencia_existente.pasajes = asistencia.get('pasajes', asistencia_existente.pasajes) if asistencia.get('pasajes') else None
-                asistencia_existente.ruta = asistencia.get('ruta', asistencia_existente.ruta)
-                asistencia_existente.viaticos = asistencia.get('viaticos', asistencia_existente.viaticos)
+            if registro_existente:
+                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
+                registro_existente.estado = estado
+                registro_existente.pasajes = pasajes
+                registro_existente.ruta = ruta
+                registro_existente.viaticos = viaticos
             else:
-                empleado_original = Empleado.query.filter_by(id_empleado=id_empleado).first()
-                if empleado_original:
-                    nuevo_registro = EmpleadoRecaudacion(
-                        id_empleado=empleado_original.id_empleado,
-                        dni=empleado_original.dni,
-                        nombres=empleado_original.nombres,
-                        cargo=empleado_original.cargo,
-                        area=empleado_original.area,
-                        cod_ope=empleado_original.cod_ope,
-                        mes=asistencia['mes'],
-                        fec_asist=fecha,
-                        estado=asistencia.get('estado', ''),
-                        pasajes=asistencia.get('pasajes', None),  # Ahora permite guardar "PR"
-                        ruta=asistencia.get('ruta', ''),
-                        viaticos=asistencia.get('viaticos', 0)
-                    )
-                    db.session.add(nuevo_registro)
+                print(f"➕ Creando nueva asistencia para {id_empleado}")
+                empleado_original = dict_empleados.get(int(id_empleado))
+
+                if not empleado_original:
+                    return jsonify({'success': False, 'message': f"Empleado {id_empleado} no encontrado en la base maestra"}), 400
+
+                nuevo_registro = EmpleadoRecaudacion(
+                    id_empleado=empleado_original.id_empleado,
+                    dni=empleado_original.dni,
+                    nombres=empleado_original.nombres,
+                    cargo=empleado_original.cargo,
+                    area=empleado_original.area,
+                    cod_ope=empleado_original.cod_ope,
+                    mes=asistencia['mes'],
+                    fec_asist=fecha_obj,
+                    estado=estado,
+                    pasajes=pasajes,
+                    ruta=ruta,
+                    viaticos=viaticos
+                )
+                db.session.add(nuevo_registro)
 
         db.session.commit()
-        return jsonify({'success': True, 'message': 'Registros actualizados correctamente en EmpleadoRecaudacion.'})
+        return jsonify({'success': True, 'message': f'Se guardaron correctamente {len(asistencias_validas)} registros en EmpleadoRecaudacion.'})
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error en la base de datos: {str(e)}'}), 500
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al guardar la asistencia: {str(e)}'})
+        return jsonify({'success': False, 'message': f'Error al guardar la asistencia: {str(e)}'}), 500
+    
 
 @app.route('/eliminar-asistencia', methods=['POST'])
 def eliminar_asistencia():
@@ -864,63 +988,116 @@ def guardar_asistencia_detalle_lectura():
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
-        asistencias = data['asistencias']
-        if not asistencias:
+        asistencias_crudas = data['asistencias']
+        if not asistencias_crudas:
             mensaje_error = "Lista de asistencias vacía"
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
+
+        # ====================================================================
+        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
+        # ====================================================================
+        asistencias_validas = []
+        for a in asistencias_crudas:
+            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
+                return jsonify({'success': False, 'message': "Faltan datos obligatorios en la asistencia"}), 400
+            
+            estado_val = a.get('estado', '')
+            estado = estado_val.strip() if estado_val else ''
+            pasajes = a.get('pasajes')
+            ruta = a.get('ruta', '').strip()
+            viaticos = float(a.get('viaticos') or 0.0)
+
+            # 🚫 Ignorar registros totalmente en blanco
+            if not estado and not pasajes and not ruta and viaticos == 0.0:
+                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
+                continue
+            
+            asistencias_validas.append(a)
+
+        if not asistencias_validas:
+            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
+
+        # ====================================================================
+        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
+        # ====================================================================
+        try:
+            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+
+        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
 
         tablas = [
             EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro,
             EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
         ]
 
-        for asistencia in asistencias:
-            print("\n📌 Procesando asistencia:", asistencia)  # ✅ Depuración
+        empleados_duplicados = []
+        
+        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
+        for tabla in tablas:
+            registros_otras_areas = tabla.query.filter(
+                tabla.fec_asist == fecha_obj,
+                tabla.id_empleado.in_(ids_empleados)
+            ).all()
+            for reg in registros_otras_areas:
+                # ✅ Guardamos el ID y el nombre exacto de la tabla donde está duplicado
+                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
 
-            if "fecha" not in asistencia or "id_empleado" not in asistencia or "mes" not in asistencia:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
+        if empleados_duplicados:
+            # Traemos los nombres de los empleados duplicados
+            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
+            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
+            
+            mensajes_error_duplicados = []
+            for emp_id, tabla_nombre in empleados_duplicados:
+                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
+                nombre = emp.nombres if emp else f"ID {emp_id}"
+                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
+                
+            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': mensaje_error}), 400
 
-            try:
-                fecha = datetime.strptime(asistencia['fecha'], '%Y-%m-%d').date()
-            except ValueError:
-                mensaje_error = f"Formato de fecha inválido -> {asistencia['fecha']}"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+        # ====================================================================
+        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
+        # ====================================================================
+        # Traer empleados de la base de datos principal de una sola vez
+        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
+        dict_empleados = {e.id_empleado: e for e in empleados_db}
 
+        # Traer las asistencias que ya existen en TOMA DE ESTADO para actualizarlas
+        asistencias_existentes = EmpleadoLectura.query.filter(
+            EmpleadoLectura.fec_asist == fecha_obj,
+            EmpleadoLectura.id_empleado.in_(ids_empleados)
+        ).all()
+        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
+
+        # ====================================================================
+        # 4. GUARDADO EN BASE DE DATOS
+        # ====================================================================
+        for asistencia in asistencias_validas:
             id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha}")
+            estado = asistencia.get('estado', '').strip() or None
+            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
+            ruta = asistencia.get('ruta', '').strip() or None
+            viaticos = float(asistencia.get('viaticos') or 0.0)
 
-            for tabla in tablas: 
-                asistencia_existente_otras = tabla.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-                if asistencia_existente_otras:
-                    # Obtener el nombre del empleado desde la tabla principal (Empleado)
-                    empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-                    nombre_empleado = f"{empleado.nombres}" if empleado else f"ID {id_empleado}"
+            registro_existente = dict_asistencias.get(id_empleado)
 
-                    mensaje_error = f"El empleado {nombre_empleado} ya cuenta con asistencia en la fecha {fecha} en el área {tabla.__name__}."
-                    print(f"🚨 ERROR: {mensaje_error}")
-
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-            asistencia_existente = EmpleadoLectura.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-            if asistencia_existente:
+            if registro_existente:
                 print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                asistencia_existente.estado = asistencia.get('estado', asistencia_existente.estado).strip() or None
-                asistencia_existente.pasajes = asistencia.get('pasajes', asistencia_existente.pasajes) if asistencia.get('pasajes') else None
-                asistencia_existente.ruta = asistencia.get('ruta', asistencia_existente.ruta)
-                asistencia_existente.viaticos = asistencia.get('viaticos', asistencia_existente.viaticos)
+                registro_existente.estado = estado
+                registro_existente.pasajes = pasajes
+                registro_existente.ruta = ruta
+                registro_existente.viaticos = viaticos
             else:
                 print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = Empleado.query.filter_by(id_empleado=id_empleado).first()
+                empleado_original = dict_empleados.get(int(id_empleado))
 
                 if not empleado_original:
-                    mensaje_error = f"Empleado {id_empleado} no encontrado"
-                    print(f"🚨 ERROR: {mensaje_error}")
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
+                    return jsonify({'success': False, 'message': f"Empleado {id_empleado} no encontrado en la base maestra"}), 400
 
                 nuevo_registro = EmpleadoLectura(
                     id_empleado=empleado_original.id_empleado,
@@ -930,16 +1107,16 @@ def guardar_asistencia_detalle_lectura():
                     area=empleado_original.area,
                     cod_ope=empleado_original.cod_ope,
                     mes=asistencia['mes'],
-                    fec_asist=fecha,
-                    estado=asistencia.get('estado', '').strip() or None,
-                    pasajes=asistencia.get('pasajes', None),
-                    ruta=asistencia.get('ruta', '').strip() or None,
-                    viaticos=asistencia.get('viaticos', 0) or 0.00
+                    fec_asist=fecha_obj,
+                    estado=estado,
+                    pasajes=pasajes,
+                    ruta=ruta,
+                    viaticos=viaticos
                 )
                 db.session.add(nuevo_registro)
 
         db.session.commit()
-        mensaje_exito = "Registros guardados correctamente en EmpleadoLectura."
+        mensaje_exito = f"Se guardaron correctamente {len(asistencias_validas)} registros en TOMA DE ESTADO."
         print(f"✅ {mensaje_exito}")
         return jsonify({'success': True, 'message': mensaje_exito})
 
@@ -954,7 +1131,7 @@ def guardar_asistencia_detalle_lectura():
         mensaje_error = f"Error inesperado: {str(e)}"
         print(f"❌ ERROR GENERAL: {mensaje_error}")
         return jsonify({'success': False, 'message': mensaje_error}), 500
-
+    
 
 @app.route('/eliminar-asistencia-lectura', methods=['POST'])
 def eliminar_asistencia_lectura():
@@ -1114,58 +1291,120 @@ def guardar_asistencia_detalle_distribucion():
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
-        asistencias = data['asistencias']
-        if not asistencias:
+        asistencias_crudas = data['asistencias']
+        if not asistencias_crudas:
             mensaje_error = "Lista de asistencias vacía"
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
+        # ====================================================================
+        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
+        # ====================================================================
+        asistencias_validas = []
+        for a in asistencias_crudas:
+            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
+                mensaje_error = "Faltan datos obligatorios en la asistencia"
+                print(f"🚨 ERROR: {mensaje_error}")
+                return jsonify({'success': False, 'message': mensaje_error}), 400
+            
+            estado_val = a.get('estado', '')
+            estado = estado_val.strip() if estado_val else ''
+            pasajes = a.get('pasajes')
+            ruta = a.get('ruta', '').strip()
+            viaticos = float(a.get('viaticos') or 0.0)
+
+            # 🚫 Ignorar registros totalmente en blanco
+            if not estado and not pasajes and not ruta and viaticos == 0.0:
+                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
+                continue
+            
+            asistencias_validas.append(a)
+
+        if not asistencias_validas:
+            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
+
+        # ====================================================================
+        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
+        # ====================================================================
+        try:
+            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
+        except ValueError:
+            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+
+        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
+
+        # En Distribucion, revisamos contra Lectura y el resto
         tablas = [
             EmpleadoLectura, EmpleadoInspecciones, EmpleadoCatastro,
             EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
         ]
 
-        for asistencia in asistencias:
-            print("\n📌 Procesando asistencia:", asistencia)  # ✅ Depuración
+        empleados_duplicados = []
+        
+        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
+        for tabla in tablas:
+            registros_otras_areas = tabla.query.filter(
+                tabla.fec_asist == fecha_obj,
+                tabla.id_empleado.in_(ids_empleados)
+            ).all()
+            
+            for reg in registros_otras_areas:
+                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
 
-            if "fecha" not in asistencia or "id_empleado" not in asistencia or "mes" not in asistencia:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
+        if empleados_duplicados:
+            # Traemos los nombres de los empleados duplicados para armar el mensaje
+            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
+            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
+            
+            mensajes_error_duplicados = []
+            for emp_id, tabla_nombre in empleados_duplicados:
+                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
+                nombre = emp.nombres if emp else f"ID {emp_id}"
+                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
+                
+            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': mensaje_error}), 400
 
-            try:
-                fecha = datetime.strptime(asistencia['fecha'], '%Y-%m-%d').date()
-            except ValueError:
-                mensaje_error = f"Formato de fecha inválido -> {asistencia['fecha']}"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+        # ====================================================================
+        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
+        # ====================================================================
+        # Traer base de empleados de golpe
+        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
+        dict_empleados = {e.id_empleado: e for e in empleados_db}
 
+        # Traer asistencias ya existentes en Distribucion de golpe
+        asistencias_existentes = EmpleadoDistribucion.query.filter(
+            EmpleadoDistribucion.fec_asist == fecha_obj,
+            EmpleadoDistribucion.id_empleado.in_(ids_empleados)
+        ).all()
+        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
+
+        # ====================================================================
+        # 4. GUARDADO EN BASE DE DATOS
+        # ====================================================================
+        for asistencia in asistencias_validas:
             id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha}")
+            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
 
-            for tabla in tablas: 
-                asistencia_existente_otras = tabla.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-                if asistencia_existente_otras:
-                    # Obtener el nombre del empleado desde la tabla principal (Empleado)
-                    empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-                    nombre_empleado = f"{empleado.nombres}" if empleado else f"ID {id_empleado}"
+            estado = asistencia.get('estado', '').strip() or None
+            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
+            ruta = asistencia.get('ruta', '').strip() or None
+            viaticos = float(asistencia.get('viaticos') or 0.0)
 
-                    mensaje_error = f"El empleado {nombre_empleado} ya cuenta con asistencia en la fecha {fecha} en el área {tabla.__name__}."
-                    print(f"🚨 ERROR: {mensaje_error}")
+            registro_existente = dict_asistencias.get(int(id_empleado))
 
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-            asistencia_existente = EmpleadoDistribucion.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-            if asistencia_existente:
+            if registro_existente:
                 print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                asistencia_existente.estado = asistencia.get('estado', asistencia_existente.estado).strip() or None
-                asistencia_existente.pasajes = asistencia.get('pasajes', asistencia_existente.pasajes) if asistencia.get('pasajes') else None
-                asistencia_existente.ruta = asistencia.get('ruta', asistencia_existente.ruta)
-                asistencia_existente.viaticos = asistencia.get('viaticos', asistencia_existente.viaticos)
+                registro_existente.estado = estado
+                registro_existente.pasajes = pasajes
+                registro_existente.ruta = ruta
+                registro_existente.viaticos = viaticos
             else:
                 print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = Empleado.query.filter_by(id_empleado=id_empleado).first()
+                empleado_original = dict_empleados.get(int(id_empleado))
 
                 if not empleado_original:
                     mensaje_error = f"Empleado {id_empleado} no encontrado"
@@ -1180,11 +1419,11 @@ def guardar_asistencia_detalle_distribucion():
                     area=empleado_original.area,
                     cod_ope=empleado_original.cod_ope,
                     mes=asistencia['mes'],
-                    fec_asist=fecha,
-                    estado=asistencia.get('estado', '').strip() or None,
-                    pasajes=asistencia.get('pasajes', None),
-                    ruta=asistencia.get('ruta', '').strip() or None,
-                    viaticos=asistencia.get('viaticos', 0) or 0.00
+                    fec_asist=fecha_obj,
+                    estado=estado,
+                    pasajes=pasajes,
+                    ruta=ruta,
+                    viaticos=viaticos
                 )
                 db.session.add(nuevo_registro)
 
@@ -1362,58 +1601,122 @@ def guardar_asistencia_detalle_inspecciones():
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
-        asistencias = data['asistencias']
-        if not asistencias:
+        asistencias_crudas = data['asistencias']
+        if not asistencias_crudas:
             mensaje_error = "Lista de asistencias vacía"
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
+        # ====================================================================
+        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
+        # ====================================================================
+        asistencias_validas = []
+        for a in asistencias_crudas:
+            print("\n📌 Procesando asistencia:", a)  # ✅ Depuración
+
+            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
+                mensaje_error = "Faltan datos obligatorios en la asistencia"
+                print(f"🚨 ERROR: {mensaje_error}")
+                return jsonify({'success': False, 'message': mensaje_error}), 400
+            
+            estado_val = a.get('estado', '')
+            estado = estado_val.strip() if estado_val else ''
+            pasajes = a.get('pasajes')
+            ruta = a.get('ruta', '').strip()
+            viaticos = float(a.get('viaticos') or 0.0)
+
+            # 🚫 Ignorar registros totalmente en blanco
+            if not estado and not pasajes and not ruta and viaticos == 0.0:
+                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
+                continue
+            
+            asistencias_validas.append(a)
+
+        if not asistencias_validas:
+            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
+
+        # ====================================================================
+        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
+        # ====================================================================
+        try:
+            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
+        except ValueError:
+            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+
+        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
+
+        # En Inspecciones, revisamos contra Lectura, Distribucion y el resto
         tablas = [
             EmpleadoLectura, EmpleadoDistribucion, EmpleadoCatastro,
             EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
         ]
 
-        for asistencia in asistencias:
-            print("\n📌 Procesando asistencia:", asistencia)  # ✅ Depuración
+        empleados_duplicados = []
+        
+        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
+        for tabla in tablas:
+            registros_otras_areas = tabla.query.filter(
+                tabla.fec_asist == fecha_obj,
+                tabla.id_empleado.in_(ids_empleados)
+            ).all()
+            
+            for reg in registros_otras_areas:
+                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
 
-            if "fecha" not in asistencia or "id_empleado" not in asistencia or "mes" not in asistencia:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
+        if empleados_duplicados:
+            # Traemos los nombres de los empleados duplicados para armar el mensaje
+            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
+            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
+            
+            mensajes_error_duplicados = []
+            for emp_id, tabla_nombre in empleados_duplicados:
+                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
+                nombre = emp.nombres if emp else f"ID {emp_id}"
+                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
+                
+            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': mensaje_error}), 400
 
-            try:
-                fecha = datetime.strptime(asistencia['fecha'], '%Y-%m-%d').date()
-            except ValueError:
-                mensaje_error = f"Formato de fecha inválido -> {asistencia['fecha']}"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+        # ====================================================================
+        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
+        # ====================================================================
+        # Traer base de empleados de golpe
+        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
+        dict_empleados = {e.id_empleado: e for e in empleados_db}
 
+        # Traer asistencias ya existentes en Inspecciones de golpe
+        asistencias_existentes = EmpleadoInspecciones.query.filter(
+            EmpleadoInspecciones.fec_asist == fecha_obj,
+            EmpleadoInspecciones.id_empleado.in_(ids_empleados)
+        ).all()
+        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
+
+        # ====================================================================
+        # 4. GUARDADO EN BASE DE DATOS
+        # ====================================================================
+        for asistencia in asistencias_validas:
             id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha}")
+            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
 
-            for tabla in tablas: 
-                asistencia_existente_otras = tabla.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-                if asistencia_existente_otras:
-                    # Obtener el nombre del empleado desde la tabla principal (Empleado)
-                    empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-                    nombre_empleado = f"{empleado.nombres}" if empleado else f"ID {id_empleado}"
+            estado = asistencia.get('estado', '').strip() or None
+            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
+            ruta = asistencia.get('ruta', '').strip() or None
+            viaticos = float(asistencia.get('viaticos') or 0.0)
 
-                    mensaje_error = f"El empleado {nombre_empleado} ya cuenta con asistencia en la fecha {fecha} en el área {tabla.__name__}."
-                    print(f"🚨 ERROR: {mensaje_error}")
+            registro_existente = dict_asistencias.get(int(id_empleado))
 
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-            asistencia_existente = EmpleadoInspecciones.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-            if asistencia_existente:
+            if registro_existente:
                 print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                asistencia_existente.estado = asistencia.get('estado', asistencia_existente.estado).strip() or None
-                asistencia_existente.pasajes = asistencia.get('pasajes', asistencia_existente.pasajes) if asistencia.get('pasajes') else None
-                asistencia_existente.ruta = asistencia.get('ruta', asistencia_existente.ruta)
-                asistencia_existente.viaticos = asistencia.get('viaticos', asistencia_existente.viaticos)
+                registro_existente.estado = estado
+                registro_existente.pasajes = pasajes
+                registro_existente.ruta = ruta
+                registro_existente.viaticos = viaticos
             else:
                 print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = Empleado.query.filter_by(id_empleado=id_empleado).first()
+                empleado_original = dict_empleados.get(int(id_empleado))
 
                 if not empleado_original:
                     mensaje_error = f"Empleado {id_empleado} no encontrado"
@@ -1428,11 +1731,11 @@ def guardar_asistencia_detalle_inspecciones():
                     area=empleado_original.area,
                     cod_ope=empleado_original.cod_ope,
                     mes=asistencia['mes'],
-                    fec_asist=fecha,
-                    estado=asistencia.get('estado', '').strip() or None,
-                    pasajes=asistencia.get('pasajes', None),
-                    ruta=asistencia.get('ruta', '').strip() or None,
-                    viaticos=asistencia.get('viaticos', 0) or 0.00
+                    fec_asist=fecha_obj,
+                    estado=estado,
+                    pasajes=pasajes,
+                    ruta=ruta,
+                    viaticos=viaticos
                 )
                 db.session.add(nuevo_registro)
 
@@ -1611,58 +1914,122 @@ def guardar_asistencia_detalle_catastro():
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
-        asistencias = data['asistencias']
-        if not asistencias:
+        asistencias_crudas = data['asistencias']
+        if not asistencias_crudas:
             mensaje_error = "Lista de asistencias vacía"
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
+        # ====================================================================
+        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
+        # ====================================================================
+        asistencias_validas = []
+        for a in asistencias_crudas:
+            print("\n📌 Procesando asistencia:", a)  # ✅ Depuración
+
+            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
+                mensaje_error = "Faltan datos obligatorios en la asistencia"
+                print(f"🚨 ERROR: {mensaje_error}")
+                return jsonify({'success': False, 'message': mensaje_error}), 400
+            
+            estado_val = a.get('estado', '')
+            estado = estado_val.strip() if estado_val else ''
+            pasajes = a.get('pasajes')
+            ruta = a.get('ruta', '').strip()
+            viaticos = float(a.get('viaticos') or 0.0)
+
+            # 🚫 Ignorar registros totalmente en blanco
+            if not estado and not pasajes and not ruta and viaticos == 0.0:
+                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
+                continue
+            
+            asistencias_validas.append(a)
+
+        if not asistencias_validas:
+            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
+
+        # ====================================================================
+        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
+        # ====================================================================
+        try:
+            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
+        except ValueError:
+            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+
+        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
+
+        # En Catastro, revisamos contra Lectura, Distribucion, Inspecciones y el resto
         tablas = [
             EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
             EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
         ]
 
-        for asistencia in asistencias:
-            print("\n📌 Procesando asistencia:", asistencia)  # ✅ Depuración
+        empleados_duplicados = []
+        
+        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
+        for tabla in tablas:
+            registros_otras_areas = tabla.query.filter(
+                tabla.fec_asist == fecha_obj,
+                tabla.id_empleado.in_(ids_empleados)
+            ).all()
+            
+            for reg in registros_otras_areas:
+                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
 
-            if "fecha" not in asistencia or "id_empleado" not in asistencia or "mes" not in asistencia:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
+        if empleados_duplicados:
+            # Traemos los nombres de los empleados duplicados para armar el mensaje
+            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
+            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
+            
+            mensajes_error_duplicados = []
+            for emp_id, tabla_nombre in empleados_duplicados:
+                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
+                nombre = emp.nombres if emp else f"ID {emp_id}"
+                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
+                
+            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': mensaje_error}), 400
 
-            try:
-                fecha = datetime.strptime(asistencia['fecha'], '%Y-%m-%d').date()
-            except ValueError:
-                mensaje_error = f"Formato de fecha inválido -> {asistencia['fecha']}"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+        # ====================================================================
+        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
+        # ====================================================================
+        # Traer base de empleados de golpe
+        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
+        dict_empleados = {e.id_empleado: e for e in empleados_db}
 
+        # Traer asistencias ya existentes en Catastro de golpe
+        asistencias_existentes = EmpleadoCatastro.query.filter(
+            EmpleadoCatastro.fec_asist == fecha_obj,
+            EmpleadoCatastro.id_empleado.in_(ids_empleados)
+        ).all()
+        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
+
+        # ====================================================================
+        # 4. GUARDADO EN BASE DE DATOS
+        # ====================================================================
+        for asistencia in asistencias_validas:
             id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha}")
+            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
 
-            for tabla in tablas: 
-                asistencia_existente_otras = tabla.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-                if asistencia_existente_otras:
-                    # Obtener el nombre del empleado desde la tabla principal (Empleado)
-                    empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-                    nombre_empleado = f"{empleado.nombres}" if empleado else f"ID {id_empleado}"
+            estado = asistencia.get('estado', '').strip() or None
+            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
+            ruta = asistencia.get('ruta', '').strip() or None
+            viaticos = float(asistencia.get('viaticos') or 0.0)
 
-                    mensaje_error = f"El empleado {nombre_empleado} ya cuenta con asistencia en la fecha {fecha} en el área {tabla.__name__}."
-                    print(f"🚨 ERROR: {mensaje_error}")
+            registro_existente = dict_asistencias.get(int(id_empleado))
 
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-            asistencia_existente = EmpleadoCatastro.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-            if asistencia_existente:
+            if registro_existente:
                 print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                asistencia_existente.estado = asistencia.get('estado', asistencia_existente.estado).strip() or None
-                asistencia_existente.pasajes = asistencia.get('pasajes', asistencia_existente.pasajes) if asistencia.get('pasajes') else None
-                asistencia_existente.ruta = asistencia.get('ruta', asistencia_existente.ruta)
-                asistencia_existente.viaticos = asistencia.get('viaticos', asistencia_existente.viaticos)
+                registro_existente.estado = estado
+                registro_existente.pasajes = pasajes
+                registro_existente.ruta = ruta
+                registro_existente.viaticos = viaticos
             else:
                 print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = Empleado.query.filter_by(id_empleado=id_empleado).first()
+                empleado_original = dict_empleados.get(int(id_empleado))
 
                 if not empleado_original:
                     mensaje_error = f"Empleado {id_empleado} no encontrado"
@@ -1677,11 +2044,11 @@ def guardar_asistencia_detalle_catastro():
                     area=empleado_original.area,
                     cod_ope=empleado_original.cod_ope,
                     mes=asistencia['mes'],
-                    fec_asist=fecha,
-                    estado=asistencia.get('estado', '').strip() or None,
-                    pasajes=asistencia.get('pasajes', None),
-                    ruta=asistencia.get('ruta', '').strip() or None,
-                    viaticos=asistencia.get('viaticos', 0) or 0.00
+                    fec_asist=fecha_obj,
+                    estado=estado,
+                    pasajes=pasajes,
+                    ruta=ruta,
+                    viaticos=viaticos
                 )
                 db.session.add(nuevo_registro)
 
@@ -1701,7 +2068,7 @@ def guardar_asistencia_detalle_catastro():
         mensaje_error = f"Error inesperado: {str(e)}"
         print(f"❌ ERROR GENERAL: {mensaje_error}")
         return jsonify({'success': False, 'message': mensaje_error}), 500
-
+    
 
 @app.route('/eliminar-asistencia-catastro', methods=['POST']) 
 def eliminar_asistencia_catastro():
@@ -1860,58 +2227,122 @@ def guardar_asistencia_detalle_medidores():
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
-        asistencias = data['asistencias']
-        if not asistencias:
+        asistencias_crudas = data['asistencias']
+        if not asistencias_crudas:
             mensaje_error = "Lista de asistencias vacía"
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
+        # ====================================================================
+        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
+        # ====================================================================
+        asistencias_validas = []
+        for a in asistencias_crudas:
+            print("\n📌 Procesando asistencia:", a)  # ✅ Depuración
+
+            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
+                mensaje_error = "Faltan datos obligatorios en la asistencia"
+                print(f"🚨 ERROR: {mensaje_error}")
+                return jsonify({'success': False, 'message': mensaje_error}), 400
+            
+            estado_val = a.get('estado', '')
+            estado = estado_val.strip() if estado_val else ''
+            pasajes = a.get('pasajes')
+            ruta = a.get('ruta', '').strip()
+            viaticos = float(a.get('viaticos') or 0.0)
+
+            # 🚫 Ignorar registros totalmente en blanco
+            if not estado and not pasajes and not ruta and viaticos == 0.0:
+                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
+                continue
+            
+            asistencias_validas.append(a)
+
+        if not asistencias_validas:
+            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
+
+        # ====================================================================
+        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
+        # ====================================================================
+        try:
+            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
+        except ValueError:
+            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+
+        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
+
+        # En Medidores, revisamos contra Lectura, Distribucion, Inspecciones, Persuasivas y el resto
         tablas = [
             EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
             EmpleadoPersuasivas, EmpleadoCatastro, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
         ]
 
-        for asistencia in asistencias:
-            print("\n📌 Procesando asistencia:", asistencia)  # ✅ Depuración
+        empleados_duplicados = []
+        
+        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
+        for tabla in tablas:
+            registros_otras_areas = tabla.query.filter(
+                tabla.fec_asist == fecha_obj,
+                tabla.id_empleado.in_(ids_empleados)
+            ).all()
+            
+            for reg in registros_otras_areas:
+                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
 
-            if "fecha" not in asistencia or "id_empleado" not in asistencia or "mes" not in asistencia:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
+        if empleados_duplicados:
+            # Traemos los nombres de los empleados duplicados para armar el mensaje
+            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
+            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
+            
+            mensajes_error_duplicados = []
+            for emp_id, tabla_nombre in empleados_duplicados:
+                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
+                nombre = emp.nombres if emp else f"ID {emp_id}"
+                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
+                
+            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': mensaje_error}), 400
 
-            try:
-                fecha = datetime.strptime(asistencia['fecha'], '%Y-%m-%d').date()
-            except ValueError:
-                mensaje_error = f"Formato de fecha inválido -> {asistencia['fecha']}"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+        # ====================================================================
+        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
+        # ====================================================================
+        # Traer base de empleados de golpe
+        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
+        dict_empleados = {e.id_empleado: e for e in empleados_db}
 
+        # Traer asistencias ya existentes en Medidores de golpe
+        asistencias_existentes = EmpleadoMedidores.query.filter(
+            EmpleadoMedidores.fec_asist == fecha_obj,
+            EmpleadoMedidores.id_empleado.in_(ids_empleados)
+        ).all()
+        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
+
+        # ====================================================================
+        # 4. GUARDADO EN BASE DE DATOS
+        # ====================================================================
+        for asistencia in asistencias_validas:
             id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha}")
+            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
 
-            for tabla in tablas: 
-                asistencia_existente_otras = tabla.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-                if asistencia_existente_otras:
-                    # Obtener el nombre del empleado desde la tabla principal (Empleado)
-                    empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-                    nombre_empleado = f"{empleado.nombres}" if empleado else f"ID {id_empleado}"
+            estado = asistencia.get('estado', '').strip() or None
+            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
+            ruta = asistencia.get('ruta', '').strip() or None
+            viaticos = float(asistencia.get('viaticos') or 0.0)
 
-                    mensaje_error = f"El empleado {nombre_empleado} ya cuenta con asistencia en la fecha {fecha} en el área {tabla.__name__}."
-                    print(f"🚨 ERROR: {mensaje_error}")
+            registro_existente = dict_asistencias.get(int(id_empleado))
 
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-            asistencia_existente = EmpleadoMedidores.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-            if asistencia_existente:
+            if registro_existente:
                 print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                asistencia_existente.estado = asistencia.get('estado', asistencia_existente.estado).strip() or None
-                asistencia_existente.pasajes = asistencia.get('pasajes', asistencia_existente.pasajes) if asistencia.get('pasajes') else None
-                asistencia_existente.ruta = asistencia.get('ruta', asistencia_existente.ruta)
-                asistencia_existente.viaticos = asistencia.get('viaticos', asistencia_existente.viaticos)
+                registro_existente.estado = estado
+                registro_existente.pasajes = pasajes
+                registro_existente.ruta = ruta
+                registro_existente.viaticos = viaticos
             else:
                 print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = Empleado.query.filter_by(id_empleado=id_empleado).first()
+                empleado_original = dict_empleados.get(int(id_empleado))
 
                 if not empleado_original:
                     mensaje_error = f"Empleado {id_empleado} no encontrado"
@@ -1926,11 +2357,11 @@ def guardar_asistencia_detalle_medidores():
                     area=empleado_original.area,
                     cod_ope=empleado_original.cod_ope,
                     mes=asistencia['mes'],
-                    fec_asist=fecha,
-                    estado=asistencia.get('estado', '').strip() or None,
-                    pasajes=asistencia.get('pasajes', None),
-                    ruta=asistencia.get('ruta', '').strip() or None,
-                    viaticos=asistencia.get('viaticos', 0) or 0.00
+                    fec_asist=fecha_obj,
+                    estado=estado,
+                    pasajes=pasajes,
+                    ruta=ruta,
+                    viaticos=viaticos
                 )
                 db.session.add(nuevo_registro)
 
@@ -2109,58 +2540,121 @@ def guardar_asistencia_detalle_persuasivas():
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
-        asistencias = data['asistencias']
-        if not asistencias:
+        asistencias_crudas = data['asistencias']
+        if not asistencias_crudas:
             mensaje_error = "Lista de asistencias vacía"
             print(f"🚨 ERROR: {mensaje_error}")
             return jsonify({'success': False, 'message': mensaje_error}), 400
 
+        # ====================================================================
+        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
+        # ====================================================================
+        asistencias_validas = []
+        for a in asistencias_crudas:
+            print("\n📌 Procesando asistencia:", a)  # ✅ Depuración
+
+            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
+                mensaje_error = "Faltan datos obligatorios en la asistencia"
+                print(f"🚨 ERROR: {mensaje_error}")
+                return jsonify({'success': False, 'message': mensaje_error}), 400
+            
+            estado_val = a.get('estado', '')
+            estado = estado_val.strip() if estado_val else ''
+            pasajes = a.get('pasajes')
+            ruta = a.get('ruta', '').strip()
+            viaticos = float(a.get('viaticos') or 0.0)
+
+            # 🚫 Ignorar registros totalmente en blanco
+            if not estado and not pasajes and not ruta and viaticos == 0.0:
+                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
+                continue
+            
+            asistencias_validas.append(a)
+
+        if not asistencias_validas:
+            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
+
+        # ====================================================================
+        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
+        # ====================================================================
+        try:
+            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
+        except ValueError:
+            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+
+        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
+
+        # En Persuasivas, revisamos contra las otras áreas
         tablas = [
             EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
             EmpleadoMedidores, EmpleadoCatastro, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
         ]
 
-        for asistencia in asistencias:
-            print("\n📌 Procesando asistencia:", asistencia)  # ✅ Depuración
+        empleados_duplicados = []
+        
+        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
+        for tabla in tablas:
+            registros_otras_areas = tabla.query.filter(
+                tabla.fec_asist == fecha_obj,
+                tabla.id_empleado.in_(ids_empleados)
+            ).all()
+            for reg in registros_otras_areas:
+                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
 
-            if "fecha" not in asistencia or "id_empleado" not in asistencia or "mes" not in asistencia:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
+        if empleados_duplicados:
+            # Traemos los nombres de los empleados duplicados
+            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
+            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
+            
+            mensajes_error_duplicados = []
+            for emp_id, tabla_nombre in empleados_duplicados:
+                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
+                nombre = emp.nombres if emp else f"ID {emp_id}"
+                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
+                
+            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
+            print(f"🚨 ERROR: {mensaje_error}")
+            return jsonify({'success': False, 'message': mensaje_error}), 400
 
-            try:
-                fecha = datetime.strptime(asistencia['fecha'], '%Y-%m-%d').date()
-            except ValueError:
-                mensaje_error = f"Formato de fecha inválido -> {asistencia['fecha']}"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+        # ====================================================================
+        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
+        # ====================================================================
+        # Traer base de empleados de golpe
+        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
+        dict_empleados = {e.id_empleado: e for e in empleados_db}
 
+        # Traer asistencias ya existentes en Persuasivas de golpe
+        asistencias_existentes = EmpleadoPersuasivas.query.filter(
+            EmpleadoPersuasivas.fec_asist == fecha_obj,
+            EmpleadoPersuasivas.id_empleado.in_(ids_empleados)
+        ).all()
+        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
+
+        # ====================================================================
+        # 4. GUARDADO EN BASE DE DATOS
+        # ====================================================================
+        for asistencia in asistencias_validas:
             id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha}")
+            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
 
-            for tabla in tablas: 
-                asistencia_existente_otras = tabla.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-                if asistencia_existente_otras:
-                    # Obtener el nombre del empleado desde la tabla principal (Empleado)
-                    empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-                    nombre_empleado = f"{empleado.nombres}" if empleado else f"ID {id_empleado}"
+            estado = asistencia.get('estado', '').strip() or None
+            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
+            ruta = asistencia.get('ruta', '').strip() or None
+            viaticos = float(asistencia.get('viaticos') or 0.0)
 
-                    mensaje_error = f"El empleado {nombre_empleado} ya cuenta con asistencia en la fecha {fecha} en el área {tabla.__name__}."
-                    print(f"🚨 ERROR: {mensaje_error}")
+            registro_existente = dict_asistencias.get(int(id_empleado))
 
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-            asistencia_existente = EmpleadoPersuasivas.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-            if asistencia_existente:
+            if registro_existente:
                 print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                asistencia_existente.estado = asistencia.get('estado', asistencia_existente.estado).strip() or None
-                asistencia_existente.pasajes = asistencia.get('pasajes', asistencia_existente.pasajes) if asistencia.get('pasajes') else None
-                asistencia_existente.ruta = asistencia.get('ruta', asistencia_existente.ruta)
-                asistencia_existente.viaticos = asistencia.get('viaticos', asistencia_existente.viaticos)
+                registro_existente.estado = estado
+                registro_existente.pasajes = pasajes
+                registro_existente.ruta = ruta
+                registro_existente.viaticos = viaticos
             else:
                 print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = Empleado.query.filter_by(id_empleado=id_empleado).first()
+                empleado_original = dict_empleados.get(int(id_empleado))
 
                 if not empleado_original:
                     mensaje_error = f"Empleado {id_empleado} no encontrado"
@@ -2175,11 +2669,11 @@ def guardar_asistencia_detalle_persuasivas():
                     area=empleado_original.area,
                     cod_ope=empleado_original.cod_ope,
                     mes=asistencia['mes'],
-                    fec_asist=fecha,
-                    estado=asistencia.get('estado', '').strip() or None,
-                    pasajes=asistencia.get('pasajes', None),
-                    ruta=asistencia.get('ruta', '').strip() or None,
-                    viaticos=asistencia.get('viaticos', 0) or 0.00
+                    fec_asist=fecha_obj,
+                    estado=estado,
+                    pasajes=pasajes,
+                    ruta=ruta,
+                    viaticos=viaticos
                 )
                 db.session.add(nuevo_registro)
 
@@ -2831,7 +3325,6 @@ def get_asistencia():
         print(f"ERROR INTERNO DEL SERVIDOR:\n{error_trace}")  # Imprimir en consola
         return jsonify({"error": "Error interno del servidor", "detalle": str(e)}), 500
     
-
 
 def formatear_nombre_visual(nombre_completo):
     if not nombre_completo:
@@ -6109,16 +6602,37 @@ def descargar_coordenadas_zip():
 
     return send_file(zip_path, as_attachment=True)
 
+import pytesseract
+from pyzbar.pyzbar import decode, ZBarSymbol
 
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
+# Inicializamos el detector nativo de OpenCV (3er motor)
+try:
+    cv2_detector = cv2.barcode.BarcodeDetector()
+except AttributeError:
+    cv2_detector = None
 
-# Modificación: La función ahora retorna una lista de diccionarios
-def renombrar_con_zxing(folder_path):
+def obtener_variaciones_basicas(img):
+    """Filtros ligeros para no destruir el texto antes del OCR"""
+    variaciones = [img]
+    try:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        variaciones.append(gray)
+        
+        # Binarización simple que ayuda mucho a Tesseract a leer letras
+        _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+        variaciones.append(thresh)
+    except Exception as e:
+        print(f"Error en variaciones: {e}")
+    return variaciones
+
+def renombrar_con_ia_total(folder_path):
     log_messages = []
+    log_messages.append({"status": "INFO", "message": f"--- Iniciando Escaneo + OCR IA en: {folder_path} ---"})
     
-    log_messages.append({"status": "INFO", "message": f"--- Escaneando con el motor ZXing-CPP (cargador OpenCV): {folder_path} ---"})
-    
-    renombrados, no_encontrados, errores = 0, 0, 0
+    renombrados, no_encontrados, errores, por_ocr = 0, 0, 0, 0
+    simbolos_permitidos = [ZBarSymbol.CODE128, ZBarSymbol.CODE39, ZBarSymbol.EAN13, ZBarSymbol.I25]
 
     try:
         for filename in os.listdir(folder_path):
@@ -6128,50 +6642,152 @@ def renombrar_con_zxing(folder_path):
                 try:
                     img = cv2.imread(original_path)
                     if img is None:
-                        log_messages.append({"status": "WARNING", "message": f"⚠️ ADVERTENCIA: OpenCV no pudo leer el archivo '{filename}'."})
+                        log_messages.append({"status": "WARNING", "message": f"⚠️ OpenCV no pudo leer '{filename}'."})
                         errores += 1
                         continue
 
-                    results = zxingcpp.read_barcodes(img)
-                    
-                    if results:
-                        barcode_data = results[0].text
-                        safe_barcode_data = "".join(c for c in barcode_data if c.isalnum() or c in ('-', '_')).rstrip()
+                    nuevo_nombre_data = None
+                    metodo_exito = ""
+                    variaciones = obtener_variaciones_basicas(img)
 
-                        if not safe_barcode_data:
-                            log_messages.append({"status": "WARNING", "message": f"⚠️ ADVERTENCIA: Código de barras en '{filename}' vacío."})
+                    # ==========================================
+                    # FASE 1: INTENTAR LEER CÓDIGO DE BARRAS
+                    # ==========================================
+                    for img_var in variaciones:
+                        # Motor 1: ZXing
+                        results = zxingcpp.read_barcodes(img_var)
+                        if results:
+                            nuevo_nombre_data = results[0].text
+                            metodo_exito = "Código de Barras (ZXing)"
+                            break 
+                        
+                        # Motor 2: PyZbar
+                        decoded_objects = decode(img_var, symbols=simbolos_permitidos)
+                        if decoded_objects:
+                            nuevo_nombre_data = decoded_objects[0].data.decode('utf-8')
+                            metodo_exito = "Código de Barras (PyZbar)"
+                            break 
+                        
+                        # Motor 3: OpenCV
+                        if cv2_detector is not None:
+                            try:
+                                retval, decoded_info, _, _ = cv2_detector.detectAndDecode(img_var)
+                                if retval and decoded_info and decoded_info[0]:
+                                    nuevo_nombre_data = decoded_info[0]
+                                    metodo_exito = "Código de Barras (OpenCV)"
+                                    break
+                            except: pass
+                            
+                    # ==========================================
+                    # FASE 2: SI FALLA EL CÓDIGO, USAR OCR (LECTURA DE TEXTO)
+                    # ==========================================
+                    if not nuevo_nombre_data:
+                        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                        texto_extraido = pytesseract.image_to_string(gray_img)
+                        
+                        # LÓGICA 1 ORIGINAL: Soporta "CODIGO:" (Intacta y SIN la P al final)
+                        match = re.search(r'C[OÓ]DIGO:\s*([0-9A-Za-z]+)', texto_extraido, re.IGNORECASE)
+                        if match:
+                            nuevo_nombre_data = match.group(1)
+                            metodo_exito = "Extracción de Texto (OCR)"
+                            por_ocr += 1
+
+                        # ---> INICIO DE LÓGICA AÑADIDA (Suministros) - ESTAS SÍ LLEVAN LA 'P' <---
+                        if not nuevo_nombre_data:
+                            # Intento 1: Buscar la palabra "Suministro" normal
+                            match_sum = re.search(r'Suministro[^\d]*([\d\s]{8,})', texto_extraido, re.IGNORECASE)
+                            if match_sum:
+                                numero_bruto = match_sum.group(1)
+                                nuevo_nombre_data = numero_bruto.replace(" ", "").strip() + ""
+                                metodo_exito = "Extracción Suministro General (OCR)"
+                                por_ocr += 1
+                            else:
+                                # Intento 2: Buscar patrón numérico general en toda la hoja
+                                match_numeros = re.search(r'(?<!\d)(?:\d\s*){10,12}(?!\d)', texto_extraido)
+                                if match_numeros:
+                                    numero_bruto = match_numeros.group(0)
+                                    nuevo_nombre_data = numero_bruto.replace(" ", "").strip() + ""
+                                    metodo_exito = "Extracción Patrón Numérico (OCR)"
+                                    por_ocr += 1
+
+                        # SALVAVIDAS DEFINITIVO: EXTRACCIÓN PROPORCIONAL + FILTRO ANTI-PUNTOS
+                        if not nuevo_nombre_data:
+                            try:
+                                alto, ancho = gray_img.shape
+                                
+                                # Usamos PORCENTAJES. No importa si tu escáner es 4K o de baja calidad.
+                                # Siempre recortará el cuadrante donde escriben el número.
+                                y_inicio = int(alto * 0.16) # 16% de distancia desde arriba
+                                y_fin = int(alto * 0.32)    # Hasta el 32% hacia abajo
+                                x_inicio = int(ancho * 0.20)# 20% desde la izquierda
+                                x_fin = int(ancho * 0.70)   # Hasta el 70% de la derecha
+                                
+                                roi_suministro = gray_img[y_inicio:y_fin, x_inicio:x_fin]
+                                
+                                # TRUCO 1: Blur difumina y borra las líneas de puntos delgadas, 
+                                # pero deja vivo el trazo del lapicero.
+                                roi_blur = cv2.medianBlur(roi_suministro, 3)
+                                _, roi_thresh = cv2.threshold(roi_blur, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+                                
+                                config_tesseract = r'--psm 6'
+                                texto_recorte = pytesseract.image_to_string(roi_thresh, config=config_tesseract)
+                                
+                                # TRUCO 2: Limpieza humana. Convertimos la letra "O" a cero (0), 
+                                # la letra "S" a cinco (5), "I"/"L" a unos (1). 
+                                limpio = texto_recorte.upper().replace("O", "0").replace("Q", "0").replace("S", "5").replace("I", "1").replace("L", "1").replace("Z", "2").replace(" ", "").strip()
+                                
+                                # Borramos cualquier letra que haya sobrevivido, dejando solo números puros
+                                limpio = re.sub(r'\D', '', limpio) 
+                                
+                                # Buscamos si quedó un bloque sólido de 8 a 12 números (tu código)
+                                match_final = re.search(r'\d{8,12}', limpio)
+                                if match_final:
+                                    nuevo_nombre_data = match_final.group(0) + "P"
+                                    metodo_exito = "Recorte Relativo a Mano (OCR)"
+                                    por_ocr += 1
+                            except Exception as e:
+                                pass # Si la imagen está corrupta y no se puede recortar, ignora
+                        # ---> FIN DE LÓGICA AÑADIDA <---
+
+                    # ==========================================
+                    # FASE 3: RENOMBRAR ARCHIVO
+                    # ==========================================
+                    if nuevo_nombre_data:
+                        # Limpiamos caracteres extraños por seguridad
+                        safe_data = "".join(c for c in nuevo_nombre_data if c.isalnum() or c in ('-', '_')).rstrip()
+
+                        if not safe_data:
+                            log_messages.append({"status": "WARNING", "message": f"⚠️ Dato extraído de '{filename}' quedó vacío tras limpieza."})
                             errores += 1
                             continue
                         
                         file_extension = os.path.splitext(filename)[1]
-                        new_filename = f"{safe_barcode_data}{file_extension}"
+                        new_filename = f"{safe_data}{file_extension}"
                         new_path = os.path.join(folder_path, new_filename)
 
                         if os.path.exists(new_path):
-                            log_messages.append({"status": "WARNING", "message": f"⚠️ OMITIENDO: Ya existe un archivo '{new_filename}'."})
+                            log_messages.append({"status": "WARNING", "message": f"⚠️ OMITIENDO: Ya existe '{new_filename}'."})
                             errores += 1
                         else:
                             os.rename(original_path, new_path)
-                            log_messages.append({"status": "SUCCESS", "message": f"✅ ÉXITO: '{filename}' renombrado a '{new_filename}'"})
+                            log_messages.append({"status": "SUCCESS", "message": f"✅ ÉXITO: '{filename}' ➔ '{new_filename}' | Vía: {metodo_exito}"})
                             renombrados += 1
                     else:
-                        log_messages.append({"status": "INFO", "message": f"❌ INFO: No se encontró código en '{filename}'."})
+                        log_messages.append({"status": "INFO", "message": f"❌ INFO: Totalmente ilegible (Ni barras, ni texto) en '{filename}'."})
                         no_encontrados += 1
                 
                 except Exception as e:
-                    log_messages.append({"status": "ERROR", "message": f"⛔ ERROR: No se pudo procesar el archivo '{filename}'. Causa: {e}"})
+                    log_messages.append({"status": "ERROR", "message": f"⛔ ERROR en '{filename}': {e}"})
                     errores += 1
     
     except FileNotFoundError:
-        log_messages.append({"status": "ERROR", "message": "⛔ ERROR: La ruta de la carpeta no existe."})
+        log_messages.append({"status": "ERROR", "message": "⛔ ERROR: Carpeta no existe."})
 
-    log_messages.append({"status": "INFO", "message": "--- Resumen del Proceso ---"})
-    log_messages.append({"status": "INFO", "message": f"Archivos renombrados exitosamente: {renombrados}"})
-    log_messages.append({"status": "INFO", "message": f"Imágenes sin código de barras detectable: {no_encontrados}"})
-    log_messages.append({"status": "INFO", "message": f"Archivos con advertencias o errores: {errores}"})
+    log_messages.append({"status": "INFO", "message": "--- Resumen Final ---"})
+    log_messages.append({"status": "INFO", "message": f"Renombrados Total: {renombrados} (De los cuales {por_ocr} fueron rescatados por OCR)"})
+    log_messages.append({"status": "INFO", "message": f"Ilegibles: {no_encontrados} | Errores: {errores}"})
     
     return log_messages
-
 
 @app.route('/renombrar', methods=['POST'])
 def handle_renombrar():
@@ -6179,12 +6795,10 @@ def handle_renombrar():
     folder_path = data.get('path')
     
     if folder_path and os.path.isdir(folder_path):
-        resultados = renombrar_con_zxing(folder_path)
+        resultados = renombrar_con_ia_total(folder_path)
         return jsonify(resultados)
     else:
-        return jsonify([{"status": "ERROR", "message": "⛔ ERROR: La ruta ingresada no es una carpeta válida."}])
-    
-
+        return jsonify([{"status": "ERROR", "message": "⛔ ERROR: Ruta inválida."}])
 
 
 @app.route('/api/guardar_carga_dia', methods=['POST'])
@@ -6343,184 +6957,600 @@ OUTPUT_DIR = 'temp_dbf_output'
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
+TEMPLATE_DBF_PATH = r'C:\RADIAN\ASISTENCIAS\app\templates_excel\PLANTILLA_VL229082023.dbf'
+
+
+
+# 2. Carpeta temporal para guardar los DBF antes de zippear
+
+OUTPUT_DIR = 'temp_dbf_output'
+
+if not os.path.exists(OUTPUT_DIR):
+
+    os.makedirs(OUTPUT_DIR)
+
+
+
 # --- RUTA 1 (NUEVA VERSIÓN): PREVISUALIZAR CON GRUPOS ---
+
 @app.route('/previsualizar-dbf', methods=['POST'])
+
 def previsualizar_dbf():
+
     try:
+
         if 'archivo' not in request.files:
+
             return jsonify({'error': 'No se encontró el archivo Excel.'}), 400
-        
+
+       
+
         file = request.files['archivo']
-        fecha_seleccionada_str = request.form['fecha'] 
-        
+
+        fecha_seleccionada_str = request.form['fecha']
+
+       
+
         # Leemos el Excel, forzando que TODO se lea como STRING (texto)
+
         df = pd.read_excel(file, skiprows=5, dtype=str)
-        
+
+       
+
         df = df.drop(columns=['T', 'U', 'V'], errors='ignore')
+
         df = df.dropna(how='all')
 
+
+
         # Convertimos la fecha seleccionada por el usuario a un string dd/mm/YYYY
+
         fecha_obj_seleccionada = datetime.strptime(fecha_seleccionada_str, '%Y-%m-%d')
+
         df['FECNOTIMED'] = fecha_obj_seleccionada.strftime('%d/%m/%Y')
-        
+
+       
+
         # --- LÓGICA DE AGRUPACIÓN (COMO EN LA FUNCIÓN DE DESCARGA) ---
+
         columna_filtro = 'CICLOREAL' # Basado en tus logs
-        
+
+       
+
         if columna_filtro not in df.columns:
+
              return jsonify({'error': f'No se encontró la columna de filtro "{columna_filtro}" en el Excel.'}), 400
-        
+
+       
+
         grupos_unicos = df[columna_filtro].dropna().unique()
-        
+
+       
+
         # ¡IMPORTANTE! Creamos un diccionario para guardar los datos por grupo
+
         data_por_grupo = {}
 
+
+
         for grupo in grupos_unicos:
+
             df_partido = df[df[columna_filtro] == grupo].copy()
-            
+
+           
+
             # --- Preparamos los datos para JSON ---
+
             df_partido['LECTURA'] = pd.to_numeric(df_partido['LECTURA'], errors='coerce')
-            
+
+           
+
             # Convertimos el DataFrame DE ESTE GRUPO a JSON
+
             data_para_json = df_partido.fillna('').to_dict(orient='records')
-            
+
+           
+
             # Lo añadimos al diccionario principal
+
             data_por_grupo[str(grupo)] = data_para_json # Usamos str(grupo) para la clave JSON
-        
+
+       
+
         # Devolvemos el diccionario de grupos
+
         # Ejemplo: {"21": [...datos...], "22": [...datos...]}
+
         return jsonify(data_por_grupo)
 
+
+
     except Exception as e:
+
         print(f"Error grave en /previsualizar-dbf: {e}")
+
         return jsonify({'error': str(e)}), 500
+
+
+
+
+
 
 
 
 
 # --- RUTA 2 (MODIFICADA): TU CÓDIGO FUNCIONAL PARA DESCARGAR EL ZIP ---
+
 @app.route('/descargar-dbf', methods=['POST'])
+
 def descargar_dbf():
+
     # Este es el código que me enviaste y que funciona perfectamente
+
     try:
+
         if 'archivo' not in request.files:
+
             return jsonify({'error': 'No se encontró el archivo Excel.'}), 400
-        
+
+       
+
         file = request.files['archivo']
-        fecha_seleccionada_str = request.form['fecha'] 
-        
+
+        fecha_seleccionada_str = request.form['fecha']
+
+       
+
         if not os.path.exists(TEMPLATE_DBF_PATH):
+
              return jsonify({'error': 'No se encontró el archivo de plantilla DBF en el servidor.'}), 500
 
+
+
         # --- 1. PROCESAMIENTO DE EXCEL ---
+
         df = pd.read_excel(file, skiprows=5, dtype=str)
-        
+
+       
+
         print("\nDEBUG 1: Nombres de columna leídos del EXCEL:", list(df.columns))
 
+
+
         df = df.drop(columns=['T', 'U', 'V'], errors='ignore')
+
         df = df.dropna(how='all')
 
+
+
         fecha_obj_seleccionada = datetime.strptime(fecha_seleccionada_str, '%Y-%m-%d').date()
+
         df['FECNOTIMED'] = fecha_obj_seleccionada
-        
+
+       
+
         # --- 2. DIVISIÓN DEL EXCEL ---
-        columna_filtro = 'CICLOREAL' 
-        
+
+        columna_filtro = 'CICLOREAL'
+
+       
+
         if columna_filtro not in df.columns:
+
              return jsonify({'error': f'No se encontró la columna de filtro "{columna_filtro}" en el Excel.'}), 400
-        
+
+       
+
         grupos_unicos = df[columna_filtro].dropna().unique()
+
         dataframes_partidos = {}
+
         for grupo in grupos_unicos:
+
             dataframes_partidos[grupo] = df[df[columna_filtro] == grupo].copy()
+
+
 
         archivos_dbf_generados = []
 
+
+
         # --- 3. LÓGICA DBF CON CORRECCIÓN DE TIPO ---
+
         with dbf.Table(TEMPLATE_DBF_PATH) as plantilla:
+
             lista_campos_dbf = [f.lower() for f in plantilla.field_names]
+
+
 
         print(f"DEBUG 2 (Simplificado): Campos detectados en DBF: {lista_campos_dbf}")
 
+
+
         for grupo, df_partido in dataframes_partidos.items():
-            
+
+           
+
             dbf_filename = f'resultado_{grupo}.dbf'
+
             dbf_filepath = os.path.join(OUTPUT_DIR, dbf_filename)
-            
+
+           
+
             shutil.copy(TEMPLATE_DBF_PATH, dbf_filepath)
-            
+
+           
+
             dbf_table = dbf.Table(dbf_filepath)
+
             dbf_table.open(dbf.READ_WRITE)
+
             dbf_table.zap()
-            
+
+           
+
             col_map = {}
+
             for col_excel in df_partido.columns:
+
                 if col_excel.lower() in lista_campos_dbf:
+
                     col_map[col_excel.lower()] = col_excel
 
+
+
             print(f"\n--- DEBUG 3 (Grupo {grupo}): Mapeo de columnas (DBF -> Excel) ---")
+
             print(col_map)
 
+
+
             for index, fila_excel in df_partido.iterrows():
-                
+
+               
+
                 nuevo_registro = {}
-                
+
+               
+
                 for campo_dbf_lower, col_excel_original in col_map.items():
-                    
+
+                   
+
                     valor = fila_excel[col_excel_original]
-                    
+
+                   
+
                     if pd.isna(valor) or valor in (None, 'None', ''):
+
                         nuevo_registro[campo_dbf_lower] = None
+
                         continue
 
+
+
                     try:
+
                         if campo_dbf_lower == 'fecnotimed':
+
                             nuevo_registro[campo_dbf_lower] = valor
+
                         elif campo_dbf_lower == 'fchinsreal':
+
                             nuevo_registro[campo_dbf_lower] = datetime.strptime(str(valor), '%d/%m/%Y').date()
+
                         elif campo_dbf_lower == 'lectura':
+
                             nuevo_registro[campo_dbf_lower] = float(valor)
+
                         else:
+
                             # --- CORRECCIÓN AQUÍ ---
+
                             val_str = str(valor)
+
                             # Si el texto supera los 254 caracteres, lo cortamos
+
                             if len(val_str) > 254:
-                                val_str = val_str[:254] 
-                            
+
+                                val_str = val_str[:254]
+
+                           
+
                             nuevo_registro[campo_dbf_lower] = val_str
 
+
+
                     except Exception as e:
+
                         print(f"  -> Advertencia: No se pudo convertir '{valor}' para el campo '{campo_dbf_lower}'. Error: {e}")
+
                         nuevo_registro[campo_dbf_lower] = None
 
+
+
                 if nuevo_registro:
+
                     try:
+
                         dbf_table.append(nuevo_registro)
+
                     except Exception as e:
+
                         print(f"¡ERROR AL ANEXAR! {e}. Datos: {nuevo_registro}")
 
+
+
             dbf_table.close()
+
             archivos_dbf_generados.append(dbf_filepath)
 
+
+
         # 4. Comprimir y enviar
+
         if not archivos_dbf_generados:
+
             return jsonify({'error': 'No se generaron archivos, revise los datos del Excel.'}), 500
 
+
+
         zip_io = io.BytesIO()
+
         with zipfile.ZipFile(zip_io, 'w', zipfile.ZIP_DEFLATED) as zf:
+
             for f_path in archivos_dbf_generados:
+
                 zf.write(f_path, os.path.basename(f_path))
+
                 os.remove(f_path)
-                
+
+               
+
         zip_io.seek(0)
 
+
+
         return send_file(zip_io,
+
                          mimetype='application/zip',
+
                          as_attachment=True,
+
                          download_name='conversiones_dbf.zip')
 
+
+
     except Exception as e:
+
         print(f"Error grave en /descargar-dbf: {e}")
+
         return jsonify({'error': str(e)}), 500
+
+
+
+
+
+# ==============================================================================
+
+# LÓGICA CORREGIDA: EXCLUSIVA PARA ACCIONES PERSUASIVAS (PRODUCCIÓN REAPERTURAS)
+
+# ==============================================================================
+
+
+
+def seguro_parsear_fecha(valor):
+
+    """
+
+    Parsea de manera flexible y robusta fechas.
+
+    Filtra estrictamente los objetos NaT de Pandas para no corromper el DBF.
+
+    """
+
+    if pd.isna(valor) or valor in (None, 'None', ''):
+
+        return None
+
+   
+
+    # Si ya es un objeto datetime o Timestamp
+
+    if isinstance(valor, (datetime, pd.Timestamp)):
+
+        if pd.isna(valor): # Filtro extra por si el Timestamp es un NaT
+
+            return None
+
+        return valor.date()
+
+   
+
+    val_str = str(valor).strip()
+
+    for formato in ('%d/%m/%Y', '%Y-%m-%d', '%d/%m/%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S'):
+
+        try:
+
+            return datetime.strptime(val_str, formato).date()
+
+        except ValueError:
+
+            continue
+
+           
+
+    # Último recurso usando Pandas
+
+    try:
+
+        dt = pd.to_datetime(val_str, errors='coerce')
+
+        if pd.isna(dt): # Si falla, retorna NaT, lo bloqueamos y retornamos None
+
+            return None
+
+        return dt.date()
+
+    except:
+
+        return None
+
+
+def procesar_tablas_persuasivas(archivos_base, archivo_reporte_path):
+
+    temp_dir = tempfile.mkdtemp()
+
+    dbf_files = {}
+
+    ahora_global = datetime.now()
+    fecha_global = ahora_global.date()
+    hora_global_str = ahora_global.strftime('%H:%M:%S')
+    for f in archivos_base:
+        f_path = os.path.join(temp_dir, f.filename.lower())
+        f.save(f_path)
+        if f.filename.lower().endswith('.dbf'):
+            name_base = os.path.splitext(f.filename.lower())[0]
+            dbf_files[name_base] = f_path
+
+    df_raw = pd.read_excel(archivo_reporte_path, header=None)
+    fila_cabecera_idx = 0
+
+    for idx, fila in df_raw.iterrows():
+        valores_celdas = [str(celda).strip().upper() for celda in fila.dropna()]
+        if 'NRCX_CLI' in valores_celdas or 'NRCX_OBS' in valores_celdas:
+            fila_cabecera_idx = idx
+            break
+    df_reporte = pd.read_excel(archivo_reporte_path, skiprows=fila_cabecera_idx)
+    df_reporte.columns = df_reporte.columns.str.strip().str.upper()
+
+    if 'NRCX_CLI' in df_reporte.columns:
+        df_reporte['NRCX_CLI'] = df_reporte['NRCX_CLI'].astype(str).str.strip().str.zfill(11)
+
+    registros_finales = []
+
+    # 1. Modificar tabla secundaria/Detalles (nrcxobs1.dbf)
+    tabla1_key = [k for k in dbf_files.keys() if 'obs1' in k]
+
+    if tabla1_key:
+        dbf1_path = dbf_files[tabla1_key[0]]
+        table1 = dbf.Table(dbf1_path)
+        table1.open(mode=dbf.READ_WRITE)
+
+        for record in table1:
+            cli_cod = str(record.nrcx_cli).strip().zfill(11)
+            match = df_reporte[df_reporte['NRCX_CLI'] == cli_cod]
+
+            if not match.empty:
+                row = match.iloc[0]
+                fecha_fob_limpia = seguro_parsear_fecha(row.get('NRCX_FOB'))
+
+                dbf.write(record,
+                    nrcx_obs=int(float(row['NRCX_OBS'])) if 'NRCX_OBS' in row and pd.notna(row['NRCX_OBS']) else record.nrcx_obs,
+                    nrcx_glo=str(row['NRCX_GLO'])[:30].strip() if 'NRCX_GLO' in row and pd.notna(row['NRCX_GLO']) else record.nrcx_glo,
+                    nrcx_fob=fecha_fob_limpia if fecha_fob_limpia is not None else record.nrcx_fob,
+                    nrcx_hob=str(row['NRCX_HOB'])[:8].strip() if 'NRCX_HOB' in row and pd.notna(row['NRCX_HOB']) else record.nrcx_hob
+                )
+            registros_finales.append({
+                'NRCX_OFI': record.nrcx_ofi,
+                'NRCX_AGE': record.nrcx_age,
+                'NRCX_NRO': record.nrcx_nro,
+                'NRCX_CLI': cli_cod,
+                'NRCX_NOM': str(record.nrcx_nom).strip(),
+                'NRCX_DIR': str(record.nrcx_dir).strip(),
+                'NRCX_MED': str(record.nrcx_med).strip(),
+                'NRCX_TAR': str(record.nrcx_tar).strip(),
+                'NRCX_OBS': record.nrcx_obs,
+                'NRCX_FOB': str(record.nrcx_fob) if record.nrcx_fob else '',
+                'NRCX_HOB': str(record.nrcx_hob).strip(),
+                'NRCX_GLO': str(record.nrcx_glo).strip(),
+                'SERVIDOR': str(record.servidor).strip()
+            })
+        table1.close()
+
+    # 2. Modificar cabecera/Maestra de Carga (nrcxobs.dbf)
+    tabla0_key = [k for k in dbf_files.keys() if 'obs1' not in k]
+    if tabla0_key:
+        dbf0_path = dbf_files[tabla0_key[0]]
+        table0 = dbf.Table(dbf0_path)
+        table0.open(mode=dbf.READ_WRITE)
+        for record in table0:
+            dbf.write(record,
+                nrcx_fex=fecha_global,
+                nrcx_hex=hora_global_str
+            )
+        table0.close()
+
+    return temp_dir, registros_finales
+
+@app.route('/api/persuasivas/previsualizar', methods=['POST'])
+def previsualizar_persuasivas():
+    if 'archivos_base' not in request.files or 'reporte' not in request.files:
+        return jsonify({'error': 'Faltan archivos requeridos para Persuasivas.'}), 400
+    
+    archivos_base = request.files.getlist('archivos_base')
+    reporte = request.files['reporte']
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+        reporte.save(tmp.name)
+        archivo_reporte_path = tmp.name
+    try:
+        _, registros = procesar_tablas_persuasivas(archivos_base, archivo_reporte_path)
+        df = pd.DataFrame(registros)
+        data_agrupada = {}
+
+        if not df.empty:
+            # SOLUCIÓN CRÍTICA PARA EL JSON: Reemplaza los NaN (flotantes) por strings vacíos.
+            df = df.fillna('')
+            for servidor, group in df.groupby('SERVIDOR'):
+                data_agrupada[str(servidor)] = group.to_dict(orient='records')
+        return jsonify(data_agrupada)
+
+    except Exception as e:
+        print(f"Error en previsualizar_persuasivas: {e}")
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        if os.path.exists(archivo_reporte_path):
+            os.remove(archivo_reporte_path)
+
+
+
+
+
+@app.route('/api/persuasivas/descargar', methods=['POST'])
+def descargar_persuasivas():
+    if 'archivos_base' not in request.files or 'reporte' not in request.files:
+        return jsonify({'error': 'Faltan archivos requeridos para Persuasivas.'}), 400
+
+    archivos_base = request.files.getlist('archivos_base')
+    reporte = request.files['reporte']
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+        reporte.save(tmp.name)
+        archivo_reporte_path = tmp.name
+
+    try:
+        temp_dir, _ = procesar_tablas_persuasivas(archivos_base, archivo_reporte_path)
+        zip_output_path = os.path.join(temp_dir, 'entregable_persuasivas.zip')
+        with zipfile.ZipFile(zip_output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, _, files in os.walk(temp_dir):
+                for file in files:
+                    if file.endswith(('.dbf', '.cdx')):
+                        zipf.write(os.path.join(root, file), file)
+
+        return send_file(zip_output_path, as_attachment=True, download_name='entregable_persuasivas.zip')
+
+    except Exception as e:
+        print(f"Error en descargar_persuasivas: {e}")
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        if os.path.exists(archivo_reporte_path):
+            os.remove(archivo_reporte_path) 
+
+
     
 
 ###### GENERAR CARGAS ######
@@ -6953,7 +7983,7 @@ def generar_cartas_pdf():
         df_sec = None
 
         for f in files:
-            df_temp = pd.read_excel(f, dtype=str, keep_default_na=False)
+            df_temp = pd.read_excel(f, engine='openpyxl', dtype=str, keep_default_na=False)
             df_temp = normalizar_cols(df_temp)
             cols = df_temp.columns.tolist()
             
@@ -7130,8 +8160,8 @@ def generar_cartas_pdf():
             pdf.cell(0, 3, txt="SUPERVISOR DE IMPRESIÓN Y DISTRIBUCIÓN DE RECIBOS Y COMUNICACIONES", ln=True, align='C')
             pdf.cell(0, 3, txt="CONSORCIO ECMAN - RADIAN", ln=True, align='C')
 
-        out = pdf.output(dest='S').encode('latin-1')
-        buffer = io.BytesIO(out)
+        out = pdf.output(dest='S')
+        buffer = io.BytesIO(bytes(out))
         
         return send_file(buffer, mimetype='application/pdf', as_attachment=False, download_name=f'cartas_{fecha_emision}.pdf')
 
@@ -8815,7 +9845,7 @@ def guardar_conteo_fisico():
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "message": str(e)}), 500
-        
+       
 
 @app.route('/almacen/guardar-entrada-lote', methods=['POST'])
 def guardar_entrada_lote():
@@ -9614,6 +10644,7 @@ def editar_movimiento():
         db.session.rollback()
         return jsonify({"success": False, "message": str(e)}), 500
 
+
 ##### MODULO DE REVALIDACION DE LECTURAS #####
 @app.route('/subir_matriz_csv', methods=['POST'])
 def subir_matriz_csv():
@@ -10084,7 +11115,7 @@ def get_avance_validacion():
         func.count(MatrizValidacion.id_matriz).label('total'),
         func.sum(
             case(
-                (MatrizValidacion.estado.in_(['VALIDADO', 'POR MODIFICAR']), 1), 
+                (MatrizValidacion.estado.in_(['VALIDADO']), 1), 
                 else_=0
             )
         ).label('procesados')
@@ -10799,300 +11830,6 @@ def obtener_detalle_carta(carta_id):
         return jsonify({"error": str(e)}), 500
 
 
-########## SISTEMA DE ALERTAS ###########
-def es_feriado_peru(fecha):
-    """ Función que verifica si una fecha específica es feriado nacional en Perú """
-    # Feriados fijos (mes-dia)
-    fijos = [
-        '01-01', # Año Nuevo
-        '05-01', # Día del Trabajo
-        '06-07', # Batalla de Arica y Día de la Bandera
-        '06-29', # San Pedro y San Pablo
-        '07-23', # Día de la Fuerza Aérea
-        '07-28', # Fiestas Patrias
-        '07-29', # Fiestas Patrias
-        '08-06', # Batalla de Junín
-        '08-30', # Santa Rosa de Lima
-        '10-08', # Combate de Angamos
-        '11-01', # Todos los Santos
-        '12-08', # Inmaculada Concepción
-        '12-09', # Batalla de Ayacucho
-        '12-25'  # Navidad
-    ]
-    
-    # Feriados móviles (Jueves y Viernes Santo de los años más próximos)
-    moviles = [
-        '2024-03-28', '2024-03-29',
-        '2025-04-17', '2025-04-18',
-        '2026-04-02', '2026-04-03',
-        '2027-03-25', '2027-03-26'
-    ]
-    
-    if fecha.strftime('%m-%d') in fijos:
-        return True
-    if fecha.strftime('%Y-%m-%d') in moviles:
-        return True
-        
-    return False
-
-
-def obtener_areas_por_usuario(user_name):
-    print(f"🔍 [ALERTAS] Iniciando obtener_areas_por_usuario para: '{user_name}'")
-    
-    if user_name in ('supervisor1', 'administrativo_yta'):
-        areas = [
-            'ADMINISTRATIVO', 'CATASTRO', 'DISTRIBUCION', 'INSPECCIONES', 
-            'MEDICION', 'NORTE', 'PERSUASIVAS', 'RECAUDACION', 'TOMA DE ESTADO'
-        ]
-        print(f"✅ [ALERTAS] Usuario general ({user_name}) autorizado para todas las áreas: {len(areas)} áreas.")
-        return areas
-
-    mapeo_areas = {
-        'sup_admin': ['ADMINISTRATIVO'], 
-        'administrativo_yta': ['ADMINISTRATIVO'],
-        'sup_catastro': ['CATASTRO'],
-        'sup_distribucion': ['DISTRIBUCION'],
-        'sup_inspecciones': ['INSPECCIONES'],
-        'sup_medicion': ['MEDICION'],
-        'sup_norte': ['NORTE'],
-        'sup_persuasivas': ['PERSUASIVAS'], 
-        'administrativo_luis': ['PERSUASIVAS'],
-        'sup_recaudacion': ['RECAUDACION'], 
-        'sup_recaudacion_2': ['RECAUDACION'],
-        'sup_lecturas': ['TOMA DE ESTADO']
-    }
-    
-    areas = mapeo_areas.get(user_name, [])
-    print(f"✅ [ALERTAS] Áreas encontradas en mapeo para '{user_name}': {areas}")
-    return areas
-
-
-def generar_alertas_asistencia(user_name, fecha_consulta=None):
-    print(f"🚀 [ALERTAS] Iniciando generación de alertas para '{user_name}'", flush=True)
-    alertas = []
-    
-    try:
-        if not fecha_consulta:
-            fecha_consulta = datetime.now().date() 
-            print(f"📅 [ALERTAS] Fecha de consulta no provista, usando la actual: {fecha_consulta}")
-        else:
-            print(f"📅 [ALERTAS] Fecha de consulta recibida: {fecha_consulta}")
-
-        # ---------------------------------------------------------
-        # 1. LÓGICA RRHH: VENTANA MÓVIL DE LOS ÚLTIMOS 25 DÍAS
-        # ---------------------------------------------------------
-        if user_name == 'administrativo_yta':
-            print("👥 [ALERTAS - RRHH] Evaluando acumulados de los últimos 25 días.")
-            
-            fecha_inicio_rrhh = fecha_consulta - timedelta(days=25)
-            print(f"🕒 [ALERTAS - RRHH] Rango de evaluación: {fecha_inicio_rrhh} hasta {fecha_consulta}")
-            
-            acumulados = {}
-            siglas_rrhh = ['F', 'LSG', 'V', 'DM', 'DC', 'DT', 'LG', 'FG', 'LP']
-            
-            modelos_asistencia = [
-                EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
-                EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, 
-                EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
-            ]
-            
-            for modelo in modelos_asistencia:
-                registros = db.session.query(modelo.id_empleado, modelo.estado).filter(
-                    modelo.fec_asist >= fecha_inicio_rrhh,
-                    modelo.fec_asist <= fecha_consulta,
-                    modelo.estado.isnot(None)
-                ).all()
-                
-                for id_emp, estado in registros:
-                    estado_limpio = str(estado).strip().upper()
-                    if estado_limpio in siglas_rrhh:
-                        if id_emp not in acumulados:
-                            acumulados[id_emp] = {s: 0 for s in siglas_rrhh}
-                        acumulados[id_emp][estado_limpio] += 1
-
-            for id_emp, cont in acumulados.items():
-                motivos = []
-                
-                if cont['F'] >= 3: 
-                    motivos.append(f"{cont['F']} Faltas")
-                if cont['DM'] >= 4: 
-                    motivos.append(f"{cont['DM']} días de Desc. Médico")
-                if cont['LSG'] >= 3: 
-                    motivos.append(f"{cont['LSG']} Lic. Sin Goce")
-                if cont['DT'] >= 2: 
-                    motivos.append(f"{cont['DT']} Domingos Trabajados")
-                if cont['DC'] >= 2: 
-                    motivos.append(f"{cont['DC']} Descansos Compensatorios") 
-                
-                if motivos:
-                    emp = Empleado.query.filter_by(id_empleado=id_emp).first()
-                    if emp:
-                        nombres = emp.nombres or ''
-                        apellidos = getattr(emp, 'apellidos', '') or ''
-                        nombre_completo = f"{apellidos} {nombres}".strip()
-                        
-                        motivos_str = " y ".join(motivos)
-                        
-                        alertas.append({
-                            "tipo": "rrhh",
-                            "id_empleado": id_emp,
-                            "fecha_cruda": f"Últimos 25 días", 
-                            "mensaje": f"⚠️ ALERTA: {nombre_completo} acumula {motivos_str}."
-                        })
-
-        # ---------------------------------------------------------
-        # 2. LÓGICA SUPERVISORES: 10 días útiles (Sin domingos ni feriados)
-        # ---------------------------------------------------------
-        print("🧑‍💼 [ALERTAS - SUPERVISOR] Preparando evaluación de 10 días útiles (omitiendo hoy, domingos y feriados).")
-        fechas_a_evaluar = []
-        feriados_a_evaluar = [] # Guardaremos los feriados para ver si alguien asistió
-        
-        dias_atras = 1  
-        dias_agregados = 0
-        
-        while dias_agregados < 10:
-            fecha_eval = fecha_consulta - timedelta(days=dias_atras)
-            
-            # Si es domingo, lo ignoramos totalmente
-            if fecha_eval.weekday() == 6:
-                pass 
-            # Si es feriado, lo guardamos en otra lista, pero NO suma como "día útil"
-            elif es_feriado_peru(fecha_eval):
-                feriados_a_evaluar.append(fecha_eval)
-            # Si es día útil normal
-            else:
-                fechas_a_evaluar.append(fecha_eval)
-                dias_agregados += 1
-                
-            dias_atras += 1
-
-        print(f"📆 [ALERTAS] Días útiles a evaluar: {[f.strftime('%d-%m') for f in fechas_a_evaluar]}")
-        if feriados_a_evaluar:
-            print(f"🎈 [ALERTAS] Feriados encontrados en el rango: {[f.strftime('%d-%m') for f in feriados_a_evaluar]}")
-
-        areas_del_supervisor = obtener_areas_por_usuario(user_name)
-        if not areas_del_supervisor:
-            return alertas 
-
-        empleados_a_cargo = Empleado.query.filter(
-            Empleado.area.in_(areas_del_supervisor), 
-            Empleado.estado == 'ACTIVO'
-        ).all()
-        
-        ids_a_cargo = {emp.id_empleado for emp in empleados_a_cargo}
-        
-        modelos_asistencia = [
-            EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
-            EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, 
-            EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
-        ]
-        
-        # Unimos fechas útiles y feriados para hacer una sola consulta a la Base de Datos
-        todas_las_fechas = fechas_a_evaluar + feriados_a_evaluar
-        asistencias_validas_por_fecha = {fecha: set() for fecha in todas_las_fechas}
-        
-        for modelo in modelos_asistencia:
-            registros = db.session.query(modelo.fec_asist, modelo.id_empleado).filter(
-                modelo.fec_asist.in_(todas_las_fechas),
-                modelo.estado.isnot(None),       
-                modelo.estado != '',             
-                modelo.estado != ' '             
-            ).all()
-            
-            for fecha_bd, emp_id in registros:
-                if fecha_bd in asistencias_validas_por_fecha:
-                    asistencias_validas_por_fecha[fecha_bd].add(emp_id)
-
-        # A. EVALUAR DÍAS ÚTILES (Alerta por FALTAR)
-        for fecha in fechas_a_evaluar:
-            ids_con_asistencia = asistencias_validas_por_fecha[fecha]
-            ids_faltantes = ids_a_cargo - ids_con_asistencia
-            
-            if ids_faltantes:
-                str_fecha = fecha.strftime('%d-%m-%Y')
-                for emp in empleados_a_cargo:
-                    if emp.id_empleado in ids_faltantes:
-                        nombres = emp.nombres or ''
-                        apellidos = getattr(emp, 'apellidos', '') or ''
-                        nombre_completo = f"{apellidos} {nombres}".strip()
-                        
-                        alertas.append({
-                            "tipo": "advertencia",
-                            "id_empleado": emp.id_empleado,
-                            "fecha_cruda": fecha.strftime('%Y-%m-%d'),
-                            "mensaje": f"Sin asistencia registrada el día {str_fecha} para {nombre_completo}."
-                        })
-
-        # B. EVALUAR FERIADOS (Alerta por ASISTIR en Feriado)
-        for fecha in feriados_a_evaluar:
-            ids_con_asistencia = asistencias_validas_por_fecha[fecha]
-            # Intersectamos para ver qué empleados a cargo SI asistieron en el feriado
-            ids_presentes = ids_a_cargo.intersection(ids_con_asistencia)
-            
-            if ids_presentes:
-                str_fecha = fecha.strftime('%d-%m-%Y')
-                print(f"🚨 [ALERTAS - FERIADOS] Fecha {str_fecha} -> {len(ids_presentes)} empleados trabajaron en feriado.")
-                for emp in empleados_a_cargo:
-                    if emp.id_empleado in ids_presentes:
-                        nombres = emp.nombres or ''
-                        apellidos = getattr(emp, 'apellidos', '') or ''
-                        nombre_completo = f"{apellidos} {nombres}".strip()
-                        
-                        alertas.append({
-                            "tipo": "advertencia",  # Puedes cambiarlo a "feriado" si tu frontend maneja otro color
-                            "id_empleado": emp.id_empleado,
-                            "fecha_cruda": fecha.strftime('%Y-%m-%d'),
-                            "mensaje": f"⚠️ Trabajó en Feriado: Asistencia registrada el {str_fecha} para {nombre_completo}."
-                        })
-
-        print(f"🏁 [ALERTAS] Proceso terminado con éxito. Total alertas generadas: {len(alertas)}", flush=True)
-        return alertas
-
-    except Exception as e:
-        print(f"❌ [ERROR CRÍTICO - ALERTAS] Hubo un fallo en generar_alertas_asistencia: {e}")
-        traceback.print_exc()  
-        return []
-
-
-@app.route('/api/detalle_alerta')
-def api_detalle_alerta():
-    # ... Tu función api_detalle_alerta sigue igual ...
-    print("\n--- 📞 [API] Petición a /api/detalle_alerta iniciada ---")
-    try:
-        id_empleado = request.args.get('id')
-        fecha_str = request.args.get('fecha')
-        
-        if not id_empleado or not fecha_str:
-            return jsonify({"error": "Faltan datos"}), 400
-            
-        empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-        
-        if not empleado:
-            return jsonify({"error": "Empleado no encontrado"}), 404
-            
-        nombres = empleado.nombres or ''
-        apellidos = getattr(empleado, 'apellidos', '') or ''
-        
-        telefono = getattr(empleado, 'telefono', '') or ''
-        telefono = telefono.strip()
-        if telefono and not telefono.startswith('51') and not telefono.startswith('+51'):
-            telefono = f"51{telefono}"
-            
-        data = {
-            "nombre_completo": f"{apellidos} {nombres}".strip(),
-            "area": empleado.area or "Sin área",
-            "fecha_incidencia": fecha_str,
-            "telefono": telefono
-        }
-        
-        return jsonify(data)
-        
-    except Exception as e:
-        print(f"❌ [ERROR CRÍTICO - API] Fallo al obtener detalles de alerta: {e}")
-        traceback.print_exc()
-        return jsonify({"error": "Error interno del servidor", "detalle": str(e)}), 500
-
-
 
 ######## PRODUCCION ########
 def parse_fecha(fecha_str):
@@ -11799,3 +12536,876 @@ def guardar_cargas():
         db.session.rollback()
         print(f"❌ Error guardando cargas: {e}")
         return jsonify({"error": "Error interno del servidor."})
+    
+
+
+########## SISTEMA DE ALERTAS ###########
+def es_feriado_peru(fecha):
+    """ Función que verifica si una fecha específica es feriado nacional en Perú """
+    # Feriados fijos (mes-dia)
+    fijos = [
+        '01-01', # Año Nuevo
+        '05-01', # Día del Trabajo
+        '06-07', # Batalla de Arica y Día de la Bandera
+        '06-29', # San Pedro y San Pablo
+        '07-23', # Día de la Fuerza Aérea
+        '07-28', # Fiestas Patrias
+        '07-29', # Fiestas Patrias
+        '08-06', # Batalla de Junín
+        '08-30', # Santa Rosa de Lima
+        '10-08', # Combate de Angamos
+        '11-01', # Todos los Santos
+        '12-08', # Inmaculada Concepción
+        '12-09', # Batalla de Ayacucho
+        '12-25'  # Navidad
+    ]
+    
+    # Feriados móviles (Jueves y Viernes Santo de los años más próximos)
+    moviles = [
+        '2024-03-28', '2024-03-29',
+        '2025-04-17', '2025-04-18',
+        '2026-04-02', '2026-04-03',
+        '2027-03-25', '2027-03-26'
+    ]
+    
+    if fecha.strftime('%m-%d') in fijos:
+        return True
+    if fecha.strftime('%Y-%m-%d') in moviles:
+        return True
+        
+    return False
+
+
+def obtener_areas_por_usuario(user_name):
+    print(f"🔍 [ALERTAS] Iniciando obtener_areas_por_usuario para: '{user_name}'")
+    
+    if user_name in ('supervisor1', 'administrativo_yta'):
+        areas = [
+            'ADMINISTRATIVO', 'CATASTRO', 'DISTRIBUCION', 'INSPECCIONES', 
+            'MEDICION', 'NORTE', 'PERSUASIVAS', 'RECAUDACION', 'TOMA DE ESTADO'
+        ]
+        print(f"✅ [ALERTAS] Usuario general ({user_name}) autorizado para todas las áreas: {len(areas)} áreas.")
+        return areas
+
+    mapeo_areas = {
+        'sup_admin': ['ADMINISTRATIVO'], 
+        'administrativo_yta': ['ADMINISTRATIVO'],
+        'sup_catastro': ['CATASTRO'],
+        'sup_distribucion': ['DISTRIBUCION'],
+        'sup_inspecciones': ['INSPECCIONES'],
+        'sup_medicion': ['MEDICION'],
+        'sup_norte': ['NORTE'],
+        'sup_persuasivas': ['PERSUASIVAS'], 
+        'administrativo_luis': ['PERSUASIVAS'],
+        'sup_recaudacion': ['RECAUDACION'], 
+        'sup_recaudacion_2': ['RECAUDACION'],
+        'sup_lecturas': ['TOMA DE ESTADO']
+    }
+    
+    areas = mapeo_areas.get(user_name, [])
+    print(f"✅ [ALERTAS] Áreas encontradas en mapeo para '{user_name}': {areas}")
+    return areas
+
+
+def generar_alertas_asistencia(user_name, fecha_consulta=None):
+    print(f"🚀 [ALERTAS] Iniciando generación de alertas para '{user_name}'", flush=True)
+    alertas = []
+    
+    try:
+        if not fecha_consulta:
+            fecha_consulta = datetime.now().date() 
+            print(f"📅 [ALERTAS] Fecha de consulta no provista, usando la actual: {fecha_consulta}")
+        else:
+            print(f"📅 [ALERTAS] Fecha de consulta recibida: {fecha_consulta}")
+
+        # ---------------------------------------------------------
+        # 1. LÓGICA RRHH: PERIODO DE PLANILLA (26 al 25)
+        # ---------------------------------------------------------
+        if user_name in ('supervisor1', 'administrativo_yta'):
+            print(f"👥 [ALERTAS - RRHH] Evaluando periodo de planilla (26 al 25) para: '{user_name}'.")
+            
+            año_actual = fecha_consulta.year
+            mes_actual = fecha_consulta.month
+            
+            if fecha_consulta.day >= 26:
+                fecha_inicio_rrhh = date(año_actual, mes_actual, 26)
+                if mes_actual == 12:
+                    fecha_fin_rrhh = date(año_actual + 1, 1, 25)
+                else:
+                    fecha_fin_rrhh = date(año_actual, mes_actual + 1, 25)
+            else:
+                fecha_fin_rrhh = date(año_actual, mes_actual, 25)
+                if mes_actual == 1:
+                    fecha_inicio_rrhh = date(año_actual - 1, 12, 26)
+                else:
+                    fecha_inicio_rrhh = date(año_actual, mes_actual - 1, 26)
+                    
+            print(f"📅 [ALERTAS - RRHH] Rango establecido: {fecha_inicio_rrhh} hasta {fecha_fin_rrhh}")
+            
+            acumulados_planilla = {}
+            siglas_criticas = ['F', 'LG', 'LSG', 'DM']
+            
+            modelos_asistencia = [
+                EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
+                EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, 
+                EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
+            ]
+            
+            total_registros_encontrados = 0
+            for modelo in modelos_asistencia:
+                nombre_modelo = modelo.__name__
+                registros = db.session.query(modelo.id_empleado, modelo.estado).filter(
+                    modelo.fec_asist >= fecha_inicio_rrhh,
+                    modelo.fec_asist <= fecha_fin_rrhh,
+                    modelo.estado.isnot(None)
+                ).all()
+                
+                print(f"🔍 [RRHH - {nombre_modelo}] Registros en rango: {len(registros)}")
+                total_registros_encontrados += len(registros)
+                
+                for id_emp, estado in registros:
+                    estado_limpio = str(estado).strip().upper()
+                    if estado_limpio in siglas_criticas:
+                        if id_emp not in acumulados_planilla:
+                            acumulados_planilla[id_emp] = {s: 0 for s in siglas_criticas}
+                        acumulados_planilla[id_emp][estado_limpio] += 1
+
+            print(f"📊 [ALERTAS - RRHH] Total registros críticos: {total_registros_encontrados}")
+            print(f"📋 [ALERTAS - RRHH] Empleados con incidencias: {len(acumulados_planilla)}")
+
+            alertas_generadas_rrhh = 0
+            for id_emp, cont in acumulados_planilla.items():
+                motivos = []
+                
+                if cont['F'] >= 3: 
+                    motivos.append(f"{cont['F']} Faltas")
+                if cont['DM'] >= 3: 
+                    motivos.append(f"{cont['DM']} días de Desc. Médico")
+                if cont['LSG'] >= 3: 
+                    motivos.append(f"{cont['LSG']} Licencias Sin Goce")
+                if cont['LG'] >= 3: 
+                    motivos.append(f"{cont['LG']} Licencias Con Goce")
+                    
+                if motivos:
+                    print(f"⚠️ [RRHH] Empleado ID {id_emp} superó el límite. Contadores: {cont}")
+                    emp = Empleado.query.filter_by(id_empleado=id_emp).first()
+                    if emp:
+                        nombres = emp.nombres or ''
+                        apellidos = getattr(emp, 'apellidos', '') or ''
+                        nombre_completo = f"{apellidos} {nombres}".strip()
+                        motivos_str = " y ".join(motivos)
+                        
+                        alertas.append({
+                            "tipo": "rrhh",
+                            "id_empleado": id_emp,
+                            "fecha_cruda": f"Planilla: {fecha_inicio_rrhh.strftime('%d/%m')} - {fecha_fin_rrhh.strftime('%d/%m')}", 
+                            "mensaje": f"⚠️ ALERTA PLANILLA: {nombre_completo} acumula {motivos_str} en el periodo actual."
+                        })
+                        alertas_generadas_rrhh += 1
+                    else:
+                        print(f"❌ [RRHH] ID {id_emp} con infracción pero no existe en Empleados.")
+
+            print(f"🏁 [ALERTAS - RRHH] Alertas añadidas: {alertas_generadas_rrhh}\n")
+
+        # ---------------------------------------------------------
+        # 2. LÓGICA SUPERVISORES: 10 días útiles
+        # ---------------------------------------------------------
+        print("🧑‍💼 [ALERTAS - SUPERVISOR] Preparando evaluación de 10 días útiles.")
+        fechas_a_evaluar = []
+        feriados_a_evaluar = [] 
+        
+        dias_atras = 1  
+        dias_agregados = 0
+        
+        while dias_agregados < 10:
+            fecha_eval = fecha_consulta - timedelta(days=dias_atras)
+            
+            if fecha_eval.weekday() == 6:
+                pass 
+            elif es_feriado_peru(fecha_eval):
+                feriados_a_evaluar.append(fecha_eval)
+            else:
+                fechas_a_evaluar.append(fecha_eval)
+                dias_agregados += 1
+                
+            dias_atras += 1
+
+        print(f"📆 [ALERTAS] Días útiles: {[f.strftime('%d-%m') for f in fechas_a_evaluar]}")
+        if feriados_a_evaluar:
+            print(f"🎈 [ALERTAS] Feriados: {[f.strftime('%d-%m') for f in feriados_a_evaluar]}")
+
+        areas_del_supervisor = obtener_areas_por_usuario(user_name)
+        if not areas_del_supervisor:
+            return alertas 
+
+        empleados_a_cargo = Empleado.query.filter(
+            Empleado.area.in_(areas_del_supervisor), 
+            Empleado.estado == 'ACTIVO'
+        ).all()
+        
+        ids_a_cargo = {emp.id_empleado for emp in empleados_a_cargo}
+        
+        modelos_asistencia = [
+            EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
+            EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, 
+            EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
+        ]
+        
+        todas_las_fechas = fechas_a_evaluar + feriados_a_evaluar
+        asistencias_validas_por_fecha = {fecha: set() for fecha in todas_las_fechas}
+        
+        for modelo in modelos_asistencia:
+            registros = db.session.query(modelo.fec_asist, modelo.id_empleado).filter(
+                modelo.fec_asist.in_(todas_las_fechas),
+                modelo.estado.isnot(None),       
+                modelo.estado != '',             
+                modelo.estado != ' '             
+            ).all()
+            
+            for fecha_bd, emp_id in registros:
+                if fecha_bd in asistencias_validas_por_fecha:
+                    asistencias_validas_por_fecha[fecha_bd].add(emp_id)
+
+        for fecha in fechas_a_evaluar:
+            ids_con_asistencia = asistencias_validas_por_fecha[fecha]
+            ids_faltantes = ids_a_cargo - ids_con_asistencia
+            
+            if ids_faltantes:
+                str_fecha = fecha.strftime('%d-%m-%Y')
+                for emp in empleados_a_cargo:
+                    if emp.id_empleado in ids_faltantes:
+                        nombres = emp.nombres or ''
+                        apellidos = getattr(emp, 'apellidos', '') or ''
+                        nombre_completo = f"{apellidos} {nombres}".strip()
+                        
+                        alertas.append({
+                            "tipo": "advertencia",
+                            "id_empleado": emp.id_empleado,
+                            "fecha_cruda": fecha.strftime('%Y-%m-%d'),
+                            "mensaje": f"Sin asistencia registrada el día {str_fecha} para {nombre_completo}."
+                        })
+
+        for fecha in feriados_a_evaluar:
+            ids_con_asistencia = asistencias_validas_por_fecha[fecha]
+            ids_presentes = ids_a_cargo.intersection(ids_con_asistencia)
+            
+            if ids_presentes:
+                str_fecha = fecha.strftime('%d-%m-%Y')
+                for emp in empleados_a_cargo:
+                    if emp.id_empleado in ids_presentes:
+                        nombres = emp.nombres or ''
+                        apellidos = getattr(emp, 'apellidos', '') or ''
+                        nombre_completo = f"{apellidos} {nombres}".strip()
+                        
+                        alertas.append({
+                            "tipo": "advertencia", 
+                            "id_empleado": emp.id_empleado,
+                            "fecha_cruda": fecha.strftime('%Y-%m-%d'),
+                            "mensaje": f"⚠️ Trabajó en Feriado: Asistencia registrada el {str_fecha} para {nombre_completo}."
+                        })
+
+        print(f"🏁 [ALERTAS] Proceso terminado. Total general de alertas: {len(alertas)}", flush=True)
+        return alertas
+
+    except Exception as e:
+        print(f"❌ [ERROR CRÍTICO - ALERTAS] Hubo un fallo en generar_alertas_asistencia: {e}")
+        traceback.print_exc()  
+        return []
+
+
+@app.route('/api/detalle_alerta')
+def api_detalle_alerta():
+    # ... Tu función api_detalle_alerta sigue igual ...
+    print("\n--- 📞 [API] Petición a /api/detalle_alerta iniciada ---")
+    try:
+        id_empleado = request.args.get('id')
+        fecha_str = request.args.get('fecha')
+        
+        if not id_empleado or not fecha_str:
+            return jsonify({"error": "Faltan datos"}), 400
+            
+        empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
+        
+        if not empleado:
+            return jsonify({"error": "Empleado no encontrado"}), 404
+            
+        nombres = empleado.nombres or ''
+        apellidos = getattr(empleado, 'apellidos', '') or ''
+        
+        telefono = getattr(empleado, 'telefono', '') or ''
+        telefono = telefono.strip()
+        if telefono and not telefono.startswith('51') and not telefono.startswith('+51'):
+            telefono = f"51{telefono}"
+            
+        data = {
+            "nombre_completo": f"{apellidos} {nombres}".strip(),
+            "area": empleado.area or "Sin área",
+            "fecha_incidencia": fecha_str,
+            "telefono": telefono
+        }
+        
+        return jsonify(data)
+        
+    except Exception as e:
+        print(f"❌ [ERROR CRÍTICO - API] Fallo al obtener detalles de alerta: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno del servidor", "detalle": str(e)}), 500
+
+
+
+########## RUTAS ###########
+@app.route('/api/generar_rutas', methods=['POST'])
+def generar_rutas():
+    import re
+    import math
+    import unicodedata
+    import pandas as pd
+    import numpy as np
+    from sklearn.cluster import KMeans
+    
+    try:
+        if 'archivo' not in request.files:
+            return jsonify({'error': 'No se encontró ningún archivo excel.'}), 400
+            
+        archivo = request.files['archivo']
+        
+        limite_input_web = int(request.form.get('limite_carga', 20))
+        actividad = request.form.get('actividad', 'INSPECCIONES COMERCIALES').strip().upper()
+        tipo_mapeo = request.form.get('tipo_mapeo', 'auto')
+        
+        df = pd.read_excel(archivo, dtype=str)
+        columnas_reales = df.columns.astype(str).tolist()
+        print("\n" + "="*50)
+        print(f"📋 ACTIVIDAD SELECCIONADA: {actividad}")
+        print(f"📊 1. TOTAL FILAS EN EXCEL ORIGINAL: {len(df)}")
+        
+        if tipo_mapeo == 'manual':
+            col_sum = request.form.get('col_suministro')
+            col_fec = request.form.get('col_fecha')
+            col_hor = request.form.get('col_hora')
+            col_dis = request.form.get('col_distrito')
+            col_urb = request.form.get('col_urb')
+            col_via = request.form.get('col_via')
+            col_num = request.form.get('col_numero')
+        else:
+            col_sum = next((c for c in columnas_reales if 'SUMINISTRO' in c.upper() or 'CLICOD' in c.upper()), None)
+            col_fec = next((c for c in columnas_reales if 'FECHA' in c.upper()), None)
+            col_hor = next((c for c in columnas_reales if 'HORA' in c.upper()), None)
+            col_dis = next((c for c in columnas_reales if 'DISTRIT' in c.upper()), None)
+            col_urb = next((c for c in columnas_reales if 'URBANI' in c.upper() or 'URBA' in c.upper()), None)
+            col_via = next((c for c in columnas_reales if 'VIA' in c.upper() or 'VÍA' in c.upper() or 'CALLE' in c.upper()), None)
+            col_num = next((c for c in columnas_reales if 'MUNICIPAL' in c.upper() or 'NRO' in c.upper() or 'NUMERO' in c.upper()), None)
+            
+        if not col_sum:
+            return jsonify({'error': 'No se detectó la columna Suministro.'}), 400
+            
+        df = df.dropna(subset=[col_sum])
+        df[col_sum] = df[col_sum].astype(str).str.strip()
+        print(f"📉 2. Tras quitar filas con Suministro vacío: {len(df)}")
+        
+        if col_hor and col_hor in df.columns:
+            df = df.drop_duplicates(subset=[col_sum], keep='first')
+            print(f"✂️ 3. Tras eliminar inspecciones dobles (Suministros Únicos): {len(df)}")
+            
+        suministros_unicos = df[col_sum].unique().tolist()
+        
+        # ========================================================
+        # BÚSQUEDA 1: BASE DE DATOS (CATASTRO)
+        # ========================================================
+        res_primarios = db.session.query(
+            CoordenadasCatastro.clicodfac, CoordenadasCatastro.coord_x, CoordenadasCatastro.coord_y
+        ).filter(CoordenadasCatastro.clicodfac.in_(suministros_unicos)).all()
+        df_coords1 = pd.DataFrame(res_primarios, columns=['sum_db', 'lat_x', 'lon_y'])
+        encontrados = df_coords1['sum_db'].tolist()
+        faltantes = list(set(suministros_unicos) - set(encontrados))
+        df_coords2 = pd.DataFrame()
+        
+        if faltantes:
+            res_secundarios = db.session.query(
+                DataCatastroV2.agrupado, DataCatastroV2.suministro_p, DataCatastroV2.este, DataCatastroV2.norte
+            ).filter(or_(DataCatastroV2.agrupado.in_(faltantes), DataCatastroV2.suministro_p.in_(faltantes))).all()
+            datos_sec = []
+            for r in res_secundarios:
+                match_sum = r.agrupado if r.agrupado in faltantes else r.suministro_p
+                datos_sec.append({'sum_db': match_sum, 'lat_x': r.este, 'lon_y': r.norte})
+            df_coords2 = pd.DataFrame(datos_sec)
+            
+        df_todas_coords = pd.concat([df_coords1, df_coords2]).drop_duplicates(subset=['sum_db'])
+        df = df.merge(df_todas_coords, left_on=col_sum, right_on='sum_db', how='left')
+        
+        def es_coordenada_logica(row):
+            try:
+                x, y = float(row['lat_x']), float(row['lon_y'])
+                if math.isnan(x) or math.isnan(y): return False
+                if (-83 <= x <= -68) and (-20 <= y <= 0): return True
+                if (100000 <= x <= 900000) and (7500000 <= y <= 10000000): return True
+                return False
+            except:
+                return False
+                
+        df['coordenada_valida'] = df.apply(es_coordenada_logica, axis=1)
+        df.loc[df['coordenada_valida'] == False, ['lat_x', 'lon_y']] = np.nan
+        
+        # ========================================================
+        # BÚSQUEDA 2: IA GEOCODIFICADORA POR DIRECCIÓN
+        # ========================================================
+        df_sin_coords = df[df['lat_x'].isnull()].copy()
+        if not df_sin_coords.empty and col_via:
+            from geopy.geocoders import ArcGIS
+            geolocator = ArcGIS(timeout=5)
+            direcciones_cacheadas = {}
+            for idx, row in df_sin_coords.iterrows():
+                via = str(row.get(col_via, '')).strip()
+                if not via or via.lower() == 'nan': continue
+                num = str(row.get(col_num, '')).strip()
+                num = num if num.lower() != 'nan' and num != 's/n' else ''
+                urb = str(row.get(col_urb, '')).strip()
+                urb = urb if urb.lower() != 'nan' else ''
+                dis = str(row.get(col_dis, '')).strip()
+                dis = dis if dis.lower() != 'nan' else ''
+                direccion_completa = f"{via} {num}, {urb}, {dis}, Trujillo, La Libertad, Peru".replace(" ,", ",").replace("  ", " ").strip()
+                
+                if direccion_completa in direcciones_cacheadas:
+                    if direcciones_cacheadas[direccion_completa]:
+                        df.at[idx, 'lat_x'] = direcciones_cacheadas[direccion_completa]['lat']
+                        df.at[idx, 'lon_y'] = direcciones_cacheadas[direccion_completa]['lon']
+                    continue
+                try:
+                    location = geolocator.geocode(direccion_completa)
+                    if location:
+                        df.at[idx, 'lat_x'] = location.longitude
+                        df.at[idx, 'lon_y'] = location.latitude
+                        direcciones_cacheadas[direccion_completa] = {'lat': location.longitude, 'lon': location.latitude}
+                    else:
+                        direcciones_cacheadas[direccion_completa] = None
+                except Exception:
+                    direcciones_cacheadas[direccion_completa] = None
+                    
+        # ========================================================
+        # IDENTIFICACIÓN DE ZONAS Y SECTORES
+        # ========================================================
+        def normalizar_texto_zona(valor):
+            texto = '' if valor is None else str(valor)
+            texto = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('ascii')
+            return ' '.join(texto.upper().strip().split())
+            
+        def identificar_zona(row):
+            zonas = {
+                'EL MILAGRO': ['EL MILAGRO', 'MILAGRO'],
+                'HUANCHACO': ['HUANCHACO', 'HUANCHAQUITO'],
+                'MOCHE': ['MOCHE'],
+                'SALAVERRY': ['SALAVERRY'],
+                'CHEPEN': ['CHEPEN'],
+                'PAIJAN': ['PAIJAN'],
+                'CHOCOPE': ['CHOCOPE'],
+                'PUERTO MALABRIGO': ['PUERTO MALABRIGO', 'MALABRIGO'],
+                'PACANGUILLA': ['PACANGUILLA'],
+                'TRUJILLO': ['TRUJILLO'],
+                'EL PORVENIR': ['EL PORVENIR', 'PORVENIR'],
+                'LA ESPERANZA': ['LA ESPERANZA', 'ESPERANZA'],
+                'VICTOR LARCO HERRERA': ['VICTOR LARCO', 'LARCO', 'BUENOS AIRES'],
+                'FLORENCIA DE MORA': ['FLORENCIA DE MORA', 'FLORENCIA']
+            }
+            campos_zona = []
+            for col in [col_dis, col_urb, col_via]:
+                if col and col in row.index:
+                    valor = normalizar_texto_zona(row.get(col, ''))
+                    if valor and valor != 'NAN':
+                        campos_zona.append(valor)
+            for zona, aliases in zonas.items():
+                if zona == 'TRUJILLO': continue
+                for campo in campos_zona:
+                    if campo in aliases: return zona
+            texto_completo = ' | '.join(campos_zona)
+            for zona, aliases in zonas.items():
+                if zona == 'TRUJILLO': continue
+                for alias in aliases:
+                    if re.search(rf'\b{re.escape(alias)}\b', texto_completo): return zona
+            for campo in campos_zona:
+                if campo == 'TRUJILLO': return 'TRUJILLO'
+            if re.search(r'\bTRUJILLO\b', texto_completo): return 'TRUJILLO'
+            if campos_zona: return f'OTRA ZONA - {campos_zona[0]}'
+            return 'SIN ZONA'
+            
+        df['__zona__'] = df.apply(identificar_zona, axis=1)
+        
+        def clasificar_eje_base(zona_str):
+            z = str(zona_str).upper()
+            if z in ['LA ESPERANZA', 'HUANCHACO', 'EL MILAGRO']: return 'SECTOR_NORTE'
+            if z in ['EL PORVENIR', 'FLORENCIA DE MORA']: return 'SECTOR_ESTE'
+            if z in ['MOCHE', 'SALAVERRY']: return 'SECTOR_SUR'
+            if z in ['VICTOR LARCO HERRERA', 'BUENOS AIRES', 'LARCO']: return 'SECTOR_OESTE'
+            if z in ['TRUJILLO']: return 'TRUJILLO_CENTRO'
+            return 'AISLADA'
+
+        df['__placa__'] = df['__zona__'].apply(clasificar_eje_base)
+        
+        if not col_fec or col_fec not in df.columns or df[col_fec].isnull().all():
+            df['__fecha_generica__'] = 'Sin Fecha'
+            col_fec = '__fecha_generica__'
+        else:
+            df[col_fec] = df[col_fec].astype(str).str.strip()
+            
+        tiene_horas = col_hor and col_hor in df.columns and not df[col_hor].isnull().all()
+        if tiene_horas:
+            df[col_hor] = df[col_hor].astype(str).str.strip().str.upper()
+        else:
+            df['__hora_generica__'] = 'Jornada Completa'
+            col_hor = '__hora_generica__'
+            
+        df_validos = df.dropna(subset=['lat_x', 'lon_y']).copy()
+        df_validos['lat_x'] = pd.to_numeric(df_validos['lat_x'], errors='coerce')
+        df_validos['lon_y'] = pd.to_numeric(df_validos['lon_y'], errors='coerce')
+        df_validos = df_validos.dropna(subset=['lat_x', 'lon_y'])
+        
+        registros_sin_coords = len(df) - len(df_validos)
+        
+        print(f"✅ 7. TOTAL FINAL VÁLIDOS PARA RUTEAR: {len(df_validos)}")
+        print("="*50 + "\n")
+        
+        # ========================================================
+        # 🔥 4. ALGORITMO MAESTRO CON "CUOTA HORARIA JUSTA" 🔥
+        # ========================================================
+        rutas_generadas = []
+        carga_id = 1
+
+        def unificar_a_metros(row):
+            x, y = float(row['lat_x']), float(row['lon_y'])
+            if -20 < y < 0:
+                return 716000 + ((x - (-79.03)) * 109000), 9102000 + ((y - (-8.11)) * 111000)
+            return x, y
+
+        df_validos[['math_x', 'math_y']] = df_validos.apply(lambda r: pd.Series(unificar_a_metros(r)), axis=1)
+
+        if actividad == 'INSPECCIONES COMERCIALES':
+            promedio_supervisor = 12.5 
+            tope_absoluto = 15
+            
+            if tiene_horas:
+                def get_slot_minutos(h_str):
+                    try:
+                        matches = re.findall(r'(\d{1,2}):(\d{2})\s*(AM|PM)', str(h_str).upper())
+                        if not matches: return 9999
+                        h, m, ampm = int(matches[0][0]), int(matches[0][1]), matches[0][2]
+                        if ampm == 'PM' and h < 12: h += 12
+                        if ampm == 'AM' and h == 12: h = 0
+                        return h * 60 + m
+                    except: return 9999
+                df_validos['__ini__'] = df_validos[col_hor].apply(get_slot_minutos)
+            else:
+                df_validos['__ini__'] = 0
+
+            for fecha, datos_dia in df_validos.groupby(col_fec):
+                
+                df_dia = datos_dia.copy()
+                periferia = df_dia[df_dia['__placa__'].isin(['SECTOR_NORTE', 'SECTOR_ESTE', 'SECTOR_SUR', 'SECTOR_OESTE'])]
+                trujillo_pura = df_dia[df_dia['__placa__'] == 'TRUJILLO_CENTRO']
+                
+                # Expandir las placas: Los puntos de Trujillo Centro se asimilan a la periferia más cercana
+                if not periferia.empty and not trujillo_pura.empty:
+                    for idx, row in trujillo_pura.iterrows():
+                        min_d = float('inf')
+                        mejor_placa = 'TRUJILLO_CENTRO'
+                        for _, p_row in periferia.iterrows():
+                            d = (row['math_x'] - p_row['math_x'])**2 + (row['math_y'] - p_row['math_y'])**2
+                            if d < min_d:
+                                min_d = d
+                                mejor_placa = p_row['__placa__']
+                                
+                        if math.sqrt(min_d) < 3500:
+                            df_dia.at[idx, '__placa__'] = mejor_placa
+                            
+                cargas_totales = []
+                
+                # Por cada bloque geográfico aislado...
+                for placa, df_placa in df_dia.groupby('__placa__'):
+                    total_puntos_placa = len(df_placa)
+                    if total_puntos_placa == 0: continue
+                    
+                    num_cargas_placa = max(1, math.ceil(total_puntos_placa / promedio_supervisor))
+                    
+                    cargas_placa = [{'items': [], 'total': 0, 'cx': 0, 'cy': 0, 'conteo_horas': {}, 'placa': placa} for _ in range(num_cargas_placa)]
+                    
+                    coords = df_placa[['math_x', 'math_y']].values
+                    if num_cargas_placa > 1 and len(coords) >= num_cargas_placa:
+                        kmeans = KMeans(n_clusters=num_cargas_placa, n_init=10, random_state=42)
+                        kmeans.fit(coords)
+                        for i in range(num_cargas_placa):
+                            cargas_placa[i]['cx'], cargas_placa[i]['cy'] = kmeans.cluster_centers_[i]
+                    else:
+                        cargas_placa[0]['cx'], cargas_placa[0]['cy'] = coords[0]
+                        
+                    # 🔥 ASIGNACIÓN EQUITATIVA AGRUPADA POR HORA 🔥
+                    # En lugar de asignar a lo loco, agrupamos las tareas de ESTA placa por franja horaria.
+                    for t_hora, grupo_hora in df_placa.groupby('__ini__'):
+                        tareas_hora = grupo_hora.to_dict('records')
+                        
+                        # Cuota matemática: Si en esta hora hay 14 tareas y son 2 técnicos, a lo mucho harán 7 cada uno. NUNCA 10 y 4.
+                        # Ponemos un mínimo de 6 para no ser tan estrictos en franjas vacías.
+                        cuota_max_hora = max(6, math.ceil(len(tareas_hora) / num_cargas_placa))
+                        
+                        for task in tareas_hora:
+                            t_x, t_y = task['math_x'], task['math_y']
+                            
+                            opciones_validas = []
+                            for i, c in enumerate(cargas_placa):
+                                if c['total'] >= tope_absoluto: continue
+                                if c['conteo_horas'].get(t_hora, 0) >= cuota_max_hora: continue # ¡El candado justo!
+                                
+                                dist = math.sqrt((t_x - c['cx'])**2 + (t_y - c['cy'])**2)
+                                opciones_validas.append({'idx': i, 'dist': dist})
+                                
+                            if opciones_validas:
+                                mejor = min(opciones_validas, key=lambda x: x['dist'])
+                                idx = mejor['idx']
+                                cargas_placa[idx]['items'].append(task)
+                                cargas_placa[idx]['total'] += 1
+                                cargas_placa[idx]['conteo_horas'][t_hora] = cargas_placa[idx]['conteo_horas'].get(t_hora, 0) + 1
+                                cargas_placa[idx]['cx'] = (cargas_placa[idx]['cx'] * 0.9) + (t_x * 0.1)
+                                cargas_placa[idx]['cy'] = (cargas_placa[idx]['cy'] * 0.9) + (t_y * 0.1)
+                            else:
+                                # Rescate: Si la matemática se cuadró, buscamos al técnico que menos inspecciones tenga EN ESTA HORA
+                                opc_emergencia = [c for c in cargas_placa if c['total'] < tope_absoluto]
+                                if not opc_emergencia: opc_emergencia = cargas_placa
+                                
+                                c_emergencia = min(opc_emergencia, key=lambda c: c['conteo_horas'].get(t_hora, 0))
+                                c_emergencia['items'].append(task)
+                                c_emergencia['total'] += 1
+                                c_emergencia['conteo_horas'][t_hora] = c_emergencia['conteo_horas'].get(t_hora, 0) + 1
+                                
+                    cargas_totales.extend(cargas_placa)
+
+                # TEJIDO CRONOLÓGICO Y RUTA FINAL
+                for c in cargas_totales:
+                    if not c['items']: continue
+                    
+                    df_c = pd.DataFrame(c['items'])
+                    ruta_ordenada = []
+                    
+                    for ini_val, grupo in df_c.groupby('__ini__', sort=True):
+                        pts_hora = grupo.to_dict('records')
+                        if not ruta_ordenada:
+                            pts_hora.sort(key=lambda x: -float(x['math_y']))
+                            punto_actual = pts_hora.pop(0)
+                        else:
+                            punto_anterior = ruta_ordenada[-1]
+                            idx_c = min(range(len(pts_hora)), key=lambda i: (pts_hora[i]['math_x'] - punto_anterior['math_x'])**2 + (pts_hora[i]['math_y'] - punto_anterior['math_y'])**2)
+                            punto_actual = pts_hora.pop(idx_c)
+                            
+                        ruta_ordenada.append(punto_actual)
+                        
+                        while pts_hora:
+                            idx_c = min(range(len(pts_hora)), key=lambda i: (pts_hora[i]['math_x'] - punto_actual['math_x'])**2 + (pts_hora[i]['math_y'] - punto_actual['math_y'])**2)
+                            punto_actual = pts_hora.pop(idx_c)
+                            ruta_ordenada.append(punto_actual)
+
+                    # ====================================================
+                    # 🖨️ PRINTS DE AUDITORÍA: DIRECCIONES Y COORDENADAS
+                    # ====================================================
+                    print(f"\n📦 CARGA GENERADA ID: {carga_id} | SECTOR DOMINANTE: {c['placa']}")
+                    print(f"📊 Total de suministros en esta carga: {len(ruta_ordenada)}")
+                    
+                    franjas_ordenadas = []
+                    conteos = {}
+                    distritos_involucrados = set()
+                    for item in ruta_ordenada:
+                        rango_str = str(item.get(col_hor, 'Sin Rango'))
+                        dist = str(item.get(col_dis, '')).strip().upper()
+                        if dist and dist != 'NAN': distritos_involucrados.add(dist)
+                        
+                        if not franjas_ordenadas or franjas_ordenadas[-1] != rango_str:
+                            franjas_ordenadas.append(rango_str)
+                        conteos[rango_str] = conteos.get(rango_str, 0) + 1
+                    
+                    distritos_str = " + ".join(list(distritos_involucrados))
+                    print(f"🌍 Distritos Involucrados: {distritos_str}")
+                    
+                    print(f"🕒 Distribución por rangos de hora (EJECUTADO EN ESTE ORDEN):")
+                    for rango_nombre in franjas_ordenadas:
+                        print(f"   -> {rango_nombre}: {conteos[rango_nombre]} suministros")
+
+                    print(f"\n🛣️ DETALLE DEL RECORRIDO:")
+                    distancia_total_ruta = 0
+                    for i in range(len(ruta_ordenada)):
+                        item = ruta_ordenada[i]
+                        rango_str = str(item.get(col_hor, 'Sin Rango'))
+                        sum_val = str(item.get(col_sum, 'N/A'))
+                        
+                        via_str = str(item.get(col_via, '')).strip()
+                        num_str = str(item.get(col_num, '')).strip()
+                        urb_str = str(item.get(col_urb, '')).strip()
+                        direccion_str = f"{via_str} {num_str} - {urb_str}".strip()
+                        if not direccion_str or direccion_str == '-': direccion_str = "Sin dirección registrada"
+                        coord_str = f"[{item.get('lon_y', 'N/A')}, {item.get('lat_x', 'N/A')}]"
+                        
+                        if i == 0:
+                            print(f"   📍 [INICIO] {rango_str} | Sum: {sum_val}")
+                            print(f"      🏠 Dir: {direccion_str} | 📌 Coords: {coord_str}")
+                        else:
+                            p1, p2 = ruta_ordenada[i-1], ruta_ordenada[i]
+                            dist_m = math.sqrt((p1['math_x'] - p2['math_x'])**2 + (p1['math_y'] - p2['math_y'])**2)
+                            dist_km = dist_m / 1000.0
+                            distancia_total_ruta += dist_km
+                            
+                            rango_ant = str(ruta_ordenada[i-1].get(col_hor, 'Sin Rango'))
+                            if rango_str == rango_ant:
+                                print(f"      ↓ {dist_km:.2f} km (Mismo rango) -> Sum: {sum_val}")
+                            else:
+                                print(f"      ↓ {dist_km:.2f} km ⏱️ [AVANZA A: {rango_str}] -> Sum: {sum_val}")
+                            print(f"      🏠 Dir: {direccion_str} | 📌 Coords: {coord_str}")
+
+                    print(f"\n📏 Distancia total del recorrido interno: {distancia_total_ruta:.2f} km")
+                    print("-" * 50)
+
+                    df_ruta = pd.DataFrame(ruta_ordenada)
+                    rutas_generadas.append(construir_objeto_ruta(carga_id, str(fecha), "Horarios Mixtos", df_ruta, col_sum, col_dis, col_urb, col_via, col_num, col_hor))
+                    carga_id += 1
+
+        # -----------------------------------------------------------------------------------
+        # RAMA B: OTRAS ACTIVIDADES (PERSUASIVAS, LECTURAS)
+        # -----------------------------------------------------------------------------------
+        else:
+            df_validos['__ini__'] = 0
+            for fecha, datos_dia in df_validos.groupby(col_fec):
+                
+                df_dia = datos_dia.copy()
+                periferia = df_dia[df_dia['__placa__'].isin(['SECTOR_NORTE', 'SECTOR_ESTE', 'SECTOR_SUR', 'SECTOR_OESTE'])]
+                trujillo_pura = df_dia[df_dia['__placa__'] == 'TRUJILLO_CENTRO']
+                
+                if not periferia.empty and not trujillo_pura.empty:
+                    for idx, row in trujillo_pura.iterrows():
+                        min_d = float('inf')
+                        mejor_placa = 'TRUJILLO_CENTRO'
+                        for _, p_row in periferia.iterrows():
+                            d = (row['math_x'] - p_row['math_x'])**2 + (row['math_y'] - p_row['math_y'])**2
+                            if d < min_d:
+                                min_d = d
+                                mejor_placa = p_row['__placa__']
+                        if math.sqrt(min_d) < 3500:
+                            df_dia.at[idx, '__placa__'] = mejor_placa
+
+                for placa, df_placa in df_dia.groupby('__placa__'):
+                    total_puntos_placa = len(df_placa)
+                    if total_puntos_placa == 0: continue
+                    
+                    num_cargas_placa = max(1, math.ceil(total_puntos_placa / limite_input_web))
+                    coords = df_placa[['math_x', 'math_y']].values
+                    
+                    if num_cargas_placa > 1 and len(coords) >= num_cargas_placa:
+                        kmeans = KMeans(n_clusters=num_cargas_placa, n_init=10, random_state=42)
+                        labels = kmeans.fit_predict(coords)
+                        df_placa = df_placa.copy()
+                        df_placa['cluster_label'] = labels
+                    else:
+                        df_placa = df_placa.copy()
+                        df_placa['cluster_label'] = 0
+
+                    for cluster_idx in range(num_cargas_placa):
+                        pts_carga = df_placa[df_placa['cluster_label'] == cluster_idx].to_dict('records')
+                        if not pts_carga: continue
+                        
+                        ruta_ordenada = []
+                        pts_carga.sort(key=lambda x: -float(x['math_y']))
+                        punto_actual = pts_carga.pop(0)
+                        ruta_ordenada.append(punto_actual)
+                        
+                        while pts_carga:
+                            idx_c = min(range(len(pts_carga)), key=lambda i: (pts_carga[i]['math_x'] - punto_actual['math_x'])**2 + (pts_carga[i]['math_y'] - punto_actual['math_y'])**2)
+                            punto_actual = pts_carga.pop(idx_c)
+                            ruta_ordenada.append(punto_actual)
+
+                        df_ruta = pd.DataFrame(ruta_ordenada)
+                        rutas_generadas.append(construir_objeto_ruta(carga_id, str(fecha), "Jornada Completa", df_ruta, col_sum, col_dis, col_urb, col_via, col_num, col_hor))
+                        carga_id += 1
+
+        # ========================================================
+        # 5. ORDENAR CARGAS CRONOLÓGICAMENTE
+        # ========================================================
+        def ordenar_por_hora(ruta):
+            hora_str = str(ruta.get('hora', ''))
+            if 'JORNADA' in hora_str or 'SIN' in hora_str or not hora_str:
+                from datetime import datetime
+                return datetime.strptime('23:59', '%H:%M')
+            try:
+                from datetime import datetime
+                hora_inicio = hora_str.split('-')[0].strip()
+                return datetime.strptime(hora_inicio, '%I:%M %p')
+            except:
+                from datetime import datetime
+                return datetime.strptime('23:59', '%H:%M')
+                
+        rutas_generadas.sort(key=ordenar_por_hora)
+        
+        for i, ruta in enumerate(rutas_generadas):
+            ruta['id'] = i + 1
+
+        print("\n" + "="*50)
+        print(f"✅ RESUMEN FINAL: Se generaron {len(rutas_generadas)} cargas en total.")
+        print("="*50 + "\n")
+
+        return jsonify({
+            'status': 'success',
+            'resumen': {
+                'total_excel': len(df),
+                'sin_coordenadas': registros_sin_coords,
+                'total_cargas_generadas': len(rutas_generadas)
+            },
+            'rutas': rutas_generadas
+        }), 200
+        
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+def construir_objeto_ruta(carga_id, fecha, hora_texto, df_ruta, col_sum, col_dis, col_urb, col_via, col_num, col_hor=None):
+    hora_display = hora_texto
+    if col_hor and col_hor in df_ruta.columns:
+        if hora_texto == "Horarios Mixtos":
+            min_val, max_val = df_ruta['__ini__'].min(), df_ruta['__ini__'].max()
+            if min_val != 9999 and max_val != 9999:
+                def min_to_ampm(m):
+                    h, mn = int(m // 60), int(m % 60)
+                    ampm, h12 = ("AM" if h < 12 else "PM"), (h % 12)
+                    return f"{12 if h12 == 0 else h12:02d}:{mn:02d} {ampm}"
+                hora_display = f"Inicia: {min_to_ampm(min_val)}"
+            else: hora_display = "Jornada Completa"
+            
+    registros = []
+    distritos_set = set()
+    for _, fila in df_ruta.iterrows():
+        distrito = str(fila.get(col_dis, '')) if col_dis else ''
+        urb = str(fila.get(col_urb, '')) if col_urb else ''
+        via = str(fila.get(col_via, 'Dirección no especificada')) if col_via else 'Dirección no especificada'
+        num = str(fila.get(col_num, 'S/N')) if col_num else 'S/N'
+        franja = str(fila.get(col_hor, '')) if col_hor and col_hor in fila else ''
+        
+        if distrito and str(distrito).upper() != 'NAN':
+            distritos_set.add(str(distrito).upper())
+            
+        if franja.upper() == 'NAN': franja = ''
+        registros.append({
+            'suministro': str(fila.get(col_sum, '')),
+            'distrito': distrito if distrito != 'nan' else '',
+            'urbanizacion': urb if urb != 'nan' else '',
+            'via': via if via != 'nan' else 'Dirección no especificada',
+            'numero': num if num != 'nan' else 'S/N',
+            'coord_x': fila['lat_x'],
+            'coord_y': fila['lon_y'],
+            'franja_horaria': franja
+        })
+        
+    zonas_ruta = list(distritos_set)
+    if len(zonas_ruta) > 1:
+        zona_display = " / ".join(zonas_ruta[:2]) + ("..." if len(zonas_ruta) > 2 else "")
+    else:
+        zona_display = zonas_ruta[0] if zonas_ruta else 'SIN ZONA'
+    
+    return {
+        'id': carga_id,
+        'fecha': fecha,
+        'hora': hora_display,
+        'zona': zona_display,
+        'cantidad': len(registros),
+        'registros': registros
+    }
