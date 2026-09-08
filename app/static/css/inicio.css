@@ -9650,20 +9650,40 @@ select.form-control {
     scrollbar-color: #cbd5e1 transparent;
 }
 
-/* 1. Evita el colapso forzando un ancho mínimo general */
+/* Obliga a la tabla a desbordar si la pantalla es muy pequeña, pero usa el 100% en pantallas grandes */
 .crt-table {
     table-layout: fixed;
     width: 100%;
-    min-width: 1050px; /* Obliga a la tabla a desbordar y activar el scroll en lugar de aplastarse */
+    min-width: 1050px; 
 }
 
-/* 2. Mantiene la restricción estricta solo para la columna Asunto */
-.crt-table th:nth-child(3),
-.crt-table td:nth-child(3) {
-    width: 280px; 
+/* 1. N° Documento */
+.crt-table th:nth-child(1), .crt-table td:nth-child(1) { width: 12%; }
+
+/* 2. Flujo */
+.crt-table th:nth-child(2), .crt-table td:nth-child(2) { width: 10%; }
+
+/* 3. Asunto: Le damos el mayor porcentaje de la tabla y mantenemos los puntos suspensivos */
+.crt-table th:nth-child(3), .crt-table td:nth-child(3) { 
+    width: 32%; 
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* 4. Fecha */
+.crt-table th:nth-child(4), .crt-table td:nth-child(4) { width: 10%; }
+
+/* 5. Vencimiento */
+.crt-table th:nth-child(5), .crt-table td:nth-child(5) { width: 10%; }
+
+/* 6. Estado */
+.crt-table th:nth-child(6), .crt-table td:nth-child(6) { width: 10%; }
+
+/* 7. Acción: Espacio suficiente para los 4 botones */
+.crt-table th:nth-child(7), .crt-table td:nth-child(7) { 
+    width: 16%; 
+    text-align: center !important; 
 }
 
 
