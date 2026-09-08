@@ -6957,219 +6957,131 @@ OUTPUT_DIR = 'temp_dbf_output'
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
-TEMPLATE_DBF_PATH = r'C:\RADIAN\ASISTENCIAS\app\templates_excel\PLANTILLA_VL229082023.dbf'
-
-
-
-# 2. Carpeta temporal para guardar los DBF antes de zippear
-
-OUTPUT_DIR = 'temp_dbf_output'
-
-if not os.path.exists(OUTPUT_DIR):
-
-    os.makedirs(OUTPUT_DIR)
-
-
-
 # --- RUTA 1 (NUEVA VERSIÓN): PREVISUALIZAR CON GRUPOS ---
-
 @app.route('/previsualizar-dbf', methods=['POST'])
-
 def previsualizar_dbf():
-
     try:
-
         if 'archivo' not in request.files:
-
             return jsonify({'error': 'No se encontró el archivo Excel.'}), 400
-
-       
-
+        
         file = request.files['archivo']
-
-        fecha_seleccionada_str = request.form['fecha']
-
-       
-
+        fecha_seleccionada_str = request.form['fecha'] 
+        
         # Leemos el Excel, forzando que TODO se lea como STRING (texto)
-
         df = pd.read_excel(file, skiprows=5, dtype=str)
-
-       
-
+        
         df = df.drop(columns=['T', 'U', 'V'], errors='ignore')
-
         df = df.dropna(how='all')
 
-
-
         # Convertimos la fecha seleccionada por el usuario a un string dd/mm/YYYY
-
         fecha_obj_seleccionada = datetime.strptime(fecha_seleccionada_str, '%Y-%m-%d')
-
         df['FECNOTIMED'] = fecha_obj_seleccionada.strftime('%d/%m/%Y')
-
-       
-
+        
         # --- LÓGICA DE AGRUPACIÓN (COMO EN LA FUNCIÓN DE DESCARGA) ---
-
         columna_filtro = 'CICLOREAL' # Basado en tus logs
-
-       
-
+        
         if columna_filtro not in df.columns:
-
              return jsonify({'error': f'No se encontró la columna de filtro "{columna_filtro}" en el Excel.'}), 400
-
-       
-
+        
         grupos_unicos = df[columna_filtro].dropna().unique()
-
-       
-
+        
         # ¡IMPORTANTE! Creamos un diccionario para guardar los datos por grupo
-
         data_por_grupo = {}
 
-
-
         for grupo in grupos_unicos:
-
             df_partido = df[df[columna_filtro] == grupo].copy()
-
-           
-
+            
             # --- Preparamos los datos para JSON ---
-
             df_partido['LECTURA'] = pd.to_numeric(df_partido['LECTURA'], errors='coerce')
-
-           
-
+            
             # Convertimos el DataFrame DE ESTE GRUPO a JSON
-
             data_para_json = df_partido.fillna('').to_dict(orient='records')
-
-           
-
+            
             # Lo añadimos al diccionario principal
-
             data_por_grupo[str(grupo)] = data_para_json # Usamos str(grupo) para la clave JSON
-
-       
-
+        
         # Devolvemos el diccionario de grupos
-
         # Ejemplo: {"21": [...datos...], "22": [...datos...]}
-
         return jsonify(data_por_grupo)
 
-
-
     except Exception as e:
-
         print(f"Error grave en /previsualizar-dbf: {e}")
-
         return jsonify({'error': str(e)}), 500
 
 
 
 
-
-
-
-
-
+# --- RUTA 2 (MODIFICADA): TU CÓDIGO FUNCIONAL PARA DESCARGAR EL ZIP ---
 @app.route('/descargar-dbf', methods=['POST'])
 def descargar_dbf():
-    print("\n========================================", flush=True)
-    print("🚀 [INICIO] Petición recibida en /descargar-dbf", flush=True)
-    print("========================================", flush=True)
-
+    # Este es el código que me enviaste y que funciona perfectamente
     try:
-        # --- VERIFICACIÓN DE ENTRADAS ---
-        print("🔍 [PASO 1] Validando request.files y request.form...", flush=True)
         if 'archivo' not in request.files:
-            print("❌ [ERROR] No se encontró 'archivo' en request.files", flush=True)
             return jsonify({'error': 'No se encontró el archivo Excel.'}), 400
-
-        file = request.files['archivo']
-        fecha_seleccionada_str = request.form.get('fecha', '')
-        print(f"📥 Archivo recibido: {file.filename} | Fecha recibida: '{fecha_seleccionada_str}'", flush=True)
-
-        if not fecha_seleccionada_str:
-            print("❌ [ERROR] El parámetro 'fecha' está vacío o no fue enviado.", flush=True)
-            return jsonify({'error': 'El campo fecha es obligatorio.'}), 400
-
-        if not os.path.exists(TEMPLATE_DBF_PATH):
-            print(f"❌ [ERROR] Plantilla DBF no existe en la ruta: {TEMPLATE_DBF_PATH}", flush=True)
-            return jsonify({'error': 'No se encontró el archivo de plantilla DBF en el servidor.'}), 500
         
-        print(f"✅ Plantilla DBF hallada en: {TEMPLATE_DBF_PATH}", flush=True)
+        file = request.files['archivo']
+        fecha_seleccionada_str = request.form['fecha'] 
+        
+        if not os.path.exists(TEMPLATE_DBF_PATH):
+             return jsonify({'error': 'No se encontró el archivo de plantilla DBF en el servidor.'}), 500
 
         # --- 1. PROCESAMIENTO DE EXCEL ---
-        print("📊 [PASO 2] Leyendo archivo Excel con pandas...", flush=True)
         df = pd.read_excel(file, skiprows=5, dtype=str)
-        print(f"✅ Excel leído correctamente. Filas: {len(df)} | Columnas: {list(df.columns)}", flush=True)
+        
+        print("\nDEBUG 1: Nombres de columna leídos del EXCEL:", list(df.columns))
 
         df = df.drop(columns=['T', 'U', 'V'], errors='ignore')
         df = df.dropna(how='all')
 
-        print(f"🗓️ [PASO 3] Parseando fecha seleccionada '{fecha_seleccionada_str}'...", flush=True)
         fecha_obj_seleccionada = datetime.strptime(fecha_seleccionada_str, '%Y-%m-%d').date()
         df['FECNOTIMED'] = fecha_obj_seleccionada
-
+        
         # --- 2. DIVISIÓN DEL EXCEL ---
-        columna_filtro = 'CICLOREAL'
+        columna_filtro = 'CICLOREAL' 
+        
         if columna_filtro not in df.columns:
-            print(f"❌ [ERROR] Columna de filtro '{columna_filtro}' no presente en el Excel.", flush=True)
-            return jsonify({'error': f'No se encontró la columna de filtro "{columna_filtro}" en el Excel.'}), 400
-
+             return jsonify({'error': f'No se encontró la columna de filtro "{columna_filtro}" en el Excel.'}), 400
+        
         grupos_unicos = df[columna_filtro].dropna().unique()
-        print(f"🔹 Grupos únicos encontrados en '{columna_filtro}': {grupos_unicos}", flush=True)
-
         dataframes_partidos = {}
         for grupo in grupos_unicos:
             dataframes_partidos[grupo] = df[df[columna_filtro] == grupo].copy()
 
         archivos_dbf_generados = []
 
-        # --- 3. LÓGICA DBF ---
-        print("📁 [PASO 4] Abriendo plantilla DBF para obtener estructura de campos...", flush=True)
+        # --- 3. LÓGICA DBF CON CORRECCIÓN DE TIPO ---
         with dbf.Table(TEMPLATE_DBF_PATH) as plantilla:
             lista_campos_dbf = [f.lower() for f in plantilla.field_names]
 
-        print(f"📋 Campos detectados en la plantilla DBF: {lista_campos_dbf}", flush=True)
+        print(f"DEBUG 2 (Simplificado): Campos detectados en DBF: {lista_campos_dbf}")
 
         for grupo, df_partido in dataframes_partidos.items():
+            
             dbf_filename = f'resultado_{grupo}.dbf'
             dbf_filepath = os.path.join(OUTPUT_DIR, dbf_filename)
-
-            print(f"\n⚙️ [PROCESANDO GRUPO: {grupo}] -> Generando archivo: {dbf_filepath}", flush=True)
-
-            # Verificar directorio de salida
-            if not os.path.exists(OUTPUT_DIR):
-                print(f"📁 Creando directorio de salida inexistente: {OUTPUT_DIR}", flush=True)
-                os.makedirs(OUTPUT_DIR, exist_ok=True)
-
+            
             shutil.copy(TEMPLATE_DBF_PATH, dbf_filepath)
-
+            
             dbf_table = dbf.Table(dbf_filepath)
             dbf_table.open(dbf.READ_WRITE)
             dbf_table.zap()
-
+            
             col_map = {}
             for col_excel in df_partido.columns:
                 if col_excel.lower() in lista_campos_dbf:
                     col_map[col_excel.lower()] = col_excel
 
-            print(f"🔗 Mapeo de columnas (DBF -> Excel) para grupo '{grupo}': {col_map}", flush=True)
+            print(f"\n--- DEBUG 3 (Grupo {grupo}): Mapeo de columnas (DBF -> Excel) ---")
+            print(col_map)
 
             for index, fila_excel in df_partido.iterrows():
+                
                 nuevo_registro = {}
-
+                
                 for campo_dbf_lower, col_excel_original in col_map.items():
+                    
                     valor = fila_excel[col_excel_original]
-
+                    
                     if pd.isna(valor) or valor in (None, 'None', ''):
                         nuevo_registro[campo_dbf_lower] = None
                         continue
@@ -7178,44 +7090,42 @@ def descargar_dbf():
                         if campo_dbf_lower == 'fecnotimed':
                             nuevo_registro[campo_dbf_lower] = valor
                         elif campo_dbf_lower == 'fchinsreal':
-                            nuevo_registro[campo_dbf_lower] = datetime.strptime(str(valor).strip(), '%d/%m/%Y').date()
+                            nuevo_registro[campo_dbf_lower] = datetime.strptime(str(valor), '%d/%m/%Y').date()
                         elif campo_dbf_lower == 'lectura':
                             nuevo_registro[campo_dbf_lower] = float(valor)
                         else:
+                            # --- CORRECCIÓN AQUÍ ---
                             val_str = str(valor)
+                            # Si el texto supera los 254 caracteres, lo cortamos
                             if len(val_str) > 254:
-                                val_str = val_str[:254]
+                                val_str = val_str[:254] 
+                            
                             nuevo_registro[campo_dbf_lower] = val_str
 
-                    except Exception as e_conv:
-                        print(f"⚠️ [WARN - Fila {index}] No se pudo convertir '{valor}' para el campo '{campo_dbf_lower}'. Error: {e_conv}", flush=True)
+                    except Exception as e:
+                        print(f"  -> Advertencia: No se pudo convertir '{valor}' para el campo '{campo_dbf_lower}'. Error: {e}")
                         nuevo_registro[campo_dbf_lower] = None
 
                 if nuevo_registro:
                     try:
                         dbf_table.append(nuevo_registro)
-                    except Exception as e_app:
-                        print(f"❌ [ERROR AL ANEXAR FILA {index}] {e_app} | Datos: {nuevo_registro}", flush=True)
+                    except Exception as e:
+                        print(f"¡ERROR AL ANEXAR! {e}. Datos: {nuevo_registro}")
 
             dbf_table.close()
             archivos_dbf_generados.append(dbf_filepath)
-            print(f"✅ Archivo DBF creado exitosamente: {dbf_filename}", flush=True)
 
-        # --- 4. COMPRIMIR Y ENVIAR ---
-        print("\n📦 [PASO 5] Comprimiendo archivos en ZIP...", flush=True)
+        # 4. Comprimir y enviar
         if not archivos_dbf_generados:
-            print("❌ [ERROR] La lista de archivos DBF generados está vacía.", flush=True)
             return jsonify({'error': 'No se generaron archivos, revise los datos del Excel.'}), 500
 
         zip_io = io.BytesIO()
         with zipfile.ZipFile(zip_io, 'w', zipfile.ZIP_DEFLATED) as zf:
             for f_path in archivos_dbf_generados:
                 zf.write(f_path, os.path.basename(f_path))
-                if os.path.exists(f_path):
-                    os.remove(f_path)
-
+                os.remove(f_path)
+                
         zip_io.seek(0)
-        print("🎉 [ÉXITO] Archivo ZIP generado correctamente. Enviando al cliente...", flush=True)
 
         return send_file(zip_io,
                          mimetype='application/zip',
@@ -7223,11 +7133,7 @@ def descargar_dbf():
                          download_name='conversiones_dbf.zip')
 
     except Exception as e:
-        print("\n🔥 ========================================", flush=True)
-        print(f"🔥 [EXCEPCIÓN GRAVE EN /descargar-dbf]: {str(e)}", flush=True)
-        print("🔥 ========================================", flush=True)
-        traceback.print_exc()  # Imprime el archivo y número de línea exacto en systemd
-        print("========================================\n", flush=True)
+        print(f"Error grave en /descargar-dbf: {e}")
         return jsonify({'error': str(e)}), 500
 
 
