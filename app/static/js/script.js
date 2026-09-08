@@ -18384,7 +18384,7 @@ async function cargarTablaCartas(pagina) {
                         <tr style="transition: background 0.2s;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='transparent'">
                             <td style="color: var(--crt-accent); font-weight: 600;">${carta.numero_carta}</td>
                             <td>${badgeFlujo}</td>
-                            <td>${carta.asunto}</td>
+                            <td title="${carta.asunto}">${carta.asunto}</td>
                             <td>${carta.fecha}</td>
                             <td>${badgeVencimiento}</td>
                             <td>${badgeEstado}</td>
