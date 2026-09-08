@@ -11684,16 +11684,31 @@ def eliminar_carta(carta_id):
 @app.route('/api/cartas/actualizar/<int:carta_id>', methods=['PUT'])
 def actualizar_carta(carta_id):
     try:
-        carta = Carta.query.get_or_404(carta_id)
+        print("========================================")
+        print(f">>> INICIANDO ACTUALIZACIÓN DE CARTA ID: {carta_id} <<<")
+        print("========================================")
 
-        # Capturar campos a actualizar (pueden ser parciales)
+        carta = Carta.query.get_or_404(carta_id)
+        print(f"[BD] Carta encontrada: ID {carta.id} | Número Actual: {carta.numero_carta}")
+
+        # Capturar campos a actualizar
         numero_carta = request.form.get('numero_carta')
         asunto = request.form.get('asunto')
         tipo = request.form.get('tipo')
         fecha_str = request.form.get('fecha')
         fecha_limite_str = request.form.get('fecha_limite')
         estado_form = request.form.get('estado')
+        referencia_id = request.form.get('carta_referencia_id')
         file = request.files.get('archivo_pdf')
+
+        print(f"[FORM DATA RECEIVED] numero_carta: {numero_carta}")
+        print(f"[FORM DATA RECEIVED] asunto: {asunto}")
+        print(f"[FORM DATA RECEIVED] tipo: {tipo}")
+        print(f"[FORM DATA RECEIVED] fecha_str: {fecha_str}")
+        print(f"[FORM DATA RECEIVED] fecha_limite_str: {fecha_limite_str}")
+        print(f"[FORM DATA RECEIVED] estado_form: {estado_form}")
+        print(f"[FORM DATA RECEIVED] carta_referencia_id (raw): {referencia_id}")
+        print(f"[FILE RECEIVED] {file.filename if file else 'Sin archivo nuevo'}")
 
         # Actualizar campos simples
         if numero_carta:
@@ -11708,24 +11723,56 @@ def actualizar_carta(carta_id):
         if fecha_str:
             try:
                 fecha_obj = datetime.strptime(fecha_str, '%Y-%m-%d').date()
-                if tipo == 'EMITIDA':
+                if tipo == 'EMITIDA' or carta.tipo == 'EMITIDA':
                     carta.fecha_emision = fecha_obj
-                elif tipo == 'RECIBIDA':
+                elif tipo == 'RECIBIDA' or carta.tipo == 'RECIBIDA':
                     carta.fecha_recepcion = fecha_obj
-            except ValueError:
-                pass
+                print(f"[FECHAS] Fecha actualizada correctamente: {fecha_obj}")
+            except ValueError as ve:
+                print(f"[FECHAS WARNING] Formato de fecha invalido ({fecha_str}): {ve}")
 
         if fecha_limite_str:
             try:
                 fecha_limite_obj = datetime.strptime(fecha_limite_str, '%Y-%m-%d').date()
                 carta.fecha_limite = fecha_limite_obj
-            except ValueError:
-                pass
+                print(f"[FECHAS] Fecha límite actualizada correctamente: {fecha_limite_obj}")
+            except ValueError as ve:
+                print(f"[FECHAS WARNING] Formato de fecha limite invalido ({fecha_limite_str}): {ve}")
 
-        # Si se envía un nuevo archivo, reemplazar
+        # =========================================================
+        # PROCESAMIENTO DE REFERENCIAS (Añadido para actualización)
+        # =========================================================
+        if referencia_id is not None:
+            print(f"[REFERENCIAS] Procesando actualización de referencias con payload: '{referencia_id}'")
+            # Limpiamos las referencias previas si deseas reemplazar la lista entera
+            carta.referencias_pasadas.clear()
+            print("[REFERENCIAS] Referencias anteriores limpiadas de la relación.")
+
+            lista_ids = [r_id.strip() for r_id in referencia_id.split(',') if r_id.strip().isdigit()]
+            print(f"[REFERENCIAS] IDs válidos a vincular: {lista_ids}")
+
+            for ref_id_single in lista_ids:
+                carta_origen = Carta.query.get(int(ref_id_single))
+                if carta_origen:
+                    carta.referencias_pasadas.append(carta_origen)
+                    print(f"[REFERENCIAS] Vinculada exitosamente con Carta Origen ID: {carta_origen.id}")
+
+                    tipo_actual = tipo if tipo in ['EMITIDA', 'RECIBIDA'] else carta.tipo
+                    if tipo_actual == 'EMITIDA' and carta_origen.tipo == 'RECIBIDA' and carta_origen.estado == 'PENDIENTE':
+                        carta_origen.estado = 'ATENDIDA'
+                        print(f"[REFERENCIAS] Estado de Carta Origen ID {carta_origen.id} actualizado a 'ATENDIDA'")
+                else:
+                    print(f"[REFERENCIAS WARNING] No se encontró en BD la Carta Origen con ID: {ref_id_single}")
+        else:
+            print("[REFERENCIAS] No se envió la clave 'carta_referencia_id' en el Form Data.")
+
+        # Reemplazo de archivo PDF si aplica
         if file and allowed_file_cartas(file.filename):
+            print(f"[FILE] Reemplazando PDF con el archivo: {file.filename}")
+            
             # Eliminar antiguo de GCS
             if carta.ruta_pdf:
+                print(f"[GCS] Eliminando archivo anterior en GCS: {carta.ruta_pdf}")
                 delete_blob_from_gcs(carta.ruta_pdf)
 
             # Subir nuevo
@@ -11733,26 +11780,38 @@ def actualizar_carta(carta_id):
             nombre_unico = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
             temp_filepath = os.path.join(tempfile.gettempdir(), nombre_unico)
             file.save(temp_filepath)
+            print(f"[GCS] Archivo temporal para actualización guardado en: {temp_filepath}")
 
             blob_name = f"cartas/{nombre_unico}"
             upload_pdf_to_gcs(temp_filepath, blob_name)
+            print(f"[GCS] Nuevo PDF subido correctamente: {blob_name}")
 
             # Limpiar temporal
             try:
                 if os.path.exists(temp_filepath):
                     os.remove(temp_filepath)
-            except Exception:
-                pass
+                    print(f"[GCS] Archivo temporal limpiado: {temp_filepath}")
+            except Exception as e_temp:
+                print(f"[WARNING] No se pudo eliminar el archivo temporal: {e_temp}")
 
             carta.ruta_pdf = blob_name
 
         db.session.commit()
+        print("[BD] Transaction COMMIT realizada exitosamente en la base de datos.")
+        print("========================================")
         return jsonify({"exito": True, "mensaje": "Carta actualizada correctamente"}), 200
 
     except Exception as e:
         db.session.rollback()
-        print(f"Error actualizando carta: {e}")
+        print("[BD] Transaction ROLLBACK ejecutada debido a un error.")
+        
+        if 'temp_filepath' in locals() and os.path.exists(temp_filepath):
+            os.remove(temp_filepath)
+            print(f"[CLEANUP ERROR] Archivo temporal borrado tras excepción: {temp_filepath}")
+
+        print(f"[ERROR CRÍTICO] Error actualizando carta ID {carta_id}: {e}")
         traceback.print_exc()
+        print("========================================")
         return jsonify({"error": str(e)}), 500
 # ========================================
 
