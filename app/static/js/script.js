@@ -18389,11 +18389,13 @@ async function cargarTablaCartas(pagina) {
                             <td>${badgeVencimiento}</td>
                             <td>${badgeEstado}</td>
                             
-                            <td style="text-align: center; display: flex; justify-content: center; gap: 6px;">
-                                ${btnVerPDF}
-                                ${btnDescargar}
-                                ${btnEditar}
-                                ${btnEliminar}
+                            <td style="text-align: center; vertical-align: middle;">
+                                <div style="display: flex; justify-content: center; align-items: center; gap: 6px;">
+                                    ${btnVerPDF}
+                                    ${btnDescargar}
+                                    ${btnEditar}
+                                    ${btnEliminar}
+                                </div>
                             </td>
                         </tr>
                     `;
