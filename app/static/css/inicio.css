@@ -9628,6 +9628,45 @@ select.form-control {
         #cartas_1 .crt-btn { width: 100%; justify-content: center; }
         .crt-modal-content { margin: 15px; } /* Margen en celulares para que no toque los bordes */
     }
+/* Soporte para navegadores Webkit (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Soporte nativo para Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+
+/* 1. Evita el colapso forzando un ancho mínimo general */
+.crt-table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 1050px; /* Obliga a la tabla a desbordar y activar el scroll en lugar de aplastarse */
+}
+
+/* 2. Mantiene la restricción estricta solo para la columna Asunto */
+.crt-table th:nth-child(3),
+.crt-table td:nth-child(3) {
+    width: 280px; 
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
 
 
 /* ==========================================
