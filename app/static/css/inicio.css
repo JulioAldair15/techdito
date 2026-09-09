@@ -9891,6 +9891,15 @@ select.form-control {
     text-align: center;
 }
 
+.fila-activa-matriz > td {
+    background-color: #dbeafe !important;
+    border-top: 2px solid #3b82f6 !important; 
+    border-bottom: 2px solid #3b82f6 !important; 
+    color: #1e3a8a !important; 
+    font-weight: 600;
+    transition: background-color 0.2s ease-in-out;
+}
+
 /* ==========================================
    RESTAURACIÓN DEL SOMBREADO (Columna Derecha)
 ========================================== */
