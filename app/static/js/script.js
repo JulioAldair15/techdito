@@ -19711,47 +19711,34 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     });
 
                     // =========================================================
-                    // 📸 LÓGICA Y DEBUG DEL BOTÓN DE FOTOS
+                    // 📸 LÓGICA Y DEBUG DEL BOTÓN DE FOTOS (USANDO /buscar)
                     // =========================================================
                     const btnFotos = tarjeta.querySelector('.btn-abrir-fotos');
-                    btnFotos.addEventListener("click", (e) => {
+                    btnFotos.addEventListener("click", async (e) => {
                         e.stopPropagation();
-
-                        console.log(`\n---------------- [DEBUG CLICK BOTÓN FOTOS] ----------------`);
+                    
+                        console.log(`\n---------------- [DEBUG CLICK BOTÓN FOTOS] ----------------`);
                         console.log(`📄 Fila Completa de Trabajo:`, f);
-
-                        // 1. Obtención de valores crudos
+                    
                         const rawSuministro = f["SUMINISTRO"];
                         const rawInspeccion = f["CODIGO INSPECCION PERDIDAS"];
-
-                        console.log(`🔎 Raw SUMINISTRO: repr=${JSON.stringify(rawSuministro)} | Tipo: ${typeof rawSuministro}`);
-                        console.log(`🔎 Raw CODIGO INSPECCION PERDIDAS: repr=${JSON.stringify(rawInspeccion)} | Tipo: ${typeof rawInspeccion}`);
-
-                        // Helper estricto de limpieza y validación
+                    
                         const sanitizarYValidar = (valor) => {
                             if (valor === null || valor === undefined) return null;
                             const str = String(valor).trim();
-                            // Extrae únicamente los dígitos para validar si es sólo ceros
                             const soloDigitos = str.replace(/\D/g, ''); 
-                            const esValido = soloDigitos !== "" && !/^0+$/.test(soloDigitos);
-                            
-                            console.log(`   👉 Evaluando '${str}': SoloDigitos='${soloDigitos}' | ¿Es Válido?: ${esValido}`);
-                            return esValido ? str : null;
+                            return (soloDigitos !== "" && !/^0+$/.test(soloDigitos)) ? str : null;
                         };
-
+                    
                         const suministroValido = sanitizarYValidar(rawSuministro);
                         const inspeccionValida = sanitizarYValidar(rawInspeccion);
-
-                        console.log(`✅ Resultado Sanitizado -> Suministro: "${suministroValido}" | Inspección: "${inspeccionValida}"`);
-
-                        // 2. Control de interrupción si ambos son inválidos
+                    
                         if (!suministroValido && !inspeccionValida) {
-                            console.warn("⚠️ [BLOQUEADO]: Ambos códigos son inválidos o sólo ceros. Se detiene el proceso.");
-                            alert("Este registro no cuenta con un Suministro o Código de Inspección válido para buscar fotos.");
+                            alert("Este registro no cuenta con un Suministro o Código de Inspección válido.");
                             return;
                         }
-
-                        // 3. Crear Modal
+                    
+                        // Modal UI
                         const ventana = document.createElement("div");
                         ventana.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:99999; background:white; border-radius:10px; padding:20px; width:90%; max-width:1000px; height:90vh; overflow-y:auto; box-shadow:0 10px 25px rgba(0,0,0,0.5);";
                         
@@ -19761,12 +19748,12 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         
                         const overlay = document.createElement("div");
                         overlay.style.cssText = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:99998;";
-
+                    
                         cerrarBtn.addEventListener("click", () => { ventana.remove(); overlay.remove(); });
                         
                         const direccion = `${f["URBA"] || ""} ${f["CALLE2"] || ""} ${f["NROMUNI"] || ""}`.trim();
                         const tituloCodigo = suministroValido || inspeccionValida;
-
+                    
                         ventana.innerHTML = `
                             <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
                                 <h3 style="margin:0; color:#1e293b;"><i class="fas fa-file-invoice"></i> Código: ${tituloCodigo}</h3>
@@ -19777,74 +19764,91 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         ventana.appendChild(cerrarBtn);
                         document.body.appendChild(overlay); 
                         document.body.appendChild(ventana);
-
+                    
                         const contenedorCarrusel = ventana.querySelector("#contenedor-carrusel");
                         contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Buscando imágenes...</p></div>`;
-
-                        // 4. Armar Payload
-                        const paresPayload = [];
-                        if (suministroValido) paresPayload.push({ suministro: suministroValido });
-                        if (inspeccionValida && inspeccionValida !== suministroValido) paresPayload.push({ inspeccion: inspeccionValida });
-
-                        console.log("🚀 [PETICIÓN HTTP] Enviando payload a '/buscar-multiples-coincidencias':", JSON.stringify({ pares: paresPayload }));
-
-                        fetch("/buscar", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ pares: paresPayload })
-                        })
-                        .then(res => {
-                            console.log(`📡 [RESPUESTA HTTP] Status: ${res.status} ${res.statusText}`);
-                            return res.json();
-                        })
-                        .then(data => {
-                            console.log("📦 [DATOS RECIBIDOS DEL SERVIDOR]:", data);
-
-                            let imagenes = [];
-                            if (Array.isArray(data.resultados)) {
-                                data.resultados.forEach(g => {
-                                    if (g.subgrupos) g.subgrupos.forEach(sg => imagenes.push(...sg.imagenes.map(img => ({ carpeta: sg.carpeta, archivo: img }))));
-                                    else if (g.imagenes) imagenes.push(...g.imagenes.map(img => ({ carpeta: g.carpeta, archivo: img })));
+                    
+                        // Función auxiliar para consultar /buscar tal como lo hace Fotoconsulta
+                        const consultarBackend = async (codigo) => {
+                            if (!codigo) return [];
+                            try {
+                                console.log(`🚀 [PETICIÓN HTTP] Solicitando /buscar para código: "${codigo}"`);
+                                const res = await fetch("/buscar", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ codigo })
                                 });
-                            }
-
-                            console.log(`🖼️ Total imágenes desglosadas antes de filtrar: ${imagenes.length}`, imagenes);
-
-                            // Filtrar coincidencias
-                            const coincidentes = imagenes.filter(img => 
-                                (suministroValido && img.archivo.includes(suministroValido)) || 
-                                (inspeccionValida && img.archivo.includes(inspeccionValida))
-                            );
-
-                            console.log(`🎯 Total imágenes COINCIDENTES tras filtro local: ${coincidentes.length}`, coincidentes);
-
-                            if (coincidentes.length === 0) { 
-                                console.warn("⚠️ No se encontraron fotos coincidentes con los criterios de búsqueda.");
-                                contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>No hay fotos encontradas para este registro.</p>"; 
-                                return; 
-                            }
-
-                            let indexImg = 0;
-                            const construirCarrusel = () => {
-                                console.log(`📸 Mostrando imagen index [${indexImg}]:`, coincidentes[indexImg]);
-                                contenedorCarrusel.innerHTML = `
-                                    <div style="position:relative; width:100%; height:100%; display:flex; justify-content:center; background:#f8fafc; border-radius:8px;">
-                                        ${coincidentes.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❮</button>` : ''}
-                                        <img src="http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/${coincidentes[indexImg].carpeta}/${coincidentes[indexImg].archivo}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
-                                        ${coincidentes.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❯</button>` : ''}
-                                    </div>
-                                `;
-                                if (coincidentes.length > 1) {
-                                    document.getElementById("btn-izq").onclick = () => { indexImg = (indexImg - 1 + coincidentes.length) % coincidentes.length; construirCarrusel(); };
-                                    document.getElementById("btn-der").onclick = () => { indexImg = (indexImg + 1) % coincidentes.length; construirCarrusel(); };
+                    
+                                if (!res.ok) return [];
+                                const data = await res.json();
+                                console.log(`📦 [DATOS RECIBIDOS] para "${codigo}":`, data);
+                    
+                                const fotos = [];
+                                if (data && Array.isArray(data.resultados)) {
+                                    data.resultados.forEach(item => {
+                                        const cat = item.categoria || "ordenes";
+                                        // Fotos directas
+                                        if (Array.isArray(item.imagenes)) {
+                                            item.imagenes.forEach(nombre => {
+                                                fotos.push({ nombre, carpeta: item.carpeta, categoria: cat });
+                                            });
+                                        }
+                                        // Fotos dentro de subgrupos (ej. Lecturas)
+                                        if (Array.isArray(item.subgrupos)) {
+                                            item.subgrupos.forEach(sub => {
+                                                const subCat = sub.categoria || cat;
+                                                if (Array.isArray(sub.imagenes)) {
+                                                    sub.imagenes.forEach(nombre => {
+                                                        fotos.push({ nombre, carpeta: sub.carpeta, categoria: subCat });
+                                                    });
+                                                }
+                                            });
+                                        }
+                                    });
                                 }
-                            };
-                            construirCarrusel();
-                        })
-                        .catch(err => { 
-                            console.error("❌ [ERROR FETCH/RED]:", err);
-                            contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>Error de conexión al recuperar fotos.</p>"; 
-                        });
+                                return fotos;
+                            } catch (err) {
+                                console.error(`❌ Error consultando código ${codigo}:`, err);
+                                return [];
+                            }
+                        };
+                    
+                        // Ejecutamos la búsqueda con Suministro
+                        let coincidentes = await consultarBackend(suministroValido);
+                    
+                        // Si no se encontraron imágenes con suministro, intentamos con el código de inspección
+                        if (coincidentes.length === 0 && inspeccionValida && inspeccionValida !== suministroValido) {
+                            console.log(`⚠️ Sin fotos por Suministro. Intentando con Inspección: "${inspeccionValida}"`);
+                            coincidentes = await consultarBackend(inspeccionValida);
+                        }
+                    
+                        if (coincidentes.length === 0) { 
+                            contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>No hay fotos encontradas para este registro.</p>"; 
+                            return; 
+                        }
+                    
+                        // Renderizado de carrusel
+                        let indexImg = 0;
+                        const construirCarrusel = () => {
+                            const itemImg = coincidentes[indexImg];
+                            const carpetaUrl = itemImg.carpeta.replace(/\\/g, "/");
+                            const urlFinal = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${itemImg.categoria}/${carpetaUrl}/${encodeURIComponent(itemImg.nombre)}`;
+                    
+                            contenedorCarrusel.innerHTML = `
+                                <div style="position:relative; width:100%; height:100%; display:flex; justify-content:center; background:#f8fafc; border-radius:8px;">
+                                    ${coincidentes.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❮</button>` : ''}
+                                    <img src="${urlFinal}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
+                                    ${coincidentes.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❯</button>` : ''}
+                                </div>
+                            `;
+                    
+                            if (coincidentes.length > 1) {
+                                document.getElementById("btn-izq").onclick = () => { indexImg = (indexImg - 1 + coincidentes.length) % coincidentes.length; construirCarrusel(); };
+                                document.getElementById("btn-der").onclick = () => { indexImg = (indexImg + 1) % coincidentes.length; construirCarrusel(); };
+                            }
+                        };
+                        
+                        construirCarrusel();
                     });
 
                     filaTarjetas.appendChild(tarjeta);
