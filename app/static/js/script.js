@@ -20019,7 +20019,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                 contenedorCarrusel.innerHTML = `
                                     <div style="position:relative; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center;">
                                         <div style="position:absolute; top:10px; left:15px; background:rgba(0,0,0,0.7); color:white; padding:5px 12px; border-radius:5px; font-size:0.85rem; z-index:3;">
-                                            ${indexImg + 1} / ${fotos.length} — ${itemImg.nombre}
+                                            ${indexImg + 1} / ${fotos.length}
                                         </div>
                     
                                         ${fotos.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:20px; cursor:pointer; z-index:3;">❮</button>` : ''}
