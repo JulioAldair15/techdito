@@ -19723,36 +19723,66 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     // Lógica del botón de fotos
                     const btnFotos = tarjeta.querySelector('.btn-abrir-fotos');
                     btnFotos.addEventListener("click", (e) => {
-                        e.stopPropagation(); // Evita conflicto de eventos con la tarjeta
-                        const suministro = f["SUMINISTRO"]?.toString().trim();
-                        const codigoInspeccion = f["CODIGO INSPECCION PERDIDAS"]?.toString().trim();
+                        e.stopPropagation();
+                    
+                        // 1. Obtener y limpiar códigos
+                        const suministro = (f["SUMINISTRO"] || "").toString().trim();
+                        const codigoInspeccion = (f["CODIGO INSPECCION PERDIDAS"] || "").toString().trim();
+                    
+                        // Helper para verificar si un código es válido (no vacío y no solo ceros)
+                        const esCodigoValido = (cod) => cod !== "" && !/^0+$/.test(cod);
+                    
+                        const suministroValido = esCodigoValido(suministro) ? suministro : null;
+                        const inspeccionValida = esCodigoValido(codigoInspeccion) ? codigoInspeccion : null;
+                    
+                        // 2. Si ambos códigos son inválidos o "00000000000", detener la búsqueda
+                        if (!suministroValido && !inspeccionValida) {
+                            alert("Este registro no cuenta con un Suministro o Código de Inspección válido para buscar fotos.");
+                            return;
+                        }
+                    
+                        // 3. Crear Modal
                         const ventana = document.createElement("div");
                         ventana.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:99999; background:white; border-radius:10px; padding:20px; width:90%; max-width:1000px; height:90vh; overflow-y:auto; box-shadow:0 10px 25px rgba(0,0,0,0.5);";
+                        
                         const cerrarBtn = document.createElement("button");
                         cerrarBtn.innerHTML = "×";
                         cerrarBtn.style.cssText = "position:absolute; top:10px; right:15px; font-size:28px; background:transparent; border:none; cursor:pointer; color:#333;";
+                        
                         const overlay = document.createElement("div");
                         overlay.style.cssText = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:99998;";
-
+                    
                         cerrarBtn.addEventListener("click", () => { ventana.remove(); overlay.remove(); });
+                        
                         const direccion = `${f["URBA"] || ""} ${f["CALLE2"] || ""} ${f["NROMUNI"] || ""}`.trim();
+                        const tituloCodigo = suministroValido || inspeccionValida;
+                    
                         ventana.innerHTML = `
                             <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
-                                <h3 style="margin:0; color:#1e293b;"><i class="fas fa-file-invoice"></i> Suministro: ${suministro}</h3>
+                                <h3 style="margin:0; color:#1e293b;"><i class="fas fa-file-invoice"></i> Código: ${tituloCodigo}</h3>
                                 <div style="color:#64748b; font-size: 0.9rem; margin-top:5px;"><i class="fas fa-map-marker-alt"></i> ${direccion}</div>
                             </div>
                             <div id="contenedor-carrusel" style="display:flex; justify-content:center; align-items:center; height:calc(100% - 80px);"></div>
                         `;
                         ventana.appendChild(cerrarBtn);
-                        document.body.appendChild(overlay); document.body.appendChild(ventana);
-
+                        document.body.appendChild(overlay); 
+                        document.body.appendChild(ventana);
+                    
                         const contenedorCarrusel = ventana.querySelector("#contenedor-carrusel");
                         contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Buscando imágenes...</p></div>`;
-
-                        fetch("/buscar", {
-                            method: "POST", headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ pares: [{ suministro: suministro, inspeccion: codigoInspeccion }] })
-                        }).then(res => res.json()).then(data => {
+                    
+                        // 4. Armar el payload omitiendo campos nulos o con ceros
+                        const paresPayload = [];
+                        if (suministroValido) paresPayload.push({ suministro: suministroValido });
+                        if (inspeccionValida && inspeccionValida !== suministroValido) paresPayload.push({ inspeccion: inspeccionValida });
+                    
+                        fetch("/buscar-multiples-coincidencias", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ pares: paresPayload })
+                        })
+                        .then(res => res.json())
+                        .then(data => {
                             let imagenes = [];
                             if (Array.isArray(data.resultados)) {
                                 data.resultados.forEach(g => {
@@ -19760,9 +19790,18 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                     else if (g.imagenes) imagenes.push(...g.imagenes.map(img => ({ carpeta: g.carpeta, archivo: img })));
                                 });
                             }
-                            const coincidentes = imagenes.filter(img => img.archivo.includes(suministro) || img.archivo.includes(codigoInspeccion));
-
-                            if (coincidentes.length === 0) { contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>No hay fotos.</p>"; return; }
+                    
+                            // Filtrar coincidencias asegurando comparar contra códigos válidos
+                            const coincidentes = imagenes.filter(img => 
+                                (suministroValido && img.archivo.includes(suministroValido)) || 
+                                (inspeccionValida && img.archivo.includes(inspeccionValida))
+                            );
+                    
+                            if (coincidentes.length === 0) { 
+                                contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>No hay fotos encontradas para este registro.</p>"; 
+                                return; 
+                            }
+                    
                             let indexImg = 0;
                             const construirCarrusel = () => {
                                 contenedorCarrusel.innerHTML = `
@@ -19772,13 +19811,16 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                         ${coincidentes.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❯</button>` : ''}
                                     </div>
                                 `;
-                                if(coincidentes.length > 1){
+                                if (coincidentes.length > 1) {
                                     document.getElementById("btn-izq").onclick = () => { indexImg = (indexImg - 1 + coincidentes.length) % coincidentes.length; construirCarrusel(); };
                                     document.getElementById("btn-der").onclick = () => { indexImg = (indexImg + 1) % coincidentes.length; construirCarrusel(); };
                                 }
                             };
                             construirCarrusel();
-                        }).catch(err => { contenedorCarrusel.innerHTML = "<p>Error de conexión.</p>"; });
+                        })
+                        .catch(err => { 
+                            contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>Error de conexión al recuperar fotos.</p>"; 
+                        });
                     });
 
                     filaTarjetas.appendChild(tarjeta);
