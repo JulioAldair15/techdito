@@ -19776,7 +19776,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         if (suministroValido) paresPayload.push({ suministro: suministroValido });
                         if (inspeccionValida && inspeccionValida !== suministroValido) paresPayload.push({ inspeccion: inspeccionValida });
                     
-                        fetch("/buscar-multiples-coincidencias", {
+                        fetch("/buscar", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ pares: paresPayload })
