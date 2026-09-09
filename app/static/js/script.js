@@ -19711,7 +19711,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     });
 
                     // =========================================================
-                    // 📸 LÓGICA Y DEBUG DEL BOTÓN DE FOTOS (NORMALIZADO)
+                    // 📸 LÓGICA Y DEBUG DEL BOTÓN DE FOTOS (ROBUSTO Y RESILIENTE)
                     // =========================================================
                     const btnFotos = tarjeta.querySelector('.btn-abrir-fotos');
                     btnFotos.addEventListener("click", async (e) => {
@@ -19768,11 +19768,23 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         const contenedorCarrusel = ventana.querySelector("#contenedor-carrusel");
                         contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Buscando imágenes...</p></div>`;
                     
-                        // Función para construir la URL exacta idéntica a Fotoconsulta
+                        // Deducción inteligente de categoría
+                        const resolverCategoria = (item) => {
+                            if (item.categoria && String(item.categoria).trim() !== "") {
+                                return String(item.categoria).trim().toLowerCase();
+                            }
+                            const leyenda = String(item.leyenda || "").toUpperCase();
+                            if (leyenda.includes("CATASTRO")) return "catastro";
+                            if (leyenda.includes("LECTURA")) return "lecturas";
+                            if (leyenda.includes("INSPECCION")) return "inspecciones";
+                            return "ordenes";
+                        };
+                    
+                        // Función para construir la URL normalizada
                         const construirUrlImagen = (nombre, carpeta, categoria) => {
-                            let cat = (categoria && String(categoria).trim()) ? String(categoria).trim() : "ordenes";
+                            let cat = categoria || "ordenes";
                             let carpetaLimpia = (carpeta || "").toString().replace(/\\/g, "/").trim();
-                            carpetaLimpia = carpetaLimpia.replace(/^\/+|\/+$/g, ""); // Remueve slashes iniciales y finales
+                            carpetaLimpia = carpetaLimpia.replace(/^\/+|\/+$/g, ""); 
                     
                             const segmentos = carpetaLimpia ? carpetaLimpia.split("/").map(s => encodeURIComponent(s)) : [];
                             const nombreUrl = encodeURIComponent((nombre || "").toString().trim());
@@ -19781,7 +19793,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             return `http://200.233.44.171/app_oraclesedalib/public/storage/images/${cat}/${rutaCarpeta}${nombreUrl}`;
                         };
                     
-                        // Función para consultar /buscar
+                        // Consulta al Backend
                         const consultarBackend = async (codigo) => {
                             if (!codigo) return [];
                             try {
@@ -19798,19 +19810,21 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     
                                 const fotos = [];
                                 if (data && Array.isArray(data.resultados)) {
-                                    data.resultados.forEach(item => {
-                                        const cat = item.categoria || "ordenes";
+                                    data.resultados.forEach((item, index) => {
+                                        const cat = resolverCategoria(item);
+                                        console.log(`🔍 [GRUPO ${index + 1}] Leyenda: "${item.leyenda}" | Categoría resuelta: "${cat}" | Carpeta: "${item.carpeta}"`);
+                                        
                                         if (Array.isArray(item.imagenes)) {
                                             item.imagenes.forEach(nombre => {
-                                                fotos.push({ nombre, carpeta: item.carpeta, categoria: cat });
+                                                fotos.push({ nombre, carpeta: item.carpeta, categoria: cat, leyenda: item.leyenda });
                                             });
                                         }
                                         if (Array.isArray(item.subgrupos)) {
                                             item.subgrupos.forEach(sub => {
-                                                const subCat = sub.categoria || cat;
+                                                const subCat = resolverCategoria(sub) || cat;
                                                 if (Array.isArray(sub.imagenes)) {
                                                     sub.imagenes.forEach(nombre => {
-                                                        fotos.push({ nombre, carpeta: sub.carpeta, categoria: subCat });
+                                                        fotos.push({ nombre, carpeta: sub.carpeta, categoria: subCat, leyenda: sub.leyenda || item.leyenda });
                                                     });
                                                 }
                                             });
@@ -19824,10 +19838,8 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             }
                         };
                     
-                        // 1. Intentar con Suministro
                         let coincidentes = await consultarBackend(suministroValido);
                     
-                        // 2. Si no hay fotos, intentar con Inspección
                         if (coincidentes.length === 0 && inspeccionValida && inspeccionValida !== suministroValido) {
                             console.log(`⚠️ Sin fotos por Suministro. Intentando con Inspección: "${inspeccionValida}"`);
                             coincidentes = await consultarBackend(inspeccionValida);
@@ -19838,7 +19850,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             return; 
                         }
                     
-                        // Renderizado de carrusel
+                        // Renderizado del carrusel sin destruir la UI en error 404
                         let indexImg = 0;
                         const construirCarrusel = () => {
                             const itemImg = coincidentes[indexImg];
@@ -19846,23 +19858,31 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             console.log(`🔗 [CARGANDO IMAGEN ${indexImg + 1}/${coincidentes.length}]: ${urlFinal}`);
                     
                             contenedorCarrusel.innerHTML = `
-                                <div style="position:relative; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:#f8fafc; border-radius:8px;">
-                                    ${coincidentes.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❮</button>` : ''}
+                                <div style="position:relative; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#f8fafc; border-radius:8px;">
+                                    <div style="position:absolute; top:10px; left:15px; background:rgba(0,0,0,0.6); color:white; padding:4px 10px; border-radius:5px; font-size:0.8rem; z-index:3;">
+                                        ${indexImg + 1} / ${coincidentes.length} — ${itemImg.leyenda || itemImg.categoria}
+                                    </div>
+                    
+                                    ${coincidentes.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:3;">❮</button>` : ''}
                                     
-                                    <img id="img-carrusel-actual" src="${urlFinal}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
+                                    <div id="wrapper-imagen" style="width:100%; height:100%; display:flex; justify-content:center; align-items:center;">
+                                        <img id="img-carrusel-actual" src="${urlFinal}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
+                                    </div>
                                     
-                                    ${coincidentes.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❯</button>` : ''}
+                                    ${coincidentes.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:3;">❯</button>` : ''}
                                 </div>
                             `;
                     
                             const imgElement = document.getElementById("img-carrusel-actual");
+                            const wrapper = document.getElementById("wrapper-imagen");
+                    
                             imgElement.onerror = () => {
-                                console.error(`❌ [ERROR 404]: No se pudo cargar la imagen en la URL: ${urlFinal}`);
-                                contenedorCarrusel.innerHTML = `
-                                    <div style="text-align:center; color:#e74c3c; padding:20px;">
-                                        <i class="fas fa-exclamation-triangle" style="font-size:30px; margin-bottom:10px;"></i>
-                                        <p>No se pudo cargar el archivo de imagen en el servidor.</p>
-                                        <small style="color:#64748b; word-break:break-all;">${urlFinal}</small>
+                                console.error(`❌ [ERROR 404 en ${indexImg + 1}/${coincidentes.length}]: ${urlFinal}`);
+                                wrapper.innerHTML = `
+                                    <div style="text-align:center; color:#e74c3c; padding:20px; background:white; border:1px solid #fee2e2; border-radius:8px; max-width:80%;">
+                                        <i class="fas fa-exclamation-triangle" style="font-size:36px; margin-bottom:10px; color:#ef4444;"></i>
+                                        <p style="margin:0; font-weight:bold;">Imagen no disponible en el servidor (404)</p>
+                                        <small style="color:#64748b; word-break:break-all; display:block; margin-top:8px;">${urlFinal}</small>
                                     </div>
                                 `;
                             };
