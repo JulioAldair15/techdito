@@ -19810,64 +19810,82 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             return `http://200.233.44.171/app_oraclesedalib/public/storage/images/${cat}/${rutaCarpeta}${nombreUrl}`;
                         };
                     
-                        // Filtro por fecha de ejecución
+                        // ✅ FILTRO MÁGICO DE PRECISIÓN POR FECHA Y/O CÓDIGO DE INSPECCIÓN
                         const coincideConFechaTarget = (item, sub, nombre) => {
-                            if (!targetFechaPartes) return true; // Si no hay fecha especificada en la fila, muestra todo
+                            if (!targetFechaPartes && !inspeccionValida) return true;
                     
-                            const { dia, mes, anio } = targetFechaPartes;
-                            const yyyymm = `${anio}${mes}`;
-                            const yyyymmdd = `${anio}${mes}${dia}`;
-                            const ddmmyyyy = `${dia}${mes}${anio}`;
-                            const slashDD = `${dia}/${mes}/${anio}`;
-                            const dashDD = `${dia}-${mes}-${anio}`;
-                            const dashYY = `${anio}-${mes}-${dia}`;
+                            const carpetaStr = String(sub?.carpeta || item?.carpeta || "");
+                            const nombreStr = String(nombre || "");
+                            const textoCombinado = `${carpetaStr}/${nombreStr}`;
                     
-                            // 1. Revisar fechas explícitas del JSON backend
-                            const posiblesFechas = [
-                                item?.fecha, item?.fecha_ejecucion, item?.fecha_registro, item?.fec_ejec, item?.fec_reg, item?.created_at,
-                                sub?.fecha, sub?.fecha_ejecucion, sub?.fecha_registro, sub?.fec_ejec, sub?.fec_reg
-                            ].filter(Boolean);
+                            // 1. VERIFICACIÓN POR CÓDIGO DE INSPECCIÓN / ORDEN (Si existe)
+                            if (inspeccionValida) {
+                                // Revisar si está dentro de los metadatos de las respuestas del backend
+                                const camposInspeccion = [
+                                    item?.inspeccion, item?.codigo_inspeccion, item?.id_inspeccion, item?.orden, item?.num_orden,
+                                    sub?.inspeccion, sub?.codigo_inspeccion, sub?.id_inspeccion, sub?.orden, sub?.num_orden
+                                ].map(v => v ? String(v).trim() : null).filter(Boolean);
                     
-                            for (const fVal of posiblesFechas) {
-                                const p = obtenerPartesFecha(fVal);
-                                if (p) {
-                                    if (p.anio === anio && p.mes === mes && p.dia === dia) return true;
-                                    if (p.anio !== anio || p.mes !== mes) return false;
-                                } else {
-                                    const strF = String(fVal);
-                                    if (strF.includes(slashDD) || strF.includes(dashDD) || strF.includes(dashYY) || strF.includes(yyyymmdd)) {
+                                if (camposInspeccion.some(val => val === inspeccionValida || val.includes(inspeccionValida))) {
+                                    return true;
+                                }
+                    
+                                // Revisar si el código de inspección aparece en la carpeta o en el nombre de la foto
+                                if (textoCombinado.includes(inspeccionValida)) {
+                                    return true;
+                                }
+                            }
+                    
+                            // 2. VERIFICACIÓN POR FECHA OBJETIVO (Si existe)
+                            if (targetFechaPartes) {
+                                const { dia, mes, anio } = targetFechaPartes;
+                                const yyyymm = `${anio}${mes}`;
+                                const yyyymmdd = `${anio}${mes}${dia}`;
+                                const ddmmyyyy = `${dia}${mes}${anio}`;
+                                const slashDD = `${dia}/${mes}/${anio}`;
+                                const dashDD = `${dia}-${mes}-${anio}`;
+                                const dashYY = `${anio}-${mes}-${dia}`;
+                    
+                                // A. Revisar fechas explícitas de los objetos JSON
+                                const posiblesFechas = [
+                                    item?.fecha, item?.fecha_ejecucion, item?.fecha_registro, item?.fec_ejec, item?.fec_reg, item?.created_at,
+                                    sub?.fecha, sub?.fecha_ejecucion, sub?.fecha_registro, sub?.fec_ejec, sub?.fec_reg
+                                ].filter(Boolean);
+                    
+                                for (const fVal of posiblesFechas) {
+                                    const p = obtenerPartesFecha(fVal);
+                                    if (p) {
+                                        if (p.anio === anio && p.mes === mes && p.dia === dia) return true;
+                                    } else {
+                                        const strF = String(fVal);
+                                        if (strF.includes(slashDD) || strF.includes(dashDD) || strF.includes(dashYY) || strF.includes(yyyymmdd)) {
+                                            return true;
+                                        }
+                                    }
+                                }
+                    
+                                // B. Revisar si la ruta o nombre de la foto trae la fecha exacta
+                                if (textoCombinado.includes(yyyymmdd) || 
+                                    textoCombinado.includes(ddmmyyyy) || 
+                                    textoCombinado.includes(slashDD) || 
+                                    textoCombinado.includes(dashDD) || 
+                                    textoCombinado.includes(dashYY)) {
+                                    return true;
+                                }
+                    
+                                // C. Si la carpeta inicia o contiene YYYYMM (ej: 202609)
+                                const matchCarpetaAnioMes = carpetaStr.match(/(\d{4})(\d{2})/);
+                                if (matchCarpetaAnioMes) {
+                                    const cAnio = matchCarpetaAnioMes[1];
+                                    const cMes = matchCarpetaAnioMes[2];
+                                    if (cAnio === anio && cMes === mes) {
                                         return true;
                                     }
                                 }
                             }
                     
-                            // 2. Revisar carpeta y nombre de archivo
-                            const carpetaStr = String(item?.carpeta || sub?.carpeta || "");
-                            const nombreStr = String(nombre || "");
-                            const textoCombinado = `${carpetaStr} ${nombreStr}`;
-                    
-                            if (textoCombinado.includes(yyyymmdd) || 
-                                textoCombinado.includes(ddmmyyyy) || 
-                                textoCombinado.includes(slashDD) || 
-                                textoCombinado.includes(dashDD) || 
-                                textoCombinado.includes(dashYY)) {
-                                return true;
-                            }
-                    
-                            // Si la carpeta tiene formato YYYYMM (ej: 202504 o 202609)
-                            const matchCarpetaAnioMes = carpetaStr.match(/^(\d{4})(\d{2})/);
-                            if (matchCarpetaAnioMes) {
-                                const cAnio = matchCarpetaAnioMes[1];
-                                const cMes = matchCarpetaAnioMes[2];
-                                if (cAnio === anio && cMes === mes) {
-                                    return true;
-                                } else {
-                                    // Descarta carpetas de otros años/meses (ej. 202504 cuando buscamos 202609)
-                                    return false;
-                                }
-                            }
-                    
-                            return true;
+                            // ❌ SI HUBO CRITERIOS Y NINGUNO COINCIDIÓ, DESCARTE SEGURO
+                            return false;
                         };
                     
                         // Consulta y Filtro al Backend
