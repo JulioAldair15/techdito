@@ -19711,7 +19711,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     });
 
                     // =========================================================
-                    // 📸 LÓGICA Y DEBUG DEL BOTÓN DE FOTOS (USANDO /buscar)
+                    // 📸 LÓGICA Y DEBUG DEL BOTÓN DE FOTOS (NORMALIZADO)
                     // =========================================================
                     const btnFotos = tarjeta.querySelector('.btn-abrir-fotos');
                     btnFotos.addEventListener("click", async (e) => {
@@ -19768,7 +19768,20 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         const contenedorCarrusel = ventana.querySelector("#contenedor-carrusel");
                         contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Buscando imágenes...</p></div>`;
                     
-                        // Función auxiliar para consultar /buscar tal como lo hace Fotoconsulta
+                        // Función para construir la URL exacta idéntica a Fotoconsulta
+                        const construirUrlImagen = (nombre, carpeta, categoria) => {
+                            let cat = (categoria && String(categoria).trim()) ? String(categoria).trim() : "ordenes";
+                            let carpetaLimpia = (carpeta || "").toString().replace(/\\/g, "/").trim();
+                            carpetaLimpia = carpetaLimpia.replace(/^\/+|\/+$/g, ""); // Remueve slashes iniciales y finales
+                    
+                            const segmentos = carpetaLimpia ? carpetaLimpia.split("/").map(s => encodeURIComponent(s)) : [];
+                            const nombreUrl = encodeURIComponent((nombre || "").toString().trim());
+                    
+                            const rutaCarpeta = segmentos.length > 0 ? segmentos.join("/") + "/" : "";
+                            return `http://200.233.44.171/app_oraclesedalib/public/storage/images/${cat}/${rutaCarpeta}${nombreUrl}`;
+                        };
+                    
+                        // Función para consultar /buscar
                         const consultarBackend = async (codigo) => {
                             if (!codigo) return [];
                             try {
@@ -19787,13 +19800,11 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                 if (data && Array.isArray(data.resultados)) {
                                     data.resultados.forEach(item => {
                                         const cat = item.categoria || "ordenes";
-                                        // Fotos directas
                                         if (Array.isArray(item.imagenes)) {
                                             item.imagenes.forEach(nombre => {
                                                 fotos.push({ nombre, carpeta: item.carpeta, categoria: cat });
                                             });
                                         }
-                                        // Fotos dentro de subgrupos (ej. Lecturas)
                                         if (Array.isArray(item.subgrupos)) {
                                             item.subgrupos.forEach(sub => {
                                                 const subCat = sub.categoria || cat;
@@ -19813,10 +19824,10 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             }
                         };
                     
-                        // Ejecutamos la búsqueda con Suministro
+                        // 1. Intentar con Suministro
                         let coincidentes = await consultarBackend(suministroValido);
                     
-                        // Si no se encontraron imágenes con suministro, intentamos con el código de inspección
+                        // 2. Si no hay fotos, intentar con Inspección
                         if (coincidentes.length === 0 && inspeccionValida && inspeccionValida !== suministroValido) {
                             console.log(`⚠️ Sin fotos por Suministro. Intentando con Inspección: "${inspeccionValida}"`);
                             coincidentes = await consultarBackend(inspeccionValida);
@@ -19831,16 +19842,30 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         let indexImg = 0;
                         const construirCarrusel = () => {
                             const itemImg = coincidentes[indexImg];
-                            const carpetaUrl = itemImg.carpeta.replace(/\\/g, "/");
-                            const urlFinal = `http://200.233.44.171/app_oraclesedalib/public/storage/images/${itemImg.categoria}/${carpetaUrl}/${encodeURIComponent(itemImg.nombre)}`;
+                            const urlFinal = construirUrlImagen(itemImg.nombre, itemImg.carpeta, itemImg.categoria);
+                            console.log(`🔗 [CARGANDO IMAGEN ${indexImg + 1}/${coincidentes.length}]: ${urlFinal}`);
                     
                             contenedorCarrusel.innerHTML = `
-                                <div style="position:relative; width:100%; height:100%; display:flex; justify-content:center; background:#f8fafc; border-radius:8px;">
+                                <div style="position:relative; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:#f8fafc; border-radius:8px;">
                                     ${coincidentes.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❮</button>` : ''}
-                                    <img src="${urlFinal}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
+                                    
+                                    <img id="img-carrusel-actual" src="${urlFinal}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
+                                    
                                     ${coincidentes.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❯</button>` : ''}
                                 </div>
                             `;
+                    
+                            const imgElement = document.getElementById("img-carrusel-actual");
+                            imgElement.onerror = () => {
+                                console.error(`❌ [ERROR 404]: No se pudo cargar la imagen en la URL: ${urlFinal}`);
+                                contenedorCarrusel.innerHTML = `
+                                    <div style="text-align:center; color:#e74c3c; padding:20px;">
+                                        <i class="fas fa-exclamation-triangle" style="font-size:30px; margin-bottom:10px;"></i>
+                                        <p>No se pudo cargar el archivo de imagen en el servidor.</p>
+                                        <small style="color:#64748b; word-break:break-all;">${urlFinal}</small>
+                                    </div>
+                                `;
+                            };
                     
                             if (coincidentes.length > 1) {
                                 document.getElementById("btn-izq").onclick = () => { indexImg = (indexImg - 1 + coincidentes.length) % coincidentes.length; construirCarrusel(); };
