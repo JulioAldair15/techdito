@@ -19537,16 +19537,21 @@ function cerrarPanelOperario() {
 
 
 function dibujarMapaDeDia(fecha, indexFila) {
-    console.log(`🗺️ [MAPA] Dibujando ruta para el día: ${fecha}`);
+    console.log(`\n==================== [DEBUG SCRIPT.JS - MAPA] ====================`);
+    console.log(`🗺️ [1] Dibujando ruta para el día: "${fecha}" (Fila Index: ${indexFila})`);
 
     document.querySelectorAll('.row-dia').forEach(el => el.classList.remove('activo'));
     const filaDOM = document.getElementById(`row-dia-${indexFila}`);
-    if(filaDOM) filaDOM.classList.add('activo');
+    if (filaDOM) filaDOM.classList.add('activo');
 
     const trabajos = window.datosDetalleOperario.filter(t => (t["FECHA EJECUCION"] || t["FECHA INI EJECUCION"]) === fecha);
-    const contenedor = document.getElementById('panel-mapa-view');
+    console.log(`📊 [2] Total de trabajos encontrados para la fecha: ${trabajos.length}`);
 
-    if(!contenedor) return;
+    const contenedor = document.getElementById('panel-mapa-view');
+    if (!contenedor) {
+        console.error("❌ [ERROR]: No se encontró el contenedor '#panel-mapa-view' en el DOM.");
+        return;
+    }
 
     contenedor.innerHTML = `
         <style>
@@ -19592,14 +19597,11 @@ function dibujarMapaDeDia(fecha, indexFila) {
             const projUTM = "+proj=utm +zone=17 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs";
             const projLatLon = "+proj=longlat +datum=WGS84 +no_defs";
             const puntos = [];
-            const marcadores = []; // 🔥 Guardaremos las instancias de marcadores
+            const marcadores = [];
             const filaTarjetas = document.getElementById("cinta-scroll-tarjetas");
 
-            // Función interna para resaltar el marcador seleccionado en el mapa
             const resaltarMarcador = (marcadorSeleccionado) => {
-                marcadores.forEach(m => {
-                    m.setStyle(m.estiloOriginal); // Restaura todos
-                });
+                marcadores.forEach(m => m.setStyle(m.estiloOriginal));
                 marcadorSeleccionado.setStyle({
                     radius: 10,
                     fillColor: '#3b82f6',
@@ -19635,7 +19637,6 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         radius: 5, color: borderColor, weight: 2, fillColor: fillColor, fillOpacity: 1
                     }).addTo(mapa).bindPopup(`<strong>${label || 'Suministro'}</strong><br>${f["SUMINISTRO"] || ""}`);
 
-                    // Guardar estilo original para reseteos
                     marcador.estiloOriginal = { radius: 5, color: borderColor, weight: 2, fillColor: fillColor, fillOpacity: 1 };
                     marcadores.push(marcador);
 
@@ -19653,10 +19654,8 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
                             let totalMinutos = (h2 * 60 + m2) - (h1 * 60 + m1);
                             if (totalMinutos < 0) totalMinutos += 1440;
-
                             const hrs = Math.floor(totalMinutos / 60);
                             const mins = totalMinutos % 60;
-
                             duracionTexto = hrs > 0 ? `${hrs}h ${mins}m` : `${mins} min`;
                         }
                     }
@@ -19683,13 +19682,10 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                 <i class="far fa-clock" style="color:#94a3b8; font-size:0.6rem; margin-right:4px;"></i>
                                 <span style="font-weight:normal; margin-right:2px;">INI:</span> 
                                 <b>${hIniStr || "-"}</b>
-
                                 <span style="margin: 0 4px;">-</span>
-
                                 <span style="font-weight:normal; margin-right:2px;">FIN:</span> 
                                 <b>${hFinStr || "-"}</b>
                             </div>
-
                             <div style="background:${esFichaLevantada ? '#ffedd5' : '#f1f5f9'}; padding:1px 5px; border-radius:4px; border:1px solid ${esFichaLevantada ? '#fed7aa' : '#e2e8f0'}; white-space:nowrap;">
                                 <b style="color:${esFichaLevantada ? '#c2410c' : '#2563eb'}; font-size:0.62rem; display:flex; align-items:center;">
                                     <i class="fas fa-hourglass-half" style="margin-right:3px; color:#64748b; font-weight:normal;"></i> 
@@ -19699,7 +19695,6 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         </div>
                     `;
 
-                    // 🔥 EVENTO AL HACER CLIC EN EL MARCADOR DEL MAPA
                     marcador.on("click", () => {
                         document.querySelectorAll(".mini-tarjeta").forEach(t => t.classList.remove("activa"));
                         tarjeta.classList.add("activa");
@@ -19707,40 +19702,55 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         resaltarMarcador(marcador);
                     });
 
-                    // 🔥 NUEVO EVENTO AL HACER CLIC EN LA TARJETA
                     tarjeta.addEventListener("click", (e) => {
-                        // Evita disparar el centrado si hizo clic en el botón de fotos
                         if (e.target.closest('.btn-abrir-fotos')) return;
-
                         document.querySelectorAll(".mini-tarjeta").forEach(t => t.classList.remove("activa"));
                         tarjeta.classList.add("activa");
-
-                        // Centra el mapa suavemente en la posición
                         mapa.flyTo([lat, lon], Math.max(mapa.getZoom(), 16), { duration: 0.8 });
                         resaltarMarcador(marcador);
                     });
 
-                    // Lógica del botón de fotos
+                    // =========================================================
+                    // 📸 LÓGICA Y DEBUG DEL BOTÓN DE FOTOS
+                    // =========================================================
                     const btnFotos = tarjeta.querySelector('.btn-abrir-fotos');
                     btnFotos.addEventListener("click", (e) => {
                         e.stopPropagation();
-                    
-                        // 1. Obtener y limpiar códigos
-                        const suministro = (f["SUMINISTRO"] || "").toString().trim();
-                        const codigoInspeccion = (f["CODIGO INSPECCION PERDIDAS"] || "").toString().trim();
-                    
-                        // Helper para verificar si un código es válido (no vacío y no solo ceros)
-                        const esCodigoValido = (cod) => cod !== "" && !/^0+$/.test(cod);
-                    
-                        const suministroValido = esCodigoValido(suministro) ? suministro : null;
-                        const inspeccionValida = esCodigoValido(codigoInspeccion) ? codigoInspeccion : null;
-                    
-                        // 2. Si ambos códigos son inválidos o "00000000000", detener la búsqueda
+
+                        console.log(`\n---------------- [DEBUG CLICK BOTÓN FOTOS] ----------------`);
+                        console.log(`📄 Fila Completa de Trabajo:`, f);
+
+                        // 1. Obtención de valores crudos
+                        const rawSuministro = f["SUMINISTRO"];
+                        const rawInspeccion = f["CODIGO INSPECCION PERDIDAS"];
+
+                        console.log(`🔎 Raw SUMINISTRO: repr=${JSON.stringify(rawSuministro)} | Tipo: ${typeof rawSuministro}`);
+                        console.log(`🔎 Raw CODIGO INSPECCION PERDIDAS: repr=${JSON.stringify(rawInspeccion)} | Tipo: ${typeof rawInspeccion}`);
+
+                        // Helper estricto de limpieza y validación
+                        const sanitizarYValidar = (valor) => {
+                            if (valor === null || valor === undefined) return null;
+                            const str = String(valor).trim();
+                            // Extrae únicamente los dígitos para validar si es sólo ceros
+                            const soloDigitos = str.replace(/\D/g, ''); 
+                            const esValido = soloDigitos !== "" && !/^0+$/.test(soloDigitos);
+                            
+                            console.log(`   👉 Evaluando '${str}': SoloDigitos='${soloDigitos}' | ¿Es Válido?: ${esValido}`);
+                            return esValido ? str : null;
+                        };
+
+                        const suministroValido = sanitizarYValidar(rawSuministro);
+                        const inspeccionValida = sanitizarYValidar(rawInspeccion);
+
+                        console.log(`✅ Resultado Sanitizado -> Suministro: "${suministroValido}" | Inspección: "${inspeccionValida}"`);
+
+                        // 2. Control de interrupción si ambos son inválidos
                         if (!suministroValido && !inspeccionValida) {
+                            console.warn("⚠️ [BLOQUEADO]: Ambos códigos son inválidos o sólo ceros. Se detiene el proceso.");
                             alert("Este registro no cuenta con un Suministro o Código de Inspección válido para buscar fotos.");
                             return;
                         }
-                    
+
                         // 3. Crear Modal
                         const ventana = document.createElement("div");
                         ventana.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:99999; background:white; border-radius:10px; padding:20px; width:90%; max-width:1000px; height:90vh; overflow-y:auto; box-shadow:0 10px 25px rgba(0,0,0,0.5);";
@@ -19751,12 +19761,12 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         
                         const overlay = document.createElement("div");
                         overlay.style.cssText = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:99998;";
-                    
+
                         cerrarBtn.addEventListener("click", () => { ventana.remove(); overlay.remove(); });
                         
                         const direccion = `${f["URBA"] || ""} ${f["CALLE2"] || ""} ${f["NROMUNI"] || ""}`.trim();
                         const tituloCodigo = suministroValido || inspeccionValida;
-                    
+
                         ventana.innerHTML = `
                             <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
                                 <h3 style="margin:0; color:#1e293b;"><i class="fas fa-file-invoice"></i> Código: ${tituloCodigo}</h3>
@@ -19767,22 +19777,29 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         ventana.appendChild(cerrarBtn);
                         document.body.appendChild(overlay); 
                         document.body.appendChild(ventana);
-                    
+
                         const contenedorCarrusel = ventana.querySelector("#contenedor-carrusel");
                         contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Buscando imágenes...</p></div>`;
-                    
-                        // 4. Armar el payload omitiendo campos nulos o con ceros
+
+                        // 4. Armar Payload
                         const paresPayload = [];
                         if (suministroValido) paresPayload.push({ suministro: suministroValido });
                         if (inspeccionValida && inspeccionValida !== suministroValido) paresPayload.push({ inspeccion: inspeccionValida });
-                    
+
+                        console.log("🚀 [PETICIÓN HTTP] Enviando payload a '/buscar-multiples-coincidencias':", JSON.stringify({ pares: paresPayload }));
+
                         fetch("/buscar", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ pares: paresPayload })
                         })
-                        .then(res => res.json())
+                        .then(res => {
+                            console.log(`📡 [RESPUESTA HTTP] Status: ${res.status} ${res.statusText}`);
+                            return res.json();
+                        })
                         .then(data => {
+                            console.log("📦 [DATOS RECIBIDOS DEL SERVIDOR]:", data);
+
                             let imagenes = [];
                             if (Array.isArray(data.resultados)) {
                                 data.resultados.forEach(g => {
@@ -19790,20 +19807,26 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                     else if (g.imagenes) imagenes.push(...g.imagenes.map(img => ({ carpeta: g.carpeta, archivo: img })));
                                 });
                             }
-                    
-                            // Filtrar coincidencias asegurando comparar contra códigos válidos
+
+                            console.log(`🖼️ Total imágenes desglosadas antes de filtrar: ${imagenes.length}`, imagenes);
+
+                            // Filtrar coincidencias
                             const coincidentes = imagenes.filter(img => 
                                 (suministroValido && img.archivo.includes(suministroValido)) || 
                                 (inspeccionValida && img.archivo.includes(inspeccionValida))
                             );
-                    
+
+                            console.log(`🎯 Total imágenes COINCIDENTES tras filtro local: ${coincidentes.length}`, coincidentes);
+
                             if (coincidentes.length === 0) { 
+                                console.warn("⚠️ No se encontraron fotos coincidentes con los criterios de búsqueda.");
                                 contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>No hay fotos encontradas para este registro.</p>"; 
                                 return; 
                             }
-                    
+
                             let indexImg = 0;
                             const construirCarrusel = () => {
+                                console.log(`📸 Mostrando imagen index [${indexImg}]:`, coincidentes[indexImg]);
                                 contenedorCarrusel.innerHTML = `
                                     <div style="position:relative; width:100%; height:100%; display:flex; justify-content:center; background:#f8fafc; border-radius:8px;">
                                         ${coincidentes.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:2;">❮</button>` : ''}
@@ -19819,6 +19842,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             construirCarrusel();
                         })
                         .catch(err => { 
+                            console.error("❌ [ERROR FETCH/RED]:", err);
                             contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>Error de conexión al recuperar fotos.</p>"; 
                         });
                     });
@@ -19834,7 +19858,6 @@ function dibujarMapaDeDia(fecha, indexFila) {
                 }
             });
 
-            // DIBUJAR LÍNEAS DE RUTA EN EL MAPA
             if (puntos.length > 1) {
                 for (let i = 0; i < puntos.length - 1; i++) {
                     const hFin = trabajos[i]?.["HORA"], hIniSig = trabajos[i + 1]?.["HORA INI"];
