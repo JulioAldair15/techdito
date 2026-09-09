@@ -19711,7 +19711,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     });
 
                     // =========================================================
-                    // 📸 LÓGICA Y DEBUG DEL BOTÓN DE FOTOS (ROBUSTO Y RESILIENTE)
+                    // 📸 LÓGICA DE FOTOS FILTRADAS POR FECHA DE EJECUCIÓN
                     // =========================================================
                     const btnFotos = tarjeta.querySelector('.btn-abrir-fotos');
                     btnFotos.addEventListener("click", async (e) => {
@@ -19722,6 +19722,8 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     
                         const rawSuministro = f["SUMINISTRO"];
                         const rawInspeccion = f["CODIGO INSPECCION PERDIDAS"];
+                        const actividadActual = String(f["ACTIVIDAD"] || "").trim().toUpperCase();
+                        const rawFechaEjecucion = f["FECHA EJECUCION"] || f["FECHA INI EJECUCION"] || "";
                     
                         const sanitizarYValidar = (valor) => {
                             if (valor === null || valor === undefined) return null;
@@ -19729,6 +19731,26 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             const soloDigitos = str.replace(/\D/g, ''); 
                             return (soloDigitos !== "" && !/^0+$/.test(soloDigitos)) ? str : null;
                         };
+                    
+                        // Helper para extraer { dia, mes, anio } de cualquier string de fecha
+                        const obtenerPartesFecha = (strFecha) => {
+                            if (!strFecha) return null;
+                            const limpia = String(strFecha).trim();
+                            // DD/MM/YYYY o DD-MM-YYYY
+                            let m = limpia.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+                            if (m) {
+                                return { dia: m[1].padStart(2, '0'), mes: m[2].padStart(2, '0'), anio: m[3] };
+                            }
+                            // YYYY-MM-DD o YYYY/MM/DD
+                            m = limpia.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+                            if (m) {
+                                return { dia: m[3].padStart(2, '0'), mes: m[2].padStart(2, '0'), anio: m[1] };
+                            }
+                            return null;
+                        };
+                    
+                        const targetFechaPartes = obtenerPartesFecha(rawFechaEjecucion);
+                        console.log(`📅 Fecha de ejecución objetivo:`, targetFechaPartes || rawFechaEjecucion);
                     
                         const suministroValido = sanitizarYValidar(rawSuministro);
                         const inspeccionValida = sanitizarYValidar(rawInspeccion);
@@ -19740,7 +19762,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     
                         // Modal UI
                         const ventana = document.createElement("div");
-                        ventana.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:99999; background:white; border-radius:10px; padding:20px; width:90%; max-width:1000px; height:90vh; overflow-y:auto; box-shadow:0 10px 25px rgba(0,0,0,0.5);";
+                        ventana.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:99999; background:white; border-radius:10px; padding:20px; width:90%; max-width:1050px; height:90vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.5);";
                         
                         const cerrarBtn = document.createElement("button");
                         cerrarBtn.innerHTML = "×";
@@ -19755,34 +19777,29 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         const tituloCodigo = suministroValido || inspeccionValida;
                     
                         ventana.innerHTML = `
-                            <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
-                                <h3 style="margin:0; color:#1e293b;"><i class="fas fa-file-invoice"></i> Código: ${tituloCodigo}</h3>
-                                <div style="color:#64748b; font-size: 0.9rem; margin-top:5px;"><i class="fas fa-map-marker-alt"></i> ${direccion}</div>
+                            <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 10px; flex-shrink: 0;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <h3 style="margin:0; color:#1e293b;"><i class="fas fa-file-invoice"></i> Código: ${tituloCodigo}</h3>
+                                    <span style="background:#e0f2fe; color:#0369a1; padding:4px 10px; border-radius:12px; font-size:0.85rem; font-weight:600; margin-right:30px;">
+                                        📅 Fecha: ${rawFechaEjecucion || "Sin Fecha"}
+                                    </span>
+                                </div>
+                                <div style="color:#64748b; font-size: 0.9rem; margin-top:3px;"><i class="fas fa-map-marker-alt"></i> ${direccion}</div>
                             </div>
-                            <div id="contenedor-carrusel" style="display:flex; justify-content:center; align-items:center; height:calc(100% - 80px);"></div>
+                            <div id="fc-pestanias-container" style="display:flex; gap:8px; overflow-x:auto; padding-bottom:8px; border-bottom:1px solid #cbd5e1; margin-bottom:10px; flex-shrink:0;"></div>
+                            <div id="contenedor-carrusel" style="flex:1; display:flex; justify-content:center; align-items:center; overflow:hidden; background:#f8fafc; border-radius:8px;"></div>
                         `;
                         ventana.appendChild(cerrarBtn);
                         document.body.appendChild(overlay); 
                         document.body.appendChild(ventana);
                     
+                        const pestaniasContainer = ventana.querySelector("#fc-pestanias-container");
                         const contenedorCarrusel = ventana.querySelector("#contenedor-carrusel");
-                        contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Buscando imágenes...</p></div>`;
+                        contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Filtrando imágenes para la fecha ${rawFechaEjecucion}...</p></div>`;
                     
-                        // Deducción inteligente de categoría
-                        const resolverCategoria = (item) => {
-                            if (item.categoria && String(item.categoria).trim() !== "") {
-                                return String(item.categoria).trim().toLowerCase();
-                            }
-                            const leyenda = String(item.leyenda || "").toUpperCase();
-                            if (leyenda.includes("CATASTRO")) return "catastro";
-                            if (leyenda.includes("LECTURA")) return "lecturas";
-                            if (leyenda.includes("INSPECCION")) return "inspecciones";
-                            return "ordenes";
-                        };
-                    
-                        // Función para construir la URL normalizada
+                        // Función para construir la URL exacta
                         const construirUrlImagen = (nombre, carpeta, categoria) => {
-                            let cat = categoria || "ordenes";
+                            let cat = (categoria && String(categoria).trim()) ? String(categoria).trim().toLowerCase() : "ordenes";
                             let carpetaLimpia = (carpeta || "").toString().replace(/\\/g, "/").trim();
                             carpetaLimpia = carpetaLimpia.replace(/^\/+|\/+$/g, ""); 
                     
@@ -19793,7 +19810,67 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             return `http://200.233.44.171/app_oraclesedalib/public/storage/images/${cat}/${rutaCarpeta}${nombreUrl}`;
                         };
                     
-                        // Consulta al Backend
+                        // Filtro por fecha de ejecución
+                        const coincideConFechaTarget = (item, sub, nombre) => {
+                            if (!targetFechaPartes) return true; // Si no hay fecha especificada en la fila, muestra todo
+                    
+                            const { dia, mes, anio } = targetFechaPartes;
+                            const yyyymm = `${anio}${mes}`;
+                            const yyyymmdd = `${anio}${mes}${dia}`;
+                            const ddmmyyyy = `${dia}${mes}${anio}`;
+                            const slashDD = `${dia}/${mes}/${anio}`;
+                            const dashDD = `${dia}-${mes}-${anio}`;
+                            const dashYY = `${anio}-${mes}-${dia}`;
+                    
+                            // 1. Revisar fechas explícitas del JSON backend
+                            const posiblesFechas = [
+                                item?.fecha, item?.fecha_ejecucion, item?.fecha_registro, item?.fec_ejec, item?.fec_reg, item?.created_at,
+                                sub?.fecha, sub?.fecha_ejecucion, sub?.fecha_registro, sub?.fec_ejec, sub?.fec_reg
+                            ].filter(Boolean);
+                    
+                            for (const fVal of posiblesFechas) {
+                                const p = obtenerPartesFecha(fVal);
+                                if (p) {
+                                    if (p.anio === anio && p.mes === mes && p.dia === dia) return true;
+                                    if (p.anio !== anio || p.mes !== mes) return false;
+                                } else {
+                                    const strF = String(fVal);
+                                    if (strF.includes(slashDD) || strF.includes(dashDD) || strF.includes(dashYY) || strF.includes(yyyymmdd)) {
+                                        return true;
+                                    }
+                                }
+                            }
+                    
+                            // 2. Revisar carpeta y nombre de archivo
+                            const carpetaStr = String(item?.carpeta || sub?.carpeta || "");
+                            const nombreStr = String(nombre || "");
+                            const textoCombinado = `${carpetaStr} ${nombreStr}`;
+                    
+                            if (textoCombinado.includes(yyyymmdd) || 
+                                textoCombinado.includes(ddmmyyyy) || 
+                                textoCombinado.includes(slashDD) || 
+                                textoCombinado.includes(dashDD) || 
+                                textoCombinado.includes(dashYY)) {
+                                return true;
+                            }
+                    
+                            // Si la carpeta tiene formato YYYYMM (ej: 202504 o 202609)
+                            const matchCarpetaAnioMes = carpetaStr.match(/^(\d{4})(\d{2})/);
+                            if (matchCarpetaAnioMes) {
+                                const cAnio = matchCarpetaAnioMes[1];
+                                const cMes = matchCarpetaAnioMes[2];
+                                if (cAnio === anio && cMes === mes) {
+                                    return true;
+                                } else {
+                                    // Descarta carpetas de otros años/meses (ej. 202504 cuando buscamos 202609)
+                                    return false;
+                                }
+                            }
+                    
+                            return true;
+                        };
+                    
+                        // Consulta y Filtro al Backend
                         const consultarBackend = async (codigo) => {
                             if (!codigo) return [];
                             try {
@@ -19806,94 +19883,172 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     
                                 if (!res.ok) return [];
                                 const data = await res.json();
-                                console.log(`📦 [DATOS RECIBIDOS] para "${codigo}":`, data);
+                                console.log(`📦 [DATOS RECIBIDOS SIN FILTRAR] para "${codigo}":`, data);
                     
-                                const fotos = [];
+                                const grupos = [];
+                                let totalFotosDescartadas = 0;
+                    
                                 if (data && Array.isArray(data.resultados)) {
-                                    data.resultados.forEach((item, index) => {
-                                        const cat = resolverCategoria(item);
-                                        console.log(`🔍 [GRUPO ${index + 1}] Leyenda: "${item.leyenda}" | Categoría resuelta: "${cat}" | Carpeta: "${item.carpeta}"`);
+                                    data.resultados.forEach((item) => {
+                                        const leyendaUpper = String(item.leyenda || "").toUpperCase();
+                                        const esLectura = leyendaUpper.includes("LECTURA") || item.categoria === "lecturas";
+                                        const catGrupo = esLectura ? "lecturas" : (item.categoria || "ordenes");
                                         
+                                        const fotosGrupo = [];
+                    
+                                        // Fotos directas del grupo
                                         if (Array.isArray(item.imagenes)) {
                                             item.imagenes.forEach(nombre => {
-                                                fotos.push({ nombre, carpeta: item.carpeta, categoria: cat, leyenda: item.leyenda });
+                                                if (coincideConFechaTarget(item, null, nombre)) {
+                                                    fotosGrupo.push({ nombre, carpeta: item.carpeta, categoria: catGrupo, leyenda: item.leyenda });
+                                                } else {
+                                                    totalFotosDescartadas++;
+                                                }
                                             });
                                         }
+                    
+                                        // Fotos de subgrupos
                                         if (Array.isArray(item.subgrupos)) {
                                             item.subgrupos.forEach(sub => {
-                                                const subCat = resolverCategoria(sub) || cat;
                                                 if (Array.isArray(sub.imagenes)) {
                                                     sub.imagenes.forEach(nombre => {
-                                                        fotos.push({ nombre, carpeta: sub.carpeta, categoria: subCat, leyenda: sub.leyenda || item.leyenda });
+                                                        if (coincideConFechaTarget(item, sub, nombre)) {
+                                                            fotosGrupo.push({ 
+                                                                nombre, 
+                                                                carpeta: sub.carpeta, 
+                                                                categoria: esLectura ? "lecturas" : (sub.categoria || catGrupo), 
+                                                                leyenda: sub.leyenda || item.leyenda 
+                                                            });
+                                                        } else {
+                                                            totalFotosDescartadas++;
+                                                        }
                                                     });
                                                 }
                                             });
                                         }
+                    
+                                        if (fotosGrupo.length > 0) {
+                                            grupos.push({
+                                                leyenda: item.leyenda || "VARIOS",
+                                                categoria: catGrupo,
+                                                fotos: fotosGrupo
+                                            });
+                                        }
                                     });
                                 }
-                                return fotos;
+                    
+                                console.log(`🧹 [FILTRADO POR FECHA] Fotos conservadas en fecha ${rawFechaEjecucion}: ${grupos.reduce((acc, g) => acc + g.fotos.length, 0)} | Fotos descartadas de otras fechas: ${totalFotosDescartadas}`);
+                    
+                                return grupos;
                             } catch (err) {
                                 console.error(`❌ Error consultando código ${codigo}:`, err);
                                 return [];
                             }
                         };
                     
-                        let coincidentes = await consultarBackend(suministroValido);
+                        let gruposEncontrados = await consultarBackend(suministroValido);
                     
-                        if (coincidentes.length === 0 && inspeccionValida && inspeccionValida !== suministroValido) {
+                        if (gruposEncontrados.length === 0 && inspeccionValida && inspeccionValida !== suministroValido) {
                             console.log(`⚠️ Sin fotos por Suministro. Intentando con Inspección: "${inspeccionValida}"`);
-                            coincidentes = await consultarBackend(inspeccionValida);
+                            gruposEncontrados = await consultarBackend(inspeccionValida);
                         }
                     
-                        if (coincidentes.length === 0) { 
-                            contenedorCarrusel.innerHTML = "<p style='color:#e74c3c;'>No hay fotos encontradas para este registro.</p>"; 
+                        if (gruposEncontrados.length === 0) { 
+                            contenedorCarrusel.innerHTML = `
+                                <div style="text-align:center; padding:30px; color:#64748b;">
+                                    <i class="fas fa-calendar-times" style="font-size:40px; margin-bottom:10px; color:#94a3b8;"></i>
+                                    <p style="margin:0; font-size:1.1rem; color:#334155;">No se encontraron fotos registradas para la fecha: <strong>${rawFechaEjecucion}</strong></p>
+                                </div>
+                            `; 
                             return; 
                         }
                     
-                        // Renderizado del carrusel sin destruir la UI en error 404
-                        let indexImg = 0;
-                        const construirCarrusel = () => {
-                            const itemImg = coincidentes[indexImg];
-                            const urlFinal = construirUrlImagen(itemImg.nombre, itemImg.carpeta, itemImg.categoria);
-                            console.log(`🔗 [CARGANDO IMAGEN ${indexImg + 1}/${coincidentes.length}]: ${urlFinal}`);
+                        // Renderizado de Pestañas
+                        let grupoActivoIndex = 0;
                     
-                            contenedorCarrusel.innerHTML = `
-                                <div style="position:relative; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#f8fafc; border-radius:8px;">
-                                    <div style="position:absolute; top:10px; left:15px; background:rgba(0,0,0,0.6); color:white; padding:4px 10px; border-radius:5px; font-size:0.8rem; z-index:3;">
-                                        ${indexImg + 1} / ${coincidentes.length} — ${itemImg.leyenda || itemImg.categoria}
-                                    </div>
+                        const matchIndex = gruposEncontrados.findIndex(g => {
+                            const ley = String(g.leyenda).toUpperCase();
+                            return ley.includes(actividadActual) || actividadActual.includes(ley);
+                        });
                     
-                                    ${coincidentes.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:3;">❮</button>` : ''}
-                                    
-                                    <div id="wrapper-imagen" style="width:100%; height:100%; display:flex; justify-content:center; align-items:center;">
-                                        <img id="img-carrusel-actual" src="${urlFinal}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
-                                    </div>
-                                    
-                                    ${coincidentes.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:3;">❯</button>` : ''}
-                                </div>
-                            `;
+                        if (matchIndex !== -1) {
+                            grupoActivoIndex = matchIndex;
+                        }
                     
-                            const imgElement = document.getElementById("img-carrusel-actual");
-                            const wrapper = document.getElementById("wrapper-imagen");
+                        const renderizarCarruselGrupo = (indexGrupo) => {
+                            grupoActivoIndex = indexGrupo;
+                            const grupo = gruposEncontrados[indexGrupo];
+                            const fotos = grupo.fotos;
                     
-                            imgElement.onerror = () => {
-                                console.error(`❌ [ERROR 404 en ${indexImg + 1}/${coincidentes.length}]: ${urlFinal}`);
-                                wrapper.innerHTML = `
-                                    <div style="text-align:center; color:#e74c3c; padding:20px; background:white; border:1px solid #fee2e2; border-radius:8px; max-width:80%;">
-                                        <i class="fas fa-exclamation-triangle" style="font-size:36px; margin-bottom:10px; color:#ef4444;"></i>
-                                        <p style="margin:0; font-weight:bold;">Imagen no disponible en el servidor (404)</p>
-                                        <small style="color:#64748b; word-break:break-all; display:block; margin-top:8px;">${urlFinal}</small>
+                            pestaniasContainer.querySelectorAll(".fc-tab-btn").forEach((btn, i) => {
+                                if (i === indexGrupo) {
+                                    btn.style.background = "#1e40af";
+                                    btn.style.color = "white";
+                                    btn.style.fontWeight = "bold";
+                                } else {
+                                    btn.style.background = "#e2e8f0";
+                                    btn.style.color = "#334155";
+                                    btn.style.fontWeight = "normal";
+                                }
+                            });
+                    
+                            let indexImg = 0;
+                            const mostrarFotoActual = () => {
+                                const itemImg = fotos[indexImg];
+                                const urlFinal = construirUrlImagen(itemImg.nombre, itemImg.carpeta, itemImg.categoria);
+                                console.log(`🔗 [CARGANDO FOTO DE ${rawFechaEjecucion} ${indexImg + 1}/${fotos.length}]: ${urlFinal}`);
+                    
+                                contenedorCarrusel.innerHTML = `
+                                    <div style="position:relative; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                                        <div style="position:absolute; top:10px; left:15px; background:rgba(0,0,0,0.7); color:white; padding:5px 12px; border-radius:5px; font-size:0.85rem; z-index:3;">
+                                            ${indexImg + 1} / ${fotos.length} — ${itemImg.nombre}
+                                        </div>
+                    
+                                        ${fotos.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:20px; cursor:pointer; z-index:3;">❮</button>` : ''}
+                                        
+                                        <div id="wrapper-imagen" style="width:100%; height:100%; display:flex; justify-content:center; align-items:center;">
+                                            <img id="img-carrusel-actual" src="${urlFinal}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
+                                        </div>
+                                        
+                                        ${fotos.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:20px; cursor:pointer; z-index:3;">❯</button>` : ''}
                                     </div>
                                 `;
+                    
+                                const imgElement = document.getElementById("img-carrusel-actual");
+                                const wrapper = document.getElementById("wrapper-imagen");
+                    
+                                imgElement.onerror = () => {
+                                    console.error(`❌ [ERROR 404]: ${urlFinal}`);
+                                    wrapper.innerHTML = `
+                                        <div style="text-align:center; color:#e74c3c; padding:20px; background:white; border:1px solid #fee2e2; border-radius:8px; max-width:80%;">
+                                            <i class="fas fa-exclamation-triangle" style="font-size:32px; margin-bottom:8px; color:#ef4444;"></i>
+                                            <p style="margin:0; font-weight:bold;">Imagen no disponible (404)</p>
+                                            <small style="color:#64748b; word-break:break-all; display:block; margin-top:5px;">${urlFinal}</small>
+                                        </div>
+                                    `;
+                                };
+                    
+                                if (fotos.length > 1) {
+                                    document.getElementById("btn-izq").onclick = () => { indexImg = (indexImg - 1 + fotos.length) % fotos.length; mostrarFotoActual(); };
+                                    document.getElementById("btn-der").onclick = () => { indexImg = (indexImg + 1) % fotos.length; mostrarFotoActual(); };
+                                }
                             };
                     
-                            if (coincidentes.length > 1) {
-                                document.getElementById("btn-izq").onclick = () => { indexImg = (indexImg - 1 + coincidentes.length) % coincidentes.length; construirCarrusel(); };
-                                document.getElementById("btn-der").onclick = () => { indexImg = (indexImg + 1) % coincidentes.length; construirCarrusel(); };
-                            }
+                            mostrarFotoActual();
                         };
-                        
-                        construirCarrusel();
+                    
+                        pestaniasContainer.innerHTML = "";
+                        gruposEncontrados.forEach((grupo, idx) => {
+                            const btnTab = document.createElement("button");
+                            btnTab.className = "fc-tab-btn";
+                            btnTab.style.cssText = "padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem; white-space:nowrap; transition:all 0.2s;";
+                            btnTab.innerHTML = `${grupo.leyenda} <span style="background:rgba(0,0,0,0.15); padding:2px 6px; border-radius:10px; font-size:0.75rem;">${grupo.fotos.length}</span>`;
+                            
+                            btnTab.onclick = () => renderizarCarruselGrupo(idx);
+                            pestaniasContainer.appendChild(btnTab);
+                        });
+                    
+                        renderizarCarruselGrupo(grupoActivoIndex);
                     });
 
                     filaTarjetas.appendChild(tarjeta);
