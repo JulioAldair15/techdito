@@ -19267,8 +19267,8 @@ function dibujarMatriz(fechas, operarios) {
     `;
 
     operarios.forEach((op, index) => {
-        let filaHtml = `<tr>
-            <td class="col-sticky-left font-bold prod-celda-click" title="Ver detalle de ${op.nombre}" onclick="abrirPanelOperario(${index})">
+        let filaHtml = `<tr id="fila-operario-${index}" class="fila-operario-matriz">
+        <td class="col-sticky-left font-bold prod-celda-click" title="Ver detalle de ${op.nombre}" onclick="abrirPanelOperario(${index})">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${op.nombre}</span>
                     <i class="fas fa-chevron-right prod-icon-click"></i>
@@ -19369,6 +19369,11 @@ function abrirPanelOperario(indexOperario) {
 
     if (!op) return;
 
+    // 🔥 AGREGAR AQUÍ: Limpia la selección previa y resalta la fila actual en la matriz
+    document.querySelectorAll('.fila-operario-matriz').forEach(fila => fila.classList.remove('fila-activa-matriz'));
+    const filaSeleccionada = document.getElementById(`fila-operario-${indexOperario}`);
+    if (filaSeleccionada) filaSeleccionada.classList.add('fila-activa-matriz');
+
     layout.classList.add('panel-open');
     panel.innerHTML = `
         <div class="panel-header" style="padding:15px 20px;">
@@ -19396,7 +19401,7 @@ function abrirPanelOperario(indexOperario) {
         if (data.error) throw new Error(data.error);
         
         window.datosDetalleOperario = data.trabajos;
-        const cargasAsignadas = data.cargas_asignadas || {}; // 🔥 Recibimos las metas
+        const cargasAsignadas = data.cargas_asignadas || {};
         
         const diasMap = {};
         window.datosDetalleOperario.forEach((t, i) => {
@@ -19471,7 +19476,6 @@ function abrirPanelOperario(indexOperario) {
 
                 if (metaDia > 0) {
                     const pct = Math.round((registrosEjecutados / metaDia) * 100);
-                    // Límite visual para que porcentajes masivos no rompan el diseño
                     porcentajeTexto = pct > 999 ? `+999%` : `${pct}%`;
                     colorAvance = pct >= 100 ? "#16a34a" : (pct >= 50 ? "#d97706" : "#dc2626");
                 } else {
@@ -19490,7 +19494,7 @@ function abrirPanelOperario(indexOperario) {
                             <div title="Actividad" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-clipboard-check" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${actividadCorta}</span></div>
                             <div title="Meta Asignada" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-bullseye" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${metaDia} meta</span></div>
                             <div title="Registros Ejecutados" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-map-pin" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${registrosEjecutados} regs</span></div>
-                            <div title="Tiempo Total" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-stopwatch" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${horasTrabajadasTexto}</span></div>
+                            <div title="Tiempo Total" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="far fa-clock" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${horasTrabajadasTexto}</span></div>
                             <div title="Promedio" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-bolt" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${promTexto}</span></div>
                             <div title="Avance de Meta" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-chart-line" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:${colorAvance}; font-weight:700;">${porcentajeTexto}</span></div>
                         </div>
@@ -19527,7 +19531,10 @@ function abrirPanelOperario(indexOperario) {
 function cerrarPanelOperario() {
     document.getElementById('prod-split-layout').classList.remove('panel-open');
     if (window.mapaOperarioInstancia) { window.mapaOperarioInstancia.remove(); window.mapaOperarioInstancia = null; }
+
+    document.querySelectorAll('.fila-operario-matriz').forEach(fila => fila.classList.remove('fila-activa-matriz'));
 }
+
 
 function dibujarMapaDeDia(fecha, indexFila) {
     console.log(`🗺️ [MAPA] Dibujando ruta para el día: ${fecha}`);
@@ -19539,7 +19546,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
     const trabajos = window.datosDetalleOperario.filter(t => (t["FECHA EJECUCION"] || t["FECHA INI EJECUCION"]) === fecha);
     const contenedor = document.getElementById('panel-mapa-view');
 
-    if(!contenedor) return; // Protección anti-colapsos
+    if(!contenedor) return;
 
     contenedor.innerHTML = `
         <style>
@@ -19552,13 +19559,17 @@ function dibujarMapaDeDia(fecha, indexFila) {
             #cinta-scroll-tarjetas::-webkit-scrollbar { height: 5px !important; }
             #cinta-scroll-tarjetas::-webkit-scrollbar-track { background: transparent !important; }
             #cinta-scroll-tarjetas::-webkit-scrollbar-thumb { background: #94a3b8 !important; border-radius: 10px !important; }
-            
+
             .mini-tarjeta {
                 background: white; border: 1px solid #e2e8f0; border-radius: 6px;
-                min-width: 165px; max-width: 180px; padding: 6px 10px; flex-shrink: 0; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+                min-width: 195px; max-width: 215px; padding: 6px 10px; flex-shrink: 0; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
             }
             .mini-tarjeta:hover { border-color: #cbd5e1; box-shadow: 0 3px 6px rgba(0,0,0,0.06); }
             .mini-tarjeta.activa { border-color: #3b82f6; background-color: #eff6ff; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(59,130,246,0.15); }
+
+            .mini-tarjeta.ficha-levantada { background-color: #fff7ed !important; border: 1px solid #fed7aa !important; }
+            .mini-tarjeta.ficha-levantada:hover { border-color: #f97316 !important; }
+            .mini-tarjeta.ficha-levantada.activa { border-color: #ea580c !important; background-color: #ffedd5 !important; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(234, 88, 12, 0.2) !important; }
         </style>
 
         <div style="padding: 10px 15px; background: white; border-bottom: 1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; z-index:10; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
@@ -19581,7 +19592,6 @@ function dibujarMapaDeDia(fecha, indexFila) {
             const projUTM = "+proj=utm +zone=17 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs";
             const projLatLon = "+proj=longlat +datum=WGS84 +no_defs";
             const puntos = [];
-            
             const filaTarjetas = document.getElementById("cinta-scroll-tarjetas");
 
             trabajos.forEach((f, i) => {
@@ -19617,19 +19627,67 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         }
                     });
 
+                    const actividadNombre = (f["ACTIVIDAD"] || f["ACTIVIDAD REAL"] || f["DESCRIPCION"] || "").toString().trim().toUpperCase();
+                    const esFichaLevantada = actividadNombre.includes("FICHA LEVANTADA");
+
+                    let duracionTexto = "-";
+                    const hIniStr = (f["HORA INI"] || "").toString().trim();
+                    const hFinStr = (f["HORA"] || "").toString().trim();
+
+                    if (hIniStr.includes(":") && hFinStr.includes(":")) {
+                        const [h1, m1] = hIniStr.split(":").map(Number);
+                        const [h2, m2] = hFinStr.split(":").map(Number);
+
+                        if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
+                            let totalMinutos = (h2 * 60 + m2) - (h1 * 60 + m1);
+                            if (totalMinutos < 0) totalMinutos += 1440;
+
+                            const hrs = Math.floor(totalMinutos / 60);
+                            const mins = totalMinutos % 60;
+
+                            duracionTexto = hrs > 0 ? `${hrs}h ${mins}m` : `${mins} min`;
+                        }
+                    }
+
                     const tarjeta = document.createElement("div");
-                    tarjeta.className = "mini-tarjeta";
+                    tarjeta.className = `mini-tarjeta ${esFichaLevantada ? 'ficha-levantada' : ''}`;
                     tarjeta.id = `tarjeta-${lat.toFixed(6)}-${lon.toFixed(6)}`;
+
+                    const tagFicha = esFichaLevantada 
+                        ? `<span style="font-size:0.55rem; background:#c2410c; color:white; padding:1px 4px; border-radius:3px; font-weight:bold; margin-left:4px;">FICHA</span>` 
+                        : '';
 
                     tarjeta.innerHTML = `
                         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px dashed #e2e8f0; padding-bottom:4px; margin-bottom:4px;">
-                            <strong style="font-size:0.8rem; color:#1e293b;"><i class="fas fa-file-invoice" style="color:#94a3b8; margin-right:3px;"></i>${f["SUMINISTRO"] || "-"}</strong>
+                            <strong style="font-size:0.8rem; color:#1e293b; display:flex; align-items:center;">
+                                <i class="fas fa-file-invoice" style="color:${esFichaLevantada ? '#c2410c' : '#94a3b8'}; margin-right:3px;"></i>${f["SUMINISTRO"] || "-"} ${tagFicha}
+                            </strong>
                             <button class="btn-abrir-fotos" style="background:#f1f5f9; color:#3b82f6; border:1px solid #e2e8f0; border-radius:4px; width:22px; height:22px; cursor:pointer; display:flex; justify-content:center; align-items:center; font-size:10px;"><i class="fas fa-camera"></i></button>
                         </div>
-                        <div style="font-size:0.65rem; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:4px;"><i class="fas fa-map-marker-alt"></i> ${f["URBA"] || ""} ${f["CALLE2"] || ""}</div>
-                        <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:#64748b;">
-                            <span>Ini: <b style="color:#1e293b;">${f["HORA INI"] || "-"}</b></span>
-                            <span>Fin: <b style="color:#1e293b;">${f["HORA"] || "-"}</b></span>
+                        <div style="font-size:0.65rem; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;"><i class="fas fa-map-marker-alt"></i> ${f["URBA"] || ""} ${f["CALLE2"] || ""}</div>
+                        
+                        <!-- FILA HORARIA CON ÍCONO CORREGIDO -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:4px; border-top:1px solid #f1f5f9;">
+                            <div style="white-space:nowrap; font-size:0.65rem; color:#1e293b; display:flex; align-items:center;">
+                                
+                                <i class="far fa-clock" style="color:#94a3b8; font-size:0.6rem; margin-right:4px;"></i>
+                                <span style="font-weight:normal; margin-right:2px;">INI:</span> 
+                                <b>${hIniStr || "-"}</b>
+
+                                <span style="margin: 0 4px;">-</span>
+
+                                
+                                <span style="font-weight:normal; margin-right:2px;">FIN:</span> 
+                                <b>${hFinStr || "-"}</b>
+
+                            </div>
+
+                            <div style="background:${esFichaLevantada ? '#ffedd5' : '#f1f5f9'}; padding:1px 5px; border-radius:4px; border:1px solid ${esFichaLevantada ? '#fed7aa' : '#e2e8f0'}; white-space:nowrap;">
+                                <b style="color:${esFichaLevantada ? '#c2410c' : '#2563eb'}; font-size:0.62rem; display:flex; align-items:center;">
+                                    <i class="fas fa-hourglass-half" style="margin-right:3px; color:#64748b; font-weight:normal;"></i> 
+                                    ${duracionTexto}
+                                </b>
+                            </div>
                         </div>
                     `;
 
@@ -19703,7 +19761,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                     }
                 }
             });
-            
+
             // DIBUJAR LÍNEAS DE RUTA EN EL MAPA (Blindado contra horas vacías)
             if (puntos.length > 1) {
                 for (let i = 0; i < puntos.length - 1; i++) {
@@ -19735,7 +19793,6 @@ function dibujarMapaDeDia(fecha, indexFila) {
         }
     }, 300);
 }
-
 /* ==========================================
    LLENADO DINÁMICO DE FILTROS (PRODUCCIÓN)
 ========================================== */
