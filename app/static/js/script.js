@@ -19592,7 +19592,24 @@ function dibujarMapaDeDia(fecha, indexFila) {
             const projUTM = "+proj=utm +zone=17 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs";
             const projLatLon = "+proj=longlat +datum=WGS84 +no_defs";
             const puntos = [];
+            const marcadores = []; // 🔥 Guardaremos las instancias de marcadores
             const filaTarjetas = document.getElementById("cinta-scroll-tarjetas");
+
+            // Función interna para resaltar el marcador seleccionado en el mapa
+            const resaltarMarcador = (marcadorSeleccionado) => {
+                marcadores.forEach(m => {
+                    m.setStyle(m.estiloOriginal); // Restaura todos
+                });
+                marcadorSeleccionado.setStyle({
+                    radius: 10,
+                    fillColor: '#3b82f6',
+                    color: '#1d4ed8',
+                    weight: 3,
+                    fillOpacity: 1
+                });
+                marcadorSeleccionado.bringToFront();
+                marcadorSeleccionado.openPopup();
+            };
 
             trabajos.forEach((f, i) => {
                 let lat = parseFloat(String(f["LATITUD"] || "").replace(",", "."));
@@ -19616,16 +19633,11 @@ function dibujarMapaDeDia(fecha, indexFila) {
 
                     const marcador = L.circleMarker([lat, lon], {
                         radius: 5, color: borderColor, weight: 2, fillColor: fillColor, fillOpacity: 1
-                    }).addTo(mapa).bindPopup(`<strong>${label}</strong><br>${f["SUMINISTRO"] || ""}`);
+                    }).addTo(mapa).bindPopup(`<strong>${label || 'Suministro'}</strong><br>${f["SUMINISTRO"] || ""}`);
 
-                    marcador.on("click", () => {
-                        document.querySelectorAll(".mini-tarjeta").forEach(t => t.classList.remove("activa"));
-                        const tarjeta = document.getElementById(`tarjeta-${lat.toFixed(6)}-${lon.toFixed(6)}`);
-                        if (tarjeta) {
-                            tarjeta.classList.add("activa");
-                            tarjeta.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); 
-                        }
-                    });
+                    // Guardar estilo original para reseteos
+                    marcador.estiloOriginal = { radius: 5, color: borderColor, weight: 2, fillColor: fillColor, fillOpacity: 1 };
+                    marcadores.push(marcador);
 
                     const actividadNombre = (f["ACTIVIDAD"] || f["ACTIVIDAD REAL"] || f["DESCRIPCION"] || "").toString().trim().toUpperCase();
                     const esFichaLevantada = actividadNombre.includes("FICHA LEVANTADA");
@@ -19666,20 +19678,16 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         </div>
                         <div style="font-size:0.65rem; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;"><i class="fas fa-map-marker-alt"></i> ${f["URBA"] || ""} ${f["CALLE2"] || ""}</div>
                         
-                        <!-- FILA HORARIA CON ÍCONO CORREGIDO -->
                         <div style="display:flex; justify-content:space-between; align-items:center; padding-top:4px; border-top:1px solid #f1f5f9;">
                             <div style="white-space:nowrap; font-size:0.65rem; color:#1e293b; display:flex; align-items:center;">
-                                
                                 <i class="far fa-clock" style="color:#94a3b8; font-size:0.6rem; margin-right:4px;"></i>
                                 <span style="font-weight:normal; margin-right:2px;">INI:</span> 
                                 <b>${hIniStr || "-"}</b>
 
                                 <span style="margin: 0 4px;">-</span>
 
-                                
                                 <span style="font-weight:normal; margin-right:2px;">FIN:</span> 
                                 <b>${hFinStr || "-"}</b>
-
                             </div>
 
                             <div style="background:${esFichaLevantada ? '#ffedd5' : '#f1f5f9'}; padding:1px 5px; border-radius:4px; border:1px solid ${esFichaLevantada ? '#fed7aa' : '#e2e8f0'}; white-space:nowrap;">
@@ -19691,9 +19699,31 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         </div>
                     `;
 
+                    // 🔥 EVENTO AL HACER CLIC EN EL MARCADOR DEL MAPA
+                    marcador.on("click", () => {
+                        document.querySelectorAll(".mini-tarjeta").forEach(t => t.classList.remove("activa"));
+                        tarjeta.classList.add("activa");
+                        tarjeta.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+                        resaltarMarcador(marcador);
+                    });
+
+                    // 🔥 NUEVO EVENTO AL HACER CLIC EN LA TARJETA
+                    tarjeta.addEventListener("click", (e) => {
+                        // Evita disparar el centrado si hizo clic en el botón de fotos
+                        if (e.target.closest('.btn-abrir-fotos')) return;
+
+                        document.querySelectorAll(".mini-tarjeta").forEach(t => t.classList.remove("activa"));
+                        tarjeta.classList.add("activa");
+
+                        // Centra el mapa suavemente en la posición
+                        mapa.flyTo([lat, lon], Math.max(mapa.getZoom(), 16), { duration: 0.8 });
+                        resaltarMarcador(marcador);
+                    });
+
                     // Lógica del botón de fotos
                     const btnFotos = tarjeta.querySelector('.btn-abrir-fotos');
-                    btnFotos.addEventListener("click", () => {
+                    btnFotos.addEventListener("click", (e) => {
+                        e.stopPropagation(); // Evita conflicto de eventos con la tarjeta
                         const suministro = f["SUMINISTRO"]?.toString().trim();
                         const codigoInspeccion = f["CODIGO INSPECCION PERDIDAS"]?.toString().trim();
                         const ventana = document.createElement("div");
@@ -19719,7 +19749,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         const contenedorCarrusel = ventana.querySelector("#contenedor-carrusel");
                         contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Buscando imágenes...</p></div>`;
 
-                        fetch("/buscar-multiples-coincidencias", {
+                        fetch("/buscar", {
                             method: "POST", headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ pares: [{ suministro: suministro, inspeccion: codigoInspeccion }] })
                         }).then(res => res.json()).then(data => {
@@ -19762,7 +19792,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                 }
             });
 
-            // DIBUJAR LÍNEAS DE RUTA EN EL MAPA (Blindado contra horas vacías)
+            // DIBUJAR LÍNEAS DE RUTA EN EL MAPA
             if (puntos.length > 1) {
                 for (let i = 0; i < puntos.length - 1; i++) {
                     const hFin = trabajos[i]?.["HORA"], hIniSig = trabajos[i + 1]?.["HORA INI"];
