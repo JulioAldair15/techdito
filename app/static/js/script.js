@@ -19470,12 +19470,16 @@ function abrirPanelOperario(indexOperario) {
                 const actividadCorta = actividadCruda.substring(0, 15);
 
                 const metaDia = cargasAsignadas[fecha] || 0; 
-                const registrosEjecutados = trabajosDia.length;
+                const fichasLevantadas = trabajosDia.filter(t =>
+                    String(t["ACTIVIDAD"] || "").trim().toUpperCase() === "CATASTRO-FICHA LEVANTADA"
+                ).length;
+
+                const registrosEjecutados = trabajosDia.length - fichasLevantadas;
                 let porcentajeTexto = "-";
                 let colorAvance = "#64748b";
 
                 if (metaDia > 0) {
-                    const pct = Math.round((registrosEjecutados / metaDia) * 100);
+                    const pct = Math.round((trabajosDia.length / metaDia) * 100);
                     porcentajeTexto = pct > 999 ? `+999%` : `${pct}%`;
                     colorAvance = pct >= 100 ? "#16a34a" : (pct >= 50 ? "#d97706" : "#dc2626");
                 } else {
@@ -19492,10 +19496,13 @@ function abrirPanelOperario(indexOperario) {
 
                         <div class="row-dia-stats-compact" style="flex: 1; display: grid; grid-template-columns: 1.1fr 1fr 1.1fr; gap: 8px 10px; font-size: 0.75rem; color: #475569;">
                             <div title="Actividad" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-clipboard-check" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${actividadCorta}</span></div>
-                            <div title="Meta Asignada" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-bullseye" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${metaDia} meta</span></div>
-                            <div title="Registros Ejecutados" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-map-pin" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${registrosEjecutados} regs</span></div>
                             <div title="Tiempo Total" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="far fa-clock" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${horasTrabajadasTexto}</span></div>
                             <div title="Promedio" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-bolt" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${promTexto}</span></div>
+                            <div title="Meta Asignada" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-bullseye" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${metaDia} meta</span></div>
+                            <div title="Registros Ejecutados" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-map-pin" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:#334155;">${registrosEjecutados} regs</span></div>
+                            ${fichasLevantadas > 0 ? `
+                            <div title="Fichas Levantadas" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-file-signature" style="color:#f97316; margin-right:4px;"></i> <span style="color:#c2410c; font-weight:700;">Ficha: ${fichasLevantadas}</span></div>
+                            ` : ''}
                             <div title="Avance de Meta" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fas fa-chart-line" style="color:#94a3b8; margin-right:4px;"></i> <span style="color:${colorAvance}; font-weight:700;">${porcentajeTexto}</span></div>
                         </div>
 
