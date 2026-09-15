@@ -522,7 +522,6 @@ document.addEventListener('click', function(event) {
     //   domingo      -> estados permitidos en domingo      (por defecto ESTADOS_DOMINGO)
     //   habilitan    -> estados que habilitan los campos   (null = sin restricción)
     //   btnAgregar   -> id del botón "+" si no sigue el patrón
-    //   validarRango -> exige fecha dentro del periodo 26–25
     // ------------------------------------------------------------------------
     const AREAS = {
         recaudacion:      { sufijo: '',                  api: '',                  modulo: 'asistencias_recaudacion', domingo: ['DT'], habilitan: null },
@@ -532,7 +531,7 @@ document.addEventListener('click', function(event) {
         inspecciones:     { sufijo: '-inspecciones',     api: '-inspecciones',     modulo: 'asistencias_inspecciones' },
         medidores:        { sufijo: '-medidores',        api: '-medidores',        modulo: 'asistencias_medidores' },
         persuasivas:      { sufijo: '-persuasivas',      api: '-persuasivas',      modulo: 'asistencias_persuasivas' },
-        norte:            { sufijo: '-norte',            api: '-norte',            modulo: 'asistencias_norte', habilitan: ['A', 'DT', 'FT'], validarRango: true },
+        norte:            { sufijo: '-norte',            api: '-norte',            modulo: 'asistencias_norte', habilitan: ['A', 'DT', 'FT'] },
         administrativo_1: { sufijo: '-administrativo_1', api: '-administrativo_1', modulo: 'asistencias_administrativo' },
     };
  
@@ -575,20 +574,6 @@ document.addEventListener('click', function(event) {
  
     function fechaISO(d) {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    }
- 
-    /** Periodo permitido: del 26 del mes anterior al 25 del actual (o 26 actual–25 siguiente). */
-    function mensajeFueraDeRango(fechaStr) {
-        const f = new Date(fechaStr + 'T00:00:00');
-        const hoy = new Date();
-        const y = hoy.getFullYear(), m = hoy.getMonth();
-        const inicio = hoy.getDate() >= 26 ? new Date(y, m, 26) : new Date(y, m - 1, 26);
-        const fin = hoy.getDate() >= 26 ? new Date(y, m + 1, 25) : new Date(y, m, 25);
-        if (f < inicio || f > fin) {
-            return `La fecha seleccionada está fuera del rango permitido.\n` +
-                   `Solo se puede registrar asistencia desde el ${fechaISO(inicio)} hasta el ${fechaISO(fin)}.`;
-        }
-        return null;
     }
  
     function refs(area) {
@@ -806,6 +791,7 @@ document.addEventListener('click', function(event) {
                 renumerar(r.tbody);
             } else {
                 alert(data.message || 'No se pudo eliminar el registro.');
+                if (data.bloqueado) actualizarBloqueoSeccion(area, true);
             }
         } catch (err) {
             console.error(`[${area}] Error al eliminar:`, err);
@@ -820,11 +806,6 @@ document.addEventListener('click', function(event) {
  
         const fechaStr = r.fecha.value;
         if (!fechaStr) { alert('Seleccione una fecha válida.'); return; }
- 
-        if (r.cfg.validarRango) {
-            const msg = mensajeFueraDeRango(fechaStr);
-            if (msg) { alert(msg); return; }
-        }
  
         const vistos = new Set();
         const asistencias = [];
@@ -856,7 +837,11 @@ document.addEventListener('click', function(event) {
         try {
             const resp = await postJSON(`/guardar-asistencia-detalle${r.cfg.api}`, { asistencias });
             const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) { alert(data.message || 'Error al guardar la asistencia'); return; }
+            if (!resp.ok) {
+                alert(data.message || 'Error al guardar la asistencia');
+                if (data.bloqueado) actualizarBloqueoSeccion(area, true);
+                return;
+            }
  
             alert(data.message || 'Asistencia guardada correctamente.');
             enSegundoPlano(postJSON('/auditar-guardar-asistencia', { fecha: fechaStr }));
@@ -870,6 +855,236 @@ document.addEventListener('click', function(event) {
         } finally {
             if (r.btnGuardar) r.btnGuardar.disabled = false;
         }
+    }
+ 
+ 
+    // ------------------------------------------------------------------------
+    // CONTROL DE PERIODOS (26 al 25) — el backend decide; aquí solo se muestra
+    // ------------------------------------------------------------------------
+    const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const cachePeriodo = {};          // periodo -> { ts, data }
+    let datosPanel = null, panelTs = 0, panelToken = 0;
+ 
+    function periodoDeFecha(fechaStr) {
+        let [y, m, d] = fechaStr.split('-').map(Number);
+        if (d >= 26) { m += 1; if (m === 13) { m = 1; y += 1; } }
+        return `${y}-${String(m).padStart(2, '0')}`;
+    }
+ 
+    const fechaCorta = (iso) => { const [, m, d] = iso.split('-'); return `${Number(d)} ${MESES_CORTOS[Number(m) - 1]}`; };
+    const nombrePeriodo = (p) => { const [y, m] = p.split('-'); return `${MESES[Number(m) - 1]} ${y}`; };
+    const fmtHasta = (s) => { const [f, h] = s.split(' '); const [y, m, d] = f.split('-'); return `${d}/${m}/${y} ${h}`; };
+ 
+    function claseEstado(st) {
+        if (st.modo === 'reabierto') return 'reabierto';
+        return st.abierto ? 'abierto' : 'cerrado';
+    }
+ 
+    function textoEstado(st) {
+        const rango = `${fechaCorta(st.inicio)} al ${fechaCorta(st.fin)}`;
+        const quien = st.actualizado_por ? ` por ${esc(st.actualizado_por)}` : '';
+        const motivo = st.motivo ? ` · Motivo: ${esc(st.motivo)}` : '';
+        if (st.modo === 'reabierto') return `🔓 Periodo reabierto (${rango}) hasta el <b>${fmtHasta(st.abierto_hasta)}</b>${quien}${motivo}`;
+        if (st.abierto) return `🟢 Periodo abierto (${rango})`;
+        const base = `🔒 Periodo cerrado (${rango})${st.modo === 'cerrado_manual' ? ' manualmente' + quien : ''}${motivo}`;
+        return st.puede_registrar
+            ? `${base} · <b>Como administrador puedes registrar igualmente.</b>`
+            : `${base} · <b>Solo lectura.</b> Solicita la reapertura a supervisor1 o administrativo_yta.`;
+    }
+ 
+    async function obtenerEstadoPeriodo(fechaStr, forzar = false) {
+        const p = periodoDeFecha(fechaStr);
+        const c = cachePeriodo[p];
+        if (!forzar && c && Date.now() - c.ts < 30000) return c.data;
+        const resp = await fetch(`/asistencia/periodo?fecha=${encodeURIComponent(fechaStr)}`);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        cachePeriodo[p] = { ts: Date.now(), data };
+        return data;
+    }
+ 
+    async function actualizarBloqueoSeccion(area, forzar = false) {
+        const r = refs(area);
+        if (!r.sec || !r.fecha.value) return;
+        let st;
+        try { st = await obtenerEstadoPeriodo(r.fecha.value, forzar); }
+        catch (err) { console.warn('No se pudo consultar el periodo:', err); return; }
+ 
+        let banner = r.sec.querySelector('.asis-periodo-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            const tabla = r.sec.querySelector('.smart-table-scroll-container');
+            tabla ? tabla.parentNode.insertBefore(banner, tabla) : r.sec.prepend(banner);
+        }
+        banner.className = 'asis-periodo-banner ' + claseEstado(st);
+        banner.innerHTML = textoEstado(st);
+ 
+        const bloqueado = !st.puede_registrar;
+        r.sec.classList.toggle('asis-solo-lectura', bloqueado);
+        [r.btnGuardar, r.btnAgregar].forEach((b) => { if (b) b.disabled = bloqueado; });
+        const ui = UI[area];
+        if (ui && ui.choices && typeof ui.choices.disable === 'function') bloqueado ? ui.choices.disable() : ui.choices.enable();
+ 
+        r.tbody.querySelectorAll('input, select, button').forEach((el) => {
+            if (bloqueado && !el.disabled) { el.dataset.asisLock = '1'; el.disabled = true; }
+            else if (!bloqueado && el.dataset.asisLock) { el.disabled = false; delete el.dataset.asisLock; }
+        });
+    }
+ 
+    // ----- Panel en el calendario -----
+    async function refrescarPanelPeriodos() {
+        const cont = $('smart-attn-heatmap-container');
+        const mesInput = $('smart-attn-mes');
+        if (!cont || !mesInput || !mesInput.value) return;
+ 
+        let panel = $('asis-periodos-panel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'asis-periodos-panel';
+            const header = cont.querySelector('.smart-attn-heatmap-header');
+            header ? header.insertAdjacentElement('afterend', panel) : cont.prepend(panel);
+        }
+ 
+        const mes = mesInput.value;
+        const token = ++panelToken;
+        let data;
+        try {
+            const resp = await fetch(`/asistencia/periodos-mes?mes=${encodeURIComponent(mes)}`);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            data = await resp.json();
+        } catch (err) {
+            console.warn('No se pudo consultar periodos:', err);
+            return;
+        }
+        if (token !== panelToken) return;
+ 
+        datosPanel = { mes, ...data };
+        panelTs = Date.now();
+        data.periodos.forEach((st) => { cachePeriodo[st.periodo] = { ts: panelTs, data: st }; });
+ 
+        panel.innerHTML = data.periodos.map((st) => {
+            let acciones = '';
+            if (data.es_admin) {
+                const horas = data.horas_reapertura.map((h) => `<option value="${h}">${h} h</option>`).join('');
+                if (!st.abierto || st.modo === 'reabierto') {
+                    acciones += `<select class="asis-horas" title="Duración">${horas}</select>
+                                 <button type="button" data-accion="reabrir">${st.modo === 'reabierto' ? 'Ampliar' : 'Reabrir'}</button>`;
+                }
+                if (st.abierto) acciones += `<button type="button" data-accion="cerrar">Cerrar ahora</button>`;
+                if (st.modo !== 'automatico') acciones += `<button type="button" data-accion="automatico" title="Quitar la excepción y seguir el calendario 26–25">Automático</button>`;
+            }
+            return `<div class="asis-periodo-card ${claseEstado(st)}" data-periodo="${st.periodo}">
+                        <div class="asis-periodo-info">
+                            <strong>Periodo ${nombrePeriodo(st.periodo)}${st.en_curso ? ' · en curso' : ''}</strong>
+                            <span>${textoEstado(st)}</span>
+                        </div>
+                        ${acciones ? `<div class="asis-periodo-acciones">${acciones}</div>` : ''}
+                    </div>`;
+        }).join('');
+ 
+        panel.querySelectorAll('button[data-accion]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const card = btn.closest('.asis-periodo-card');
+                const horasSel = card.querySelector('.asis-horas');
+                cambiarPeriodo(card.dataset.periodo, btn.dataset.accion, horasSel ? Number(horasSel.value) : null, btn);
+            });
+        });
+ 
+        marcarDiasCalendario();
+    }
+ 
+    async function cambiarPeriodo(periodo, accion, horas, btn) {
+        const textos = {
+            reabrir: `¿Reabrir el periodo ${nombrePeriodo(periodo)} por ${horas} horas?`,
+            cerrar: `¿Cerrar ahora el periodo ${nombrePeriodo(periodo)}? Los supervisores ya no podrán registrar ni eliminar.`,
+            automatico: `¿Volver el periodo ${nombrePeriodo(periodo)} a modo automático (26 al 25)?`,
+        };
+        if (!confirm(textos[accion])) return;
+        let motivo = '';
+        if (accion !== 'automatico') {
+            motivo = prompt('Motivo (opcional, queda en la auditoría):', '');
+            if (motivo === null) return;
+        }
+ 
+        btn.disabled = true;
+        try {
+            const resp = await postJSON('/asistencia/periodo', { periodo, accion, horas, motivo });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) { alert(data.message || 'No se pudo cambiar el periodo.'); return; }
+            Object.keys(cachePeriodo).forEach((k) => delete cachePeriodo[k]);
+            await refrescarPanelPeriodos();
+            Object.keys(AREAS).forEach((a) => { const sec = $(a); if (sec && sec.querySelector('.asis-periodo-banner')) actualizarBloqueoSeccion(a, true); });
+        } catch (err) {
+            console.error('Error al cambiar periodo:', err);
+            alert('Fallo de conexión con el servidor.');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+ 
+    function marcarDiasCalendario() {
+        const grid = $('smart-attn-grid');
+        const mesInput = $('smart-attn-mes');
+        if (!grid || !datosPanel || !mesInput || datosPanel.mes !== mesInput.value) return;
+        const [p1, p2] = datosPanel.periodos;          // días 1–25 | días 26–fin
+        grid.querySelectorAll('.smart-attn-day').forEach((cell) => {
+            const numero = cell.querySelector('span:last-child');
+            const dia = numero ? parseInt(numero.textContent, 10) : NaN;
+            if (!dia) return;
+            const st = dia >= 26 ? p2 : p1;
+            cell.classList.toggle('asis-dia-bloqueado', !st.abierto);
+            cell.classList.toggle('asis-dia-reabierto', st.modo === 'reabierto');
+            cell.title = st.abierto ? (st.modo === 'reabierto' ? 'Periodo reabierto' : 'Periodo abierto') : 'Periodo cerrado (solo lectura)';
+        });
+    }
+ 
+    function observarCalendario() {
+        const grid = $('smart-attn-grid');
+        if (!grid) return;
+        let t;
+        new MutationObserver(() => {
+            clearTimeout(t);
+            t = setTimeout(() => {
+                const mes = $('smart-attn-mes') ? $('smart-attn-mes').value : '';
+                if (datosPanel && datosPanel.mes === mes && Date.now() - panelTs < 30000) marcarDiasCalendario();
+                else refrescarPanelPeriodos();
+            }, 60);
+        }).observe(grid, { childList: true });
+        if (grid.querySelector('.smart-attn-day')) refrescarPanelPeriodos();   // calendario ya pintado
+    }
+ 
+    function inyectarEstilosPeriodo() {
+        if ($('asis-periodo-css')) return;
+        const css = document.createElement('style');
+        css.id = 'asis-periodo-css';
+        css.textContent = `
+            #asis-periodos-panel { display:flex; flex-wrap:wrap; gap:10px; margin:10px 0 14px; }
+            .asis-periodo-card { flex:1 1 300px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center;
+                gap:8px; padding:10px 14px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; font-size:13px; color:#1e293b; }
+            .asis-periodo-card.abierto   { border-color:#86efac; background:#f0fdf4; }
+            .asis-periodo-card.reabierto { border-color:#93c5fd; background:#eff6ff; }
+            .asis-periodo-card.cerrado   { border-color:#fca5a5; background:#fef2f2; }
+            .asis-periodo-info { display:flex; flex-direction:column; gap:3px; min-width:0; }
+            .asis-periodo-info span { color:#475569; font-size:12px; }
+            .asis-periodo-acciones { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+            .asis-periodo-acciones select, .asis-periodo-acciones button { font-size:12px; padding:5px 10px; border-radius:6px;
+                border:1px solid #cbd5e1; background:#fff; color:#1e293b; cursor:pointer; width:auto; }
+            .asis-periodo-acciones button[data-accion="reabrir"] { background:#2563eb; border-color:#2563eb; color:#fff; }
+            .asis-periodo-acciones button[data-accion="cerrar"]  { background:#dc2626; border-color:#dc2626; color:#fff; }
+            .asis-periodo-acciones button:disabled { opacity:.6; cursor:wait; }
+            .smart-attn-day.asis-dia-bloqueado, .smart-attn-day.asis-dia-reabierto { position:relative; }
+            .smart-attn-day.asis-dia-bloqueado { opacity:.6; }
+            .smart-attn-day.asis-dia-bloqueado::after { content:'🔒'; position:absolute; top:2px; right:4px; font-size:10px; }
+            .smart-attn-day.asis-dia-reabierto::after { content:'🔓'; position:absolute; top:2px; right:4px; font-size:10px; }
+            .asis-periodo-banner { margin:0 0 12px; padding:10px 14px; border-radius:8px; font-size:13px; border:1px solid; }
+            .asis-periodo-banner.abierto   { background:#f0fdf4; border-color:#86efac; color:#166534; }
+            .asis-periodo-banner.reabierto { background:#eff6ff; border-color:#93c5fd; color:#1e40af; }
+            .asis-periodo-banner.cerrado   { background:#fef2f2; border-color:#fca5a5; color:#991b1b; }
+            .asis-solo-lectura .smart-btn-guardar-principal:disabled,
+            .asis-solo-lectura .smart-btn-icon-add:disabled { opacity:.5; cursor:not-allowed; }
+        `;
+        document.head.appendChild(css);
     }
  
     // ------------------------------------------------------------------------
@@ -888,7 +1103,7 @@ document.addEventListener('click', function(event) {
         }
  
         r.fecha.addEventListener('change', () => {
-            cargarEmpleados(area);
+            cargarEmpleados(area).then(() => actualizarBloqueoSeccion(area));
             if (r.fecha.value) {
                 enSegundoPlano(postJSON('/registrar-modulo', {
                     modulo: r.cfg.modulo, detalle: `Fecha seleccionada: ${r.fecha.value}`,
@@ -919,8 +1134,10 @@ document.addEventListener('click', function(event) {
     }
  
     function iniciar() {
+        inyectarEstilosPeriodo();
         Object.keys(AREAS).forEach(initArea);
         llenarSelectores();
+        observarCalendario();
     }
  
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
