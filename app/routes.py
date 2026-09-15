@@ -94,6 +94,8 @@ import codecs
 codecs.register(lambda name: codecs.lookup('utf-8') if name == 'unknown_codepage_65001' else None)
 import math
 
+import click
+
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
 LIMA_TZ = ZoneInfo("America/Lima")
@@ -593,2646 +595,406 @@ def verificar_asistencias_mes():
 
 
 
-# MÓDULO RECAUDACIÓN
-@app.route('/filtrar-empleados', methods=['GET'])
-@log_evento("acceso_modulo")
-def filtrar_empleado():
+ASISTENCIA_AREAS = {
+    'recaudacion': dict(
+        url='', ep='', modelo=EmpleadoRecaudacion, pk='id_recaudacion',
+        areas=['RECAUDACION'], area_filtro='RECAUDACION',
+        nombre='Recaudación', valida_otras=False),
+    'lecturas': dict(
+        url='-lectura', ep='_lectura', modelo=EmpleadoLectura, pk='id_lectura',
+        areas=['TOMA DE ESTADO', 'DISTRIBUCION'], area_filtro='TOMA DE ESTADO',
+        nombre='Lecturas'),
+    'distribucion': dict(
+        url='-distribucion', ep='_distribucion', modelo=EmpleadoDistribucion, pk='id_distribucion',
+        areas=['DISTRIBUCION', 'TOMA DE ESTADO'], area_filtro='DISTRIBUCION',
+        nombre='Distribución'),
+    'inspecciones': dict(
+        url='-inspecciones', ep='_inspecciones', modelo=EmpleadoInspecciones, pk='id_inspecciones',
+        areas=['INSPECCIONES'], area_filtro='INSPECCIONES',
+        nombre='Inspecciones Comerciales'),
+    'catastro': dict(
+        url='-catastro', ep='_catastro', modelo=EmpleadoCatastro, pk='id_catastro',
+        areas=['CATASTRO'], area_filtro='CATASTRO',
+        nombre='Gestión Catastral'),
+    'medidores': dict(
+        url='-medidores', ep='_medidores', modelo=EmpleadoMedidores, pk='id_medidores',
+        areas=['MEDICION'], area_filtro='MEDICION',
+        nombre='Gestión de Medidores'),
+    'persuasivas': dict(
+        url='-persuasivas', ep='_persuasivas', modelo=EmpleadoPersuasivas, pk='id_persuasivas',
+        areas=['PERSUASIVAS'], area_filtro='PERSUASIVAS',
+        nombre='Acciones Persuasivas'),
+    'norte': dict(
+        url='-norte', ep='_norte', modelo=EmpleadoNorte, pk='id_norte',
+        areas=['NORTE'], area_filtro='NORTE',
+        nombre='Zona Norte'),
+    'administrativo_1': dict(
+        url='-administrativo_1', ep='_administrativo_1', modelo=EmpleadoAdministrativo, pk='id_administrativo',
+        areas=['ADMINSTRATIVO'], area_filtro='ADMINSTRATIVO',   # así está escrito en tu BD
+        nombre='Administrativo', pasajes_num=True),
+}
+ 
+# Cada área guarda SU PROPIA lista de "otras tablas" (clases de modelo, no strings).
+# Así no depende de variables globales que otra parte de routes.py pueda sobrescribir.
+for _cfg in ASISTENCIA_AREAS.values():
+    _cfg['otras_tablas'] = [c['modelo'] for c in ASISTENCIA_AREAS.values() if c['modelo'] is not _cfg['modelo']]
+ 
+ 
+# ----------------------------------------------------------------------------
+# HELPERS
+# ----------------------------------------------------------------------------
+def _empleado_basico(e):
+    return {"id_empleado": e.id_empleado, "dni": e.dni, "nombres": e.nombres,
+            "cargo": e.cargo, "cod_ope": e.cod_ope}
+ 
+ 
+def _normalizar_pasajes(valor, numerico=False):
+    """'PR' se respeta (salvo columna numérica); números -> 8 / 8.5; vacío -> None/0."""
+    vacio = 0.0 if numerico else None
+    if valor is None:
+        return vacio
+    s = str(valor).strip().upper()
+    if s == 'PR':
+        return vacio if numerico else 'PR'
+    try:
+        v = float(s.replace(',', '.'))
+    except ValueError:
+        return vacio
+    if v == 0:
+        return vacio
+    if numerico:
+        return v
+    return int(v) if v.is_integer() else v
+ 
+ 
+def _puntaje(estado, pasajes, ruta, viaticos):
+    """Cuánta información trae un registro (para quedarnos con el más completo)."""
+    return sum([bool(estado), bool(pasajes), bool(ruta), bool(viaticos)])
+ 
+ 
+def _puntaje_registro(r):
+    return _puntaje(r.estado and str(r.estado).strip(), r.pasajes, r.ruta, r.viaticos)
+ 
+ 
+def _registro_a_dict(r, cfg):
+    if cfg.get('pasajes_num'):
+        pasajes = float(r.pasajes) if r.pasajes else 0.0
+    else:
+        pasajes = r.pasajes if r.pasajes is not None else ""
+    return {
+        cfg['pk']: getattr(r, cfg['pk']),
+        "id_empleado": r.id_empleado,
+        "dni": r.dni,
+        "nombres": r.nombres,
+        "cargo": r.cargo,
+        "area": r.area,
+        "mes": r.mes,
+        "fec_asist": r.fec_asist.strftime("%Y-%m-%d"),
+        "estado": r.estado,
+        "justificacion": r.justificacion,
+        "pasajes": pasajes,
+        "viaticos": float(r.viaticos) if r.viaticos else 0.0,
+        "ruta": r.ruta,
+        "cod_ope": getattr(r, 'cod_ope', None),
+    }
+ 
+ 
+# ----------------------------------------------------------------------------
+# VISTAS GENÉRICAS
+# ----------------------------------------------------------------------------
+def _filtrar_empleados(cfg):
     try:
         empleados = Empleado.query.filter(
-            Empleado.area == 'RECAUDACION', 
+            Empleado.area == cfg['area_filtro'],
             Empleado.estado != 'CESADO'
         ).all()
-
         if not empleados:
-            return jsonify({"mensaje": "No se encontraron empleados en RECAUDACION"}), 404
-
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados
-        ]
-
-        return jsonify(empleados_data)
-
+            return jsonify({"mensaje": f"No se encontraron empleados en {cfg['area_filtro']}"}), 404
+        return jsonify([_empleado_basico(e) for e in empleados])
     except Exception as e:
         return jsonify({"error": "Error al obtener empleados", "detalles": str(e)}), 500
-
-
-@app.route('/añadir-empleados', methods=['GET'])
-def filtrar_empleados_añadir():
-    # Filtrar todos los empleados sin especificar el área
-    empleados = Empleado.query.filter(Empleado.estado != 'CESADO').all()
-    
-    # Convertir los datos a JSON
-    empleados_data = [
-        {
-            "id_empleado": empleado.id_empleado,
-            "dni": empleado.dni,
-            "nombres": empleado.nombres,
-            "cargo": empleado.cargo,
-            "cod_ope": empleado.cod_ope
-        }
-        for empleado in empleados
-    ]
-    
-    return jsonify(empleados_data)
-
-@app.route('/cargar-asistencia', methods=['GET'])
-def cargar_asistencia():
+ 
+ 
+def _cargar_asistencia(cfg):
     try:
-        fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
+        fecha_str = request.args.get('fecha')
         if not fecha_str:
             return jsonify({"error": "Debe proporcionar una fecha"}), 400
-
-        fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
-
-        # ====================================================================
-        # MODIFICACIÓN 1: Si ya hay registros en la fecha seleccionada, 
-        # hacemos JOIN con Empleado para traer solo a los que NO están cesados.
-        # ====================================================================
-        registros_asistencia = EmpleadoRecaudacion.query.join(Empleado).filter(
-            EmpleadoRecaudacion.fec_asist == fecha_consulta,
+        try:
+            fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
+ 
+        M = cfg['modelo']
+        registros = (M.query
+                     .join(Empleado, Empleado.id_empleado == M.id_empleado)
+                     .filter(M.fec_asist == fecha, Empleado.estado != 'CESADO')
+                     .all())
+ 
+        if registros:
+            # 🔒 1 fila por empleado aunque en la BD haya duplicados
+            mejores = {}
+            for r in registros:
+                previo = mejores.get(r.id_empleado)
+                clave_r = (_puntaje_registro(r), getattr(r, cfg['pk']))
+                if previo is None or clave_r > (_puntaje_registro(previo), getattr(previo, cfg['pk'])):
+                    mejores[r.id_empleado] = r
+            if len(mejores) < len(registros):
+                print(f"⚠️ [{cfg['nombre']}] {fecha}: {len(registros) - len(mejores)} registros duplicados en BD "
+                      f"(ejecuta: flask limpiar-duplicados-asistencia)")
+            return jsonify({"tipo": "modificacion",
+                            "datos": [_registro_a_dict(r, cfg) for r in mejores.values()]})
+ 
+        # Hoja nueva: personal activo del área
+        empleados = Empleado.query.filter(
+            Empleado.area.in_(cfg['areas']),
             Empleado.estado != 'CESADO'
         ).all()
-
-        if registros_asistencia:
-            # Si hay registros, se devuelven para su modificación
-            asistencia_data = [
-                {
-                    "id_recaudacion": registro.id_recaudacion,
-                    "id_empleado": registro.id_empleado,
-                    "dni": registro.dni,
-                    "nombres": registro.nombres,
-                    "cargo": registro.cargo,
-                    "area": registro.area,
-                    "mes": registro.mes,
-                    "fec_asist": registro.fec_asist.strftime("%Y-%m-%d"),
-                    "estado": registro.estado,
-                    "justificacion": registro.justificacion,
-                    "pasajes": registro.pasajes if registro.pasajes is not None else "",
-                    "viaticos": float(registro.viaticos) if registro.viaticos else 0.0,
-                    "ruta": registro.ruta,
-                    "cod_ope": registro.cod_ope
-                }
-                for registro in registros_asistencia
-            ]
-            return jsonify({"tipo": "modificacion", "datos": asistencia_data})
-
-        # ====================================================================
-        # MODIFICACIÓN 2: Si no hay registros (hoja nueva), filtramos a los 
-        # empleados de RECAUDACION agregando la condición estado != 'CESADO'
-        # ====================================================================
-        empleados_sin_asistencia = db.session.query(Empleado).filter(
-            ~Empleado.id_empleado.in_(
-                db.session.query(EmpleadoRecaudacion.id_empleado).filter(
-                    EmpleadoRecaudacion.mes == mes_consulta
-                )
-            ),
-            Empleado.area == 'RECAUDACION',
-            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
-        ).all()
-
-        if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
-
-        # Construir respuesta con empleados sin asistencia
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados_sin_asistencia
-        ]
-
-        return jsonify({"tipo": "nueva_asistencia", "datos": empleados_data})
-
+        if not empleados:
+            return jsonify({"mensaje": "No hay personal activo en esta área"}), 404
+        return jsonify({"tipo": "nueva_asistencia", "datos": [_empleado_basico(e) for e in empleados]})
+ 
     except Exception as e:
         return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
-
-@app.route('/guardar-asistencia-detalle', methods=['POST'])
-def guardar_asistencia_detalle():
+ 
+ 
+def _guardar_asistencia(cfg):
+    M = cfg['modelo']
+    numerico = cfg.get('pasajes_num', False)
     try:
-        data = request.get_json()
-        print("Datos recibidos:", data)  # Depuración
-
+        data = request.get_json(silent=True)
         if not data or "asistencias" not in data:
             return jsonify({'success': False, 'message': "Clave 'asistencias' no encontrada en JSON"}), 400
-
-        asistencias_crudas = data['asistencias']
-        if not asistencias_crudas:
+        crudas = data['asistencias']
+        if not crudas:
             return jsonify({'success': False, 'message': "Lista de asistencias vacía"}), 400
-
-        # ====================================================================
-        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS
-        # ====================================================================
-        asistencias_validas = []
-        for a in asistencias_crudas:
+ 
+        # 1. Normalizar, omitir vacías y deduplicar por (empleado, fecha)
+        unicas, repetidas = {}, 0
+        for a in crudas:
             if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
                 return jsonify({'success': False, 'message': "Faltan datos obligatorios (fecha, id_empleado, mes)"}), 400
-
-            estado_val = a.get('estado', '')
-            estado = estado_val.strip() if estado_val else ''
-            pasajes = a.get('pasajes')
-            ruta = a.get('ruta', '').strip()
-            viaticos = float(a.get('viaticos') or 0.0)
-
-            # 🚫 Ignorar registros totalmente en blanco
-            if not estado and not pasajes and not ruta and viaticos == 0.0:
-                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
-                continue
-            
-            asistencias_validas.append(a)
-
-        if not asistencias_validas:
-            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
-
-        # ====================================================================
-        # 2. CONSULTAS MASIVAS (EVITAR N+1)
-        # ====================================================================
-        try:
-            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
-        except ValueError:
-            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
-
-        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
-
-        # Traer empleados de la base de datos principal de una sola vez
-        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
-        dict_empleados = {e.id_empleado: e for e in empleados_db}
-
-        # Traer las asistencias que ya existen en EmpleadoRecaudacion
-        asistencias_existentes = EmpleadoRecaudacion.query.filter(
-            EmpleadoRecaudacion.fec_asist == fecha_obj,
-            EmpleadoRecaudacion.id_empleado.in_(ids_empleados)
-        ).all()
-        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
-
-        # ====================================================================
-        # 3. GUARDADO EN BASE DE DATOS
-        # ====================================================================
-        for asistencia in asistencias_validas:
-            id_empleado = asistencia['id_empleado']
-            estado = asistencia.get('estado', '').strip() or None
-            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
-            ruta = asistencia.get('ruta', '').strip() or None
-            viaticos = float(asistencia.get('viaticos') or 0.0)
-
-            registro_existente = dict_asistencias.get(id_empleado)
-
-            if registro_existente:
-                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                registro_existente.estado = estado
-                registro_existente.pasajes = pasajes
-                registro_existente.ruta = ruta
-                registro_existente.viaticos = viaticos
-            else:
-                print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = dict_empleados.get(int(id_empleado))
-
-                if not empleado_original:
-                    return jsonify({'success': False, 'message': f"Empleado {id_empleado} no encontrado en la base maestra"}), 400
-
-                nuevo_registro = EmpleadoRecaudacion(
-                    id_empleado=empleado_original.id_empleado,
-                    dni=empleado_original.dni,
-                    nombres=empleado_original.nombres,
-                    cargo=empleado_original.cargo,
-                    area=empleado_original.area,
-                    cod_ope=empleado_original.cod_ope,
-                    mes=asistencia['mes'],
-                    fec_asist=fecha_obj,
-                    estado=estado,
-                    pasajes=pasajes,
-                    ruta=ruta,
-                    viaticos=viaticos
-                )
-                db.session.add(nuevo_registro)
-
-        db.session.commit()
-        return jsonify({'success': True, 'message': f'Se guardaron correctamente {len(asistencias_validas)} registros en EmpleadoRecaudacion.'})
-
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error en la base de datos: {str(e)}'}), 500
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al guardar la asistencia: {str(e)}'}), 500
-    
-
-@app.route('/eliminar-asistencia', methods=['POST'])
-def eliminar_asistencia():
-    try:
-        data = request.get_json()
-        id_empleado = data.get('id_empleado')
-        fecha = data.get('fecha')
-
-        if not id_empleado or not fecha:
-            return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
-
-        # Buscar el registro en la base de datos
-        asistencia = EmpleadoRecaudacion.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-        if not asistencia:
-            return jsonify({'success': False, 'message': 'No se encontró el registro de asistencia'}), 404
-
-        # Obtener nombre del empleado desde la tabla principal (Empleado)
-        empleado = Empleado.query.get(id_empleado)
-        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
-
-        # Eliminar el registro
-        db.session.delete(asistencia)
-        db.session.commit()
-
-        # ✅ Registrar en la auditoría
-        if 'user_id' in session:
-            registrar_evento(
-                user_id=session['user_id'],
-                usuario=session['user_name'],
-                evento='eliminar_asistencia',
-                modulo=f"Recaudación | Fecha: {fecha} | Empleado: {nombre_empleado}"
-            )
-
-        return jsonify({'success': True, 'message': 'Registro eliminado correctamente'})
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al eliminar: {str(e)}'})
-
-
-
-# MÓDULO TOMA DE ESTADO
-@app.route('/filtrar-empleados-lectura', methods=['GET'])
-def filtrar_empleado_lectura():
-    try:
-        empleados = Empleado.query.filter(
-            Empleado.area == 'TOMA DE ESTADO', 
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if not empleados:
-            return jsonify({"mensaje": "No se encontraron empleados en TOMA DE ESTADO"}), 404
-
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados
-        ]
-
-        return jsonify(empleados_data)
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener empleados", "detalles": str(e)}), 500
-
-
-@app.route('/cargar-asistencia-lectura', methods=['GET'])
-def cargar_asistencia_lectura():
-    try:
-        fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
-        if not fecha_str:
-            return jsonify({"error": "Debe proporcionar una fecha"}), 400
-
-        fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
-
-        # ====================================================================
-        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
-        # registros ya existentes.
-        # ====================================================================
-        registros_asistencia = EmpleadoLectura.query.join(Empleado).filter(
-            EmpleadoLectura.fec_asist == fecha_consulta,
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if registros_asistencia:
-            # Si hay registros, se devuelven para su modificación
-            asistencia_data = [
-                {
-                    "id_lectura": registro.id_lectura,
-                    "id_empleado": registro.id_empleado,
-                    "dni": registro.dni,
-                    "nombres": registro.nombres,
-                    "cargo": registro.cargo,
-                    "area": registro.area,
-                    "mes": registro.mes,
-                    "fec_asist": registro.fec_asist.strftime("%Y-%m-%d"),
-                    "estado": registro.estado,
-                    "justificacion": registro.justificacion,
-                    "pasajes": registro.pasajes if registro.pasajes is not None else "",
-                    "viaticos": float(registro.viaticos) if registro.viaticos else 0.0,
-                    "ruta": registro.ruta,
-                    "cod_ope": registro.cod_ope
-                }
-                for registro in registros_asistencia
-            ]
-            return jsonify({"tipo": "modificacion", "datos": asistencia_data})
-
-        # ====================================================================
-        # MODIFICACIÓN 2: Filtramos empleados de TOMA DE ESTADO y DISTRIBUCION
-        # agregando la condición Empleado.estado != 'CESADO' para listas nuevas.
-        # ====================================================================
-        empleados_sin_asistencia = db.session.query(Empleado).filter(
-            ~Empleado.id_empleado.in_(
-                db.session.query(EmpleadoLectura.id_empleado).filter(
-                    EmpleadoLectura.mes == mes_consulta
-                )
-            ),
-            Empleado.area.in_(['TOMA DE ESTADO', 'DISTRIBUCION']),
-            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
-        ).all()
-
-        if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
-
-        # Construir respuesta con empleados sin asistencia
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados_sin_asistencia
-        ]
-
-        return jsonify({"tipo": "nueva_asistencia", "datos": empleados_data})
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
-
-@app.route('/guardar-asistencia-detalle-lectura', methods=['POST'])
-def guardar_asistencia_detalle_lectura():
-    try:
-        data = request.get_json()
-        print("\n🔍 JSON recibido:", data)  # ✅ Depuración
-
-        if not data or "asistencias" not in data:
-            mensaje_error = "Clave 'asistencias' no encontrada en JSON"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        asistencias_crudas = data['asistencias']
-        if not asistencias_crudas:
-            mensaje_error = "Lista de asistencias vacía"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
-        # ====================================================================
-        asistencias_validas = []
-        for a in asistencias_crudas:
-            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
-                return jsonify({'success': False, 'message': "Faltan datos obligatorios en la asistencia"}), 400
-            
-            estado_val = a.get('estado', '')
-            estado = estado_val.strip() if estado_val else ''
-            pasajes = a.get('pasajes')
-            ruta = a.get('ruta', '').strip()
-            viaticos = float(a.get('viaticos') or 0.0)
-
-            # 🚫 Ignorar registros totalmente en blanco
-            if not estado and not pasajes and not ruta and viaticos == 0.0:
-                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
-                continue
-            
-            asistencias_validas.append(a)
-
-        if not asistencias_validas:
-            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
-
-        # ====================================================================
-        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
-        # ====================================================================
-        try:
-            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
-        except ValueError:
-            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
-
-        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
-
-        tablas = [
-            EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro,
-            EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
-        ]
-
-        empleados_duplicados = []
-        
-        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
-        for tabla in tablas:
-            registros_otras_areas = tabla.query.filter(
-                tabla.fec_asist == fecha_obj,
-                tabla.id_empleado.in_(ids_empleados)
-            ).all()
-            for reg in registros_otras_areas:
-                # ✅ Guardamos el ID y el nombre exacto de la tabla donde está duplicado
-                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
-
-        if empleados_duplicados:
-            # Traemos los nombres de los empleados duplicados
-            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
-            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
-            
-            mensajes_error_duplicados = []
-            for emp_id, tabla_nombre in empleados_duplicados:
-                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
-                nombre = emp.nombres if emp else f"ID {emp_id}"
-                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
-                
-            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
-        # ====================================================================
-        # Traer empleados de la base de datos principal de una sola vez
-        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
-        dict_empleados = {e.id_empleado: e for e in empleados_db}
-
-        # Traer las asistencias que ya existen en TOMA DE ESTADO para actualizarlas
-        asistencias_existentes = EmpleadoLectura.query.filter(
-            EmpleadoLectura.fec_asist == fecha_obj,
-            EmpleadoLectura.id_empleado.in_(ids_empleados)
-        ).all()
-        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
-
-        # ====================================================================
-        # 4. GUARDADO EN BASE DE DATOS
-        # ====================================================================
-        for asistencia in asistencias_validas:
-            id_empleado = asistencia['id_empleado']
-            estado = asistencia.get('estado', '').strip() or None
-            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
-            ruta = asistencia.get('ruta', '').strip() or None
-            viaticos = float(asistencia.get('viaticos') or 0.0)
-
-            registro_existente = dict_asistencias.get(id_empleado)
-
-            if registro_existente:
-                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                registro_existente.estado = estado
-                registro_existente.pasajes = pasajes
-                registro_existente.ruta = ruta
-                registro_existente.viaticos = viaticos
-            else:
-                print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = dict_empleados.get(int(id_empleado))
-
-                if not empleado_original:
-                    return jsonify({'success': False, 'message': f"Empleado {id_empleado} no encontrado en la base maestra"}), 400
-
-                nuevo_registro = EmpleadoLectura(
-                    id_empleado=empleado_original.id_empleado,
-                    nombres=empleado_original.nombres,
-                    dni=empleado_original.dni,
-                    cargo=empleado_original.cargo,
-                    area=empleado_original.area,
-                    cod_ope=empleado_original.cod_ope,
-                    mes=asistencia['mes'],
-                    fec_asist=fecha_obj,
-                    estado=estado,
-                    pasajes=pasajes,
-                    ruta=ruta,
-                    viaticos=viaticos
-                )
-                db.session.add(nuevo_registro)
-
-        db.session.commit()
-        mensaje_exito = f"Se guardaron correctamente {len(asistencias_validas)} registros en TOMA DE ESTADO."
-        print(f"✅ {mensaje_exito}")
-        return jsonify({'success': True, 'message': mensaje_exito})
-
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        mensaje_error = f"Error en la base de datos: {str(e)}"
-        print(f"❌ ERROR SQL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-    except Exception as e:
-        db.session.rollback()
-        mensaje_error = f"Error inesperado: {str(e)}"
-        print(f"❌ ERROR GENERAL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-    
-
-@app.route('/eliminar-asistencia-lectura', methods=['POST'])
-def eliminar_asistencia_lectura():
-    try:
-        data = request.get_json()
-        id_empleado = data.get('id_empleado')
-        fecha = data.get('fecha')
-
-        if not id_empleado or not fecha:
-            return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
-
-        # Buscar el registro de asistencia
-        asistencia = EmpleadoLectura.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-        if not asistencia:
-            return jsonify({'success': False, 'message': 'No se encontró el registro de asistencia'}), 404
-
-        # Obtener nombre del empleado desde la tabla principal Empleado
-        empleado = Empleado.query.get(id_empleado)
-        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
-
-        # Eliminar el registro
-        db.session.delete(asistencia)
-        db.session.commit()
-
-        # ✅ Registrar en auditoría
-        if 'user_id' in session:
-            registrar_evento(
-                user_id=session['user_id'],
-                usuario=session['user_name'],
-                evento='eliminar_asistencia',
-                modulo=f"Lecturas | Fecha: {fecha} | Empleado: {nombre_empleado}"
-            )
-
-        return jsonify({'success': True, 'message': 'Registro eliminado correctamente'})
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al eliminar: {str(e)}'})
-
-
-
-# MÓDULO DISTRIBUCION DE RECIBOS
-@app.route('/filtrar-empleados-distribucion', methods=['GET'])
-def filtrar_empleado_distribucion():
-    try:
-        empleados = Empleado.query.filter(
-            Empleado.area == 'DISTRIBUCION', 
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if not empleados:
-            return jsonify({"mensaje": "No se encontraron empleados en DISTRIBUCION"}), 404
-
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados
-        ]
-
-        return jsonify(empleados_data)
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener empleados", "detalles": str(e)}), 500
-
-
-@app.route('/cargar-asistencia-distribucion', methods=['GET'])
-def cargar_asistencia_distribucion():
-    try:
-        fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
-        if not fecha_str:
-            return jsonify({"error": "Debe proporcionar una fecha"}), 400
-
-        fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
-
-        # ====================================================================
-        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
-        # los registros de asistencia ya existentes.
-        # ====================================================================
-        registros_asistencia = EmpleadoDistribucion.query.join(Empleado).filter(
-            EmpleadoDistribucion.fec_asist == fecha_consulta,
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if registros_asistencia:
-            # Si hay registros, se devuelven para su modificación
-            asistencia_data = [
-                {
-                    "id_distribucion": registro.id_distribucion,
-                    "id_empleado": registro.id_empleado,
-                    "dni": registro.dni,
-                    "nombres": registro.nombres,
-                    "cargo": registro.cargo,
-                    "area": registro.area,
-                    "mes": registro.mes,
-                    "fec_asist": registro.fec_asist.strftime("%Y-%m-%d"),
-                    "estado": registro.estado,
-                    "justificacion": registro.justificacion,
-                    "pasajes": registro.pasajes if registro.pasajes is not None else "",
-                    "viaticos": float(registro.viaticos) if registro.viaticos else 0.0,
-                    "ruta": registro.ruta,
-                    "cod_ope": registro.cod_ope
-                }
-                for registro in registros_asistencia
-            ]
-            return jsonify({"tipo": "modificacion", "datos": asistencia_data})
-
-        # ====================================================================
-        # MODIFICACIÓN 2: Filtramos empleados de DISTRIBUCION y TOMA DE ESTADO
-        # que aún no tienen asistencia, asegurando que no estén 'CESADO'.
-        # ====================================================================
-        empleados_sin_asistencia = db.session.query(Empleado).filter(
-            ~Empleado.id_empleado.in_(
-                db.session.query(EmpleadoDistribucion.id_empleado).filter(
-                    EmpleadoDistribucion.mes == mes_consulta
-                )
-            ),
-            Empleado.area.in_(['DISTRIBUCION', 'TOMA DE ESTADO']),
-            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
-        ).all()
-
-        if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
-
-        # Construir respuesta con empleados sin asistencia
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados_sin_asistencia
-        ]
-
-        return jsonify({"tipo": "nueva_asistencia", "datos": empleados_data})
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
-
-@app.route('/guardar-asistencia-detalle-distribucion', methods=['POST'])
-def guardar_asistencia_detalle_distribucion():
-    try:
-        data = request.get_json()
-        print("\n🔍 JSON recibido:", data)  # ✅ Depuración
-
-        if not data or "asistencias" not in data:
-            mensaje_error = "Clave 'asistencias' no encontrada en JSON"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        asistencias_crudas = data['asistencias']
-        if not asistencias_crudas:
-            mensaje_error = "Lista de asistencias vacía"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
-        # ====================================================================
-        asistencias_validas = []
-        for a in asistencias_crudas:
-            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
-            
-            estado_val = a.get('estado', '')
-            estado = estado_val.strip() if estado_val else ''
-            pasajes = a.get('pasajes')
-            ruta = a.get('ruta', '').strip()
-            viaticos = float(a.get('viaticos') or 0.0)
-
-            # 🚫 Ignorar registros totalmente en blanco
-            if not estado and not pasajes and not ruta and viaticos == 0.0:
-                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
-                continue
-            
-            asistencias_validas.append(a)
-
-        if not asistencias_validas:
-            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
-
-        # ====================================================================
-        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
-        # ====================================================================
-        try:
-            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
-        except ValueError:
-            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
-
-        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
-
-        # En Distribucion, revisamos contra Lectura y el resto
-        tablas = [
-            EmpleadoLectura, EmpleadoInspecciones, EmpleadoCatastro,
-            EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
-        ]
-
-        empleados_duplicados = []
-        
-        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
-        for tabla in tablas:
-            registros_otras_areas = tabla.query.filter(
-                tabla.fec_asist == fecha_obj,
-                tabla.id_empleado.in_(ids_empleados)
-            ).all()
-            
-            for reg in registros_otras_areas:
-                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
-
-        if empleados_duplicados:
-            # Traemos los nombres de los empleados duplicados para armar el mensaje
-            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
-            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
-            
-            mensajes_error_duplicados = []
-            for emp_id, tabla_nombre in empleados_duplicados:
-                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
-                nombre = emp.nombres if emp else f"ID {emp_id}"
-                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
-                
-            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
-        # ====================================================================
-        # Traer base de empleados de golpe
-        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
-        dict_empleados = {e.id_empleado: e for e in empleados_db}
-
-        # Traer asistencias ya existentes en Distribucion de golpe
-        asistencias_existentes = EmpleadoDistribucion.query.filter(
-            EmpleadoDistribucion.fec_asist == fecha_obj,
-            EmpleadoDistribucion.id_empleado.in_(ids_empleados)
-        ).all()
-        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
-
-        # ====================================================================
-        # 4. GUARDADO EN BASE DE DATOS
-        # ====================================================================
-        for asistencia in asistencias_validas:
-            id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
-
-            estado = asistencia.get('estado', '').strip() or None
-            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
-            ruta = asistencia.get('ruta', '').strip() or None
-            viaticos = float(asistencia.get('viaticos') or 0.0)
-
-            registro_existente = dict_asistencias.get(int(id_empleado))
-
-            if registro_existente:
-                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                registro_existente.estado = estado
-                registro_existente.pasajes = pasajes
-                registro_existente.ruta = ruta
-                registro_existente.viaticos = viaticos
-            else:
-                print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = dict_empleados.get(int(id_empleado))
-
-                if not empleado_original:
-                    mensaje_error = f"Empleado {id_empleado} no encontrado"
-                    print(f"🚨 ERROR: {mensaje_error}")
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-                nuevo_registro = EmpleadoDistribucion(
-                    id_empleado=empleado_original.id_empleado,
-                    nombres=empleado_original.nombres,
-                    dni=empleado_original.dni,
-                    cargo=empleado_original.cargo,
-                    area=empleado_original.area,
-                    cod_ope=empleado_original.cod_ope,
-                    mes=asistencia['mes'],
-                    fec_asist=fecha_obj,
-                    estado=estado,
-                    pasajes=pasajes,
-                    ruta=ruta,
-                    viaticos=viaticos
-                )
-                db.session.add(nuevo_registro)
-
-        db.session.commit()
-        mensaje_exito = "Registros guardados correctamente en EmpleadoDistribucion."
-        print(f"✅ {mensaje_exito}")
-        return jsonify({'success': True, 'message': mensaje_exito})
-
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        mensaje_error = f"Error en la base de datos: {str(e)}"
-        print(f"❌ ERROR SQL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-    except Exception as e:
-        db.session.rollback()
-        mensaje_error = f"Error inesperado: {str(e)}"
-        print(f"❌ ERROR GENERAL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-
-@app.route('/eliminar-asistencia-distribucion', methods=['POST'])
-def eliminar_asistencia_distribucion():
-    try:
-        data = request.get_json()
-        id_empleado = data.get('id_empleado')
-        fecha = data.get('fecha')
-
-        if not id_empleado or not fecha:
-            return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
-
-        # Buscar el registro en la base de datos
-        asistencia = EmpleadoDistribucion.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-        if not asistencia:
-            return jsonify({'success': False, 'message': 'No se encontró el registro de asistencia'}), 404
-
-        # Buscar el nombre del empleado
-        empleado = Empleado.query.get(id_empleado)
-        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
-
-        # Eliminar el registro
-        db.session.delete(asistencia)
-        db.session.commit()
-
-        # ✅ Registrar en la tabla de auditoría
-        if 'user_id' in session:
-            registrar_evento(
-                user_id=session['user_id'],
-                usuario=session['user_name'],
-                evento='eliminar_asistencia',
-                modulo=f"Distribución | Fecha: {fecha} | Empleado: {nombre_empleado}"
-            )
-
-        return jsonify({'success': True, 'message': 'Registro eliminado correctamente'})
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al eliminar: {str(e)}'})
-
-
-# MÓDULO INSPECCIONES
-@app.route('/filtrar-empleados-inspecciones', methods=['GET'])
-def filtrar_empleado_inspecciones():
-    try:
-        empleados = Empleado.query.filter(
-            Empleado.area == 'INSPECCIONES', 
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if not empleados:
-            return jsonify({"mensaje": "No se encontraron empleados en INSPECCIONES"}), 404
-
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados
-        ]
-
-        return jsonify(empleados_data)
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener empleados", "detalles": str(e)}), 500
-
-
-@app.route('/cargar-asistencia-inspecciones', methods=['GET'])
-def cargar_asistencia_inspecciones():
-    try:
-        fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
-        if not fecha_str:
-            return jsonify({"error": "Debe proporcionar una fecha"}), 400
-
-        fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
-
-        # ====================================================================
-        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
-        # registros de asistencia ya existentes.
-        # ====================================================================
-        registros_asistencia = EmpleadoInspecciones.query.join(Empleado).filter(
-            EmpleadoInspecciones.fec_asist == fecha_consulta,
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if registros_asistencia:
-            # Si hay registros, se devuelven para su modificación
-            asistencia_data = [
-                {
-                    "id_inspecciones": registro.id_inspecciones,
-                    "id_empleado": registro.id_empleado,
-                    "dni": registro.dni,
-                    "nombres": registro.nombres,
-                    "cargo": registro.cargo,
-                    "area": registro.area,
-                    "mes": registro.mes,
-                    "fec_asist": registro.fec_asist.strftime("%Y-%m-%d"),
-                    "estado": registro.estado,
-                    "justificacion": registro.justificacion,
-                    "pasajes": registro.pasajes if registro.pasajes is not None else "",
-                    "viaticos": float(registro.viaticos) if registro.viaticos else 0.0,
-                    "ruta": registro.ruta,
-                    "cod_ope": registro.cod_ope
-                }
-                for registro in registros_asistencia
-            ]
-            return jsonify({"tipo": "modificacion", "datos": asistencia_data})
-
-        # ====================================================================
-        # MODIFICACIÓN 2: Filtramos empleados de INSPECCIONES que aún no 
-        # tienen asistencia, asegurando que su estado laboral no sea 'CESADO'.
-        # ====================================================================
-        empleados_sin_asistencia = db.session.query(Empleado).filter(
-            ~Empleado.id_empleado.in_(
-                db.session.query(EmpleadoInspecciones.id_empleado).filter(
-                    EmpleadoInspecciones.mes == mes_consulta
-                )
-            ),
-            Empleado.area.in_(['INSPECCIONES']),
-            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
-        ).all()
-
-        if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
-
-        # Construir respuesta con empleados sin asistencia
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados_sin_asistencia
-        ]
-
-        return jsonify({"tipo": "nueva_asistencia", "datos": empleados_data})
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
-@app.route('/guardar-asistencia-detalle-inspecciones', methods=['POST'])
-def guardar_asistencia_detalle_inspecciones():
-    try:
-        data = request.get_json()
-        print("\n🔍 JSON recibido:", data)  # ✅ Depuración
-
-        if not data or "asistencias" not in data:
-            mensaje_error = "Clave 'asistencias' no encontrada en JSON"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        asistencias_crudas = data['asistencias']
-        if not asistencias_crudas:
-            mensaje_error = "Lista de asistencias vacía"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
-        # ====================================================================
-        asistencias_validas = []
-        for a in asistencias_crudas:
-            print("\n📌 Procesando asistencia:", a)  # ✅ Depuración
-
-            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
-            
-            estado_val = a.get('estado', '')
-            estado = estado_val.strip() if estado_val else ''
-            pasajes = a.get('pasajes')
-            ruta = a.get('ruta', '').strip()
-            viaticos = float(a.get('viaticos') or 0.0)
-
-            # 🚫 Ignorar registros totalmente en blanco
-            if not estado and not pasajes and not ruta and viaticos == 0.0:
-                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
-                continue
-            
-            asistencias_validas.append(a)
-
-        if not asistencias_validas:
-            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
-
-        # ====================================================================
-        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
-        # ====================================================================
-        try:
-            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
-        except ValueError:
-            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
-
-        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
-
-        # En Inspecciones, revisamos contra Lectura, Distribucion y el resto
-        tablas = [
-            EmpleadoLectura, EmpleadoDistribucion, EmpleadoCatastro,
-            EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
-        ]
-
-        empleados_duplicados = []
-        
-        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
-        for tabla in tablas:
-            registros_otras_areas = tabla.query.filter(
-                tabla.fec_asist == fecha_obj,
-                tabla.id_empleado.in_(ids_empleados)
-            ).all()
-            
-            for reg in registros_otras_areas:
-                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
-
-        if empleados_duplicados:
-            # Traemos los nombres de los empleados duplicados para armar el mensaje
-            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
-            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
-            
-            mensajes_error_duplicados = []
-            for emp_id, tabla_nombre in empleados_duplicados:
-                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
-                nombre = emp.nombres if emp else f"ID {emp_id}"
-                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
-                
-            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
-        # ====================================================================
-        # Traer base de empleados de golpe
-        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
-        dict_empleados = {e.id_empleado: e for e in empleados_db}
-
-        # Traer asistencias ya existentes en Inspecciones de golpe
-        asistencias_existentes = EmpleadoInspecciones.query.filter(
-            EmpleadoInspecciones.fec_asist == fecha_obj,
-            EmpleadoInspecciones.id_empleado.in_(ids_empleados)
-        ).all()
-        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
-
-        # ====================================================================
-        # 4. GUARDADO EN BASE DE DATOS
-        # ====================================================================
-        for asistencia in asistencias_validas:
-            id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
-
-            estado = asistencia.get('estado', '').strip() or None
-            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
-            ruta = asistencia.get('ruta', '').strip() or None
-            viaticos = float(asistencia.get('viaticos') or 0.0)
-
-            registro_existente = dict_asistencias.get(int(id_empleado))
-
-            if registro_existente:
-                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                registro_existente.estado = estado
-                registro_existente.pasajes = pasajes
-                registro_existente.ruta = ruta
-                registro_existente.viaticos = viaticos
-            else:
-                print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = dict_empleados.get(int(id_empleado))
-
-                if not empleado_original:
-                    mensaje_error = f"Empleado {id_empleado} no encontrado"
-                    print(f"🚨 ERROR: {mensaje_error}")
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-                nuevo_registro = EmpleadoInspecciones(
-                    id_empleado=empleado_original.id_empleado,
-                    nombres=empleado_original.nombres,
-                    dni=empleado_original.dni,
-                    cargo=empleado_original.cargo,
-                    area=empleado_original.area,
-                    cod_ope=empleado_original.cod_ope,
-                    mes=asistencia['mes'],
-                    fec_asist=fecha_obj,
-                    estado=estado,
-                    pasajes=pasajes,
-                    ruta=ruta,
-                    viaticos=viaticos
-                )
-                db.session.add(nuevo_registro)
-
-        db.session.commit()
-        mensaje_exito = "Registros guardados correctamente en EmpleadoInspecciones."
-        print(f"✅ {mensaje_exito}")
-        return jsonify({'success': True, 'message': mensaje_exito})
-
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        mensaje_error = f"Error en la base de datos: {str(e)}"
-        print(f"❌ ERROR SQL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-    except Exception as e:
-        db.session.rollback()
-        mensaje_error = f"Error inesperado: {str(e)}"
-        print(f"❌ ERROR GENERAL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-
-@app.route('/eliminar-asistencia-inspecciones', methods=['POST'])
-def eliminar_asistencia_inspecciones():
-    try:
-        data = request.get_json()
-        id_empleado = data.get('id_empleado')
-        fecha = data.get('fecha')
-
-        if not id_empleado or not fecha:
-            return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
-
-        # Buscar el registro de asistencia
-        asistencia = EmpleadoInspecciones.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-        if not asistencia:
-            return jsonify({'success': False, 'message': 'No se encontró el registro de asistencia'}), 404
-
-        # Buscar el nombre del empleado
-        empleado = Empleado.query.get(id_empleado)
-        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
-
-        # Eliminar el registro
-        db.session.delete(asistencia)
-        db.session.commit()
-
-        # ✅ Registrar en la tabla de auditoría
-        if 'user_id' in session:
-            registrar_evento(
-                user_id=session['user_id'],
-                usuario=session['user_name'],
-                evento='eliminar_asistencia',
-                modulo=f"Inspecciones Comerciales | Fecha: {fecha} | Empleado: {nombre_empleado}"
-            )
-
-        return jsonify({'success': True, 'message': 'Registro eliminado correctamente'})
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al eliminar: {str(e)}'})
-
-
-# MÓDULO CATASTRO
-@app.route('/filtrar-empleados-catastro', methods=['GET'])
-def filtrar_empleado_catastro():
-    try:
-        empleados = Empleado.query.filter(
-            Empleado.area == 'CATASTRO', 
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if not empleados:
-            return jsonify({"mensaje": "No se encontraron empleados en CATASTRO"}), 404
-
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados
-        ]
-
-        return jsonify(empleados_data)
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener empleados", "detalles": str(e)}), 500
-
-
-@app.route('/cargar-asistencia-catastro', methods=['GET'])
-def cargar_asistencia_catastro():
-    try:
-        fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
-        if not fecha_str:
-            return jsonify({"error": "Debe proporcionar una fecha"}), 400
-
-        fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
-
-        # ====================================================================
-        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
-        # registros de asistencia ya guardados.
-        # ====================================================================
-        registros_asistencia = EmpleadoCatastro.query.join(Empleado).filter(
-            EmpleadoCatastro.fec_asist == fecha_consulta,
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if registros_asistencia:
-            # Si hay registros, se devuelven para su modificación
-            asistencia_data = [
-                {
-                    "id_catastro": registro.id_catastro,
-                    "id_empleado": registro.id_empleado,
-                    "dni": registro.dni,
-                    "nombres": registro.nombres,
-                    "cargo": registro.cargo,
-                    "area": registro.area,
-                    "mes": registro.mes,
-                    "fec_asist": registro.fec_asist.strftime("%Y-%m-%d"),
-                    "estado": registro.estado,
-                    "justificacion": registro.justificacion,
-                    "pasajes": registro.pasajes if registro.pasajes is not None else "",
-                    "viaticos": float(registro.viaticos) if registro.viaticos else 0.0,
-                    "ruta": registro.ruta,
-                    "cod_ope": registro.cod_ope
-                }
-                for registro in registros_asistencia
-            ]
-            return jsonify({"tipo": "modificacion", "datos": asistencia_data})
-
-        # ====================================================================
-        # MODIFICACIÓN 2: Filtramos empleados de CATASTRO que aún no 
-        # tienen asistencia, asegurando que su estado no sea 'CESADO'.
-        # ====================================================================
-        empleados_sin_asistencia = db.session.query(Empleado).filter(
-            ~Empleado.id_empleado.in_(
-                db.session.query(EmpleadoCatastro.id_empleado).filter(
-                    EmpleadoCatastro.mes == mes_consulta
-                )
-            ),
-            Empleado.area.in_(['CATASTRO']),
-            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
-        ).all()
-
-        if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
-
-        # Construir respuesta con empleados sin asistencia
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados_sin_asistencia
-        ]
-
-        return jsonify({"tipo": "nueva_asistencia", "datos": empleados_data})
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
-
-@app.route('/guardar-asistencia-detalle-catastro', methods=['POST'])
-def guardar_asistencia_detalle_catastro():
-    try:
-        data = request.get_json()
-        print("\n🔍 JSON recibido:", data)  # ✅ Depuración
-
-        if not data or "asistencias" not in data:
-            mensaje_error = "Clave 'asistencias' no encontrada en JSON"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        asistencias_crudas = data['asistencias']
-        if not asistencias_crudas:
-            mensaje_error = "Lista de asistencias vacía"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
-        # ====================================================================
-        asistencias_validas = []
-        for a in asistencias_crudas:
-            print("\n📌 Procesando asistencia:", a)  # ✅ Depuración
-
-            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
-            
-            estado_val = a.get('estado', '')
-            estado = estado_val.strip() if estado_val else ''
-            pasajes = a.get('pasajes')
-            ruta = a.get('ruta', '').strip()
-            viaticos = float(a.get('viaticos') or 0.0)
-
-            # 🚫 Ignorar registros totalmente en blanco
-            if not estado and not pasajes and not ruta and viaticos == 0.0:
-                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
-                continue
-            
-            asistencias_validas.append(a)
-
-        if not asistencias_validas:
-            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
-
-        # ====================================================================
-        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
-        # ====================================================================
-        try:
-            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
-        except ValueError:
-            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
-
-        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
-
-        # En Catastro, revisamos contra Lectura, Distribucion, Inspecciones y el resto
-        tablas = [
-            EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
-            EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
-        ]
-
-        empleados_duplicados = []
-        
-        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
-        for tabla in tablas:
-            registros_otras_areas = tabla.query.filter(
-                tabla.fec_asist == fecha_obj,
-                tabla.id_empleado.in_(ids_empleados)
-            ).all()
-            
-            for reg in registros_otras_areas:
-                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
-
-        if empleados_duplicados:
-            # Traemos los nombres de los empleados duplicados para armar el mensaje
-            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
-            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
-            
-            mensajes_error_duplicados = []
-            for emp_id, tabla_nombre in empleados_duplicados:
-                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
-                nombre = emp.nombres if emp else f"ID {emp_id}"
-                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
-                
-            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
-        # ====================================================================
-        # Traer base de empleados de golpe
-        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
-        dict_empleados = {e.id_empleado: e for e in empleados_db}
-
-        # Traer asistencias ya existentes en Catastro de golpe
-        asistencias_existentes = EmpleadoCatastro.query.filter(
-            EmpleadoCatastro.fec_asist == fecha_obj,
-            EmpleadoCatastro.id_empleado.in_(ids_empleados)
-        ).all()
-        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
-
-        # ====================================================================
-        # 4. GUARDADO EN BASE DE DATOS
-        # ====================================================================
-        for asistencia in asistencias_validas:
-            id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
-
-            estado = asistencia.get('estado', '').strip() or None
-            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
-            ruta = asistencia.get('ruta', '').strip() or None
-            viaticos = float(asistencia.get('viaticos') or 0.0)
-
-            registro_existente = dict_asistencias.get(int(id_empleado))
-
-            if registro_existente:
-                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                registro_existente.estado = estado
-                registro_existente.pasajes = pasajes
-                registro_existente.ruta = ruta
-                registro_existente.viaticos = viaticos
-            else:
-                print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = dict_empleados.get(int(id_empleado))
-
-                if not empleado_original:
-                    mensaje_error = f"Empleado {id_empleado} no encontrado"
-                    print(f"🚨 ERROR: {mensaje_error}")
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-                nuevo_registro = EmpleadoCatastro(
-                    id_empleado=empleado_original.id_empleado,
-                    nombres=empleado_original.nombres,
-                    dni=empleado_original.dni,
-                    cargo=empleado_original.cargo,
-                    area=empleado_original.area,
-                    cod_ope=empleado_original.cod_ope,
-                    mes=asistencia['mes'],
-                    fec_asist=fecha_obj,
-                    estado=estado,
-                    pasajes=pasajes,
-                    ruta=ruta,
-                    viaticos=viaticos
-                )
-                db.session.add(nuevo_registro)
-
-        db.session.commit()
-        mensaje_exito = "Registros guardados correctamente en EmpleadoCatastro."
-        print(f"✅ {mensaje_exito}")
-        return jsonify({'success': True, 'message': mensaje_exito})
-
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        mensaje_error = f"Error en la base de datos: {str(e)}"
-        print(f"❌ ERROR SQL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-    except Exception as e:
-        db.session.rollback()
-        mensaje_error = f"Error inesperado: {str(e)}"
-        print(f"❌ ERROR GENERAL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-    
-
-@app.route('/eliminar-asistencia-catastro', methods=['POST']) 
-def eliminar_asistencia_catastro():
-    try:
-        data = request.get_json()
-        id_empleado = data.get('id_empleado')
-        fecha = data.get('fecha')
-
-        if not id_empleado or not fecha:
-            return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
-
-        # Buscar el registro en la base de datos
-        asistencia = EmpleadoCatastro.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-        if not asistencia:
-            return jsonify({'success': False, 'message': 'No se encontró el registro de asistencia'}), 404
-
-        # Obtener el nombre del empleado (opcional para el log)
-        empleado = Empleado.query.get(id_empleado)
-        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
-
-        # Eliminar el registro
-        db.session.delete(asistencia)
-        db.session.commit()
-
-        # Registrar en auditoría
-        if 'user_id' in session:
-            registrar_evento(
-                user_id=session['user_id'],
-                usuario=session['user_name'],
-                evento='eliminar_asistencia',
-                modulo=f"Gestión Catastral | Fecha: {fecha} | Empleado: {nombre_empleado}"
-            )
-
-        return jsonify({'success': True, 'message': 'Registro eliminado correctamente'})
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al eliminar: {str(e)}'})
-
-
-# MÓDULO MEDICIÓN
-@app.route('/filtrar-empleados-medidores', methods=['GET'])
-def filtrar_empleado_medidores():
-    try:
-        empleados = Empleado.query.filter(
-            Empleado.area == 'MEDICION', 
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if not empleados:
-            return jsonify({"mensaje": "No se encontraron empleados en MEDICION"}), 404
-
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados
-        ]
-
-        return jsonify(empleados_data)
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener empleados", "detalles": str(e)}), 500
-
-
-@app.route('/cargar-asistencia-medidores', methods=['GET'])
-def cargar_asistencia_medidores():
-    try:
-        fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
-        if not fecha_str:
-            return jsonify({"error": "Debe proporcionar una fecha"}), 400
-
-        fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
-
-        # ====================================================================
-        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
-        # registros de asistencia ya guardados.
-        # ====================================================================
-        registros_asistencia = EmpleadoMedidores.query.join(Empleado).filter(
-            EmpleadoMedidores.fec_asist == fecha_consulta,
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if registros_asistencia:
-            # Si hay registros, se devuelven para su modificación
-            asistencia_data = [
-                {
-                    "id_medidores": registro.id_medidores,
-                    "id_empleado": registro.id_empleado,
-                    "dni": registro.dni,
-                    "nombres": registro.nombres,
-                    "cargo": registro.cargo,
-                    "area": registro.area,
-                    "mes": registro.mes,
-                    "fec_asist": registro.fec_asist.strftime("%Y-%m-%d"),
-                    "estado": registro.estado,
-                    "justificacion": registro.justificacion,
-                    "pasajes": registro.pasajes if registro.pasajes is not None else "",
-                    "viaticos": float(registro.viaticos) if registro.viaticos else 0.0,
-                    "ruta": registro.ruta,
-                    "cod_ope": registro.cod_ope
-                }
-                for registro in registros_asistencia
-            ]
-            return jsonify({"tipo": "modificacion", "datos": asistencia_data})
-
-        # ====================================================================
-        # MODIFICACIÓN 2: Filtramos empleados de MEDICION que aún no 
-        # tienen asistencia, asegurando que su estado no sea 'CESADO'.
-        # ====================================================================
-        empleados_sin_asistencia = db.session.query(Empleado).filter(
-            ~Empleado.id_empleado.in_(
-                db.session.query(EmpleadoMedidores.id_empleado).filter(
-                    EmpleadoMedidores.mes == mes_consulta
-                )
-            ),
-            Empleado.area.in_(['MEDICION']),
-            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
-        ).all()
-
-        if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
-
-        # Construir respuesta con empleados sin asistencia
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados_sin_asistencia
-        ]
-
-        return jsonify({"tipo": "nueva_asistencia", "datos": empleados_data})
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
-
-@app.route('/guardar-asistencia-detalle-medidores', methods=['POST'])
-def guardar_asistencia_detalle_medidores():
-    try:
-        data = request.get_json()
-        print("\n🔍 JSON recibido:", data)  # ✅ Depuración
-
-        if not data or "asistencias" not in data:
-            mensaje_error = "Clave 'asistencias' no encontrada en JSON"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        asistencias_crudas = data['asistencias']
-        if not asistencias_crudas:
-            mensaje_error = "Lista de asistencias vacía"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
-        # ====================================================================
-        asistencias_validas = []
-        for a in asistencias_crudas:
-            print("\n📌 Procesando asistencia:", a)  # ✅ Depuración
-
-            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
-            
-            estado_val = a.get('estado', '')
-            estado = estado_val.strip() if estado_val else ''
-            pasajes = a.get('pasajes')
-            ruta = a.get('ruta', '').strip()
-            viaticos = float(a.get('viaticos') or 0.0)
-
-            # 🚫 Ignorar registros totalmente en blanco
-            if not estado and not pasajes and not ruta and viaticos == 0.0:
-                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
-                continue
-            
-            asistencias_validas.append(a)
-
-        if not asistencias_validas:
-            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
-
-        # ====================================================================
-        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
-        # ====================================================================
-        try:
-            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
-        except ValueError:
-            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
-
-        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
-
-        # En Medidores, revisamos contra Lectura, Distribucion, Inspecciones, Persuasivas y el resto
-        tablas = [
-            EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
-            EmpleadoPersuasivas, EmpleadoCatastro, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
-        ]
-
-        empleados_duplicados = []
-        
-        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
-        for tabla in tablas:
-            registros_otras_areas = tabla.query.filter(
-                tabla.fec_asist == fecha_obj,
-                tabla.id_empleado.in_(ids_empleados)
-            ).all()
-            
-            for reg in registros_otras_areas:
-                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
-
-        if empleados_duplicados:
-            # Traemos los nombres de los empleados duplicados para armar el mensaje
-            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
-            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
-            
-            mensajes_error_duplicados = []
-            for emp_id, tabla_nombre in empleados_duplicados:
-                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
-                nombre = emp.nombres if emp else f"ID {emp_id}"
-                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
-                
-            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
-        # ====================================================================
-        # Traer base de empleados de golpe
-        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
-        dict_empleados = {e.id_empleado: e for e in empleados_db}
-
-        # Traer asistencias ya existentes en Medidores de golpe
-        asistencias_existentes = EmpleadoMedidores.query.filter(
-            EmpleadoMedidores.fec_asist == fecha_obj,
-            EmpleadoMedidores.id_empleado.in_(ids_empleados)
-        ).all()
-        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
-
-        # ====================================================================
-        # 4. GUARDADO EN BASE DE DATOS
-        # ====================================================================
-        for asistencia in asistencias_validas:
-            id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
-
-            estado = asistencia.get('estado', '').strip() or None
-            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
-            ruta = asistencia.get('ruta', '').strip() or None
-            viaticos = float(asistencia.get('viaticos') or 0.0)
-
-            registro_existente = dict_asistencias.get(int(id_empleado))
-
-            if registro_existente:
-                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                registro_existente.estado = estado
-                registro_existente.pasajes = pasajes
-                registro_existente.ruta = ruta
-                registro_existente.viaticos = viaticos
-            else:
-                print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = dict_empleados.get(int(id_empleado))
-
-                if not empleado_original:
-                    mensaje_error = f"Empleado {id_empleado} no encontrado"
-                    print(f"🚨 ERROR: {mensaje_error}")
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-                nuevo_registro = EmpleadoMedidores(
-                    id_empleado=empleado_original.id_empleado,
-                    nombres=empleado_original.nombres,
-                    dni=empleado_original.dni,
-                    cargo=empleado_original.cargo,
-                    area=empleado_original.area,
-                    cod_ope=empleado_original.cod_ope,
-                    mes=asistencia['mes'],
-                    fec_asist=fecha_obj,
-                    estado=estado,
-                    pasajes=pasajes,
-                    ruta=ruta,
-                    viaticos=viaticos
-                )
-                db.session.add(nuevo_registro)
-
-        db.session.commit()
-        mensaje_exito = "Registros guardados correctamente en EmpleadoMedidores."
-        print(f"✅ {mensaje_exito}")
-        return jsonify({'success': True, 'message': mensaje_exito})
-
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        mensaje_error = f"Error en la base de datos: {str(e)}"
-        print(f"❌ ERROR SQL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-    except Exception as e:
-        db.session.rollback()
-        mensaje_error = f"Error inesperado: {str(e)}"
-        print(f"❌ ERROR GENERAL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-
-@app.route('/eliminar-asistencia-medidores', methods=['POST'])
-def eliminar_asistencia_medidores():
-    try:
-        data = request.get_json()
-        id_empleado = data.get('id_empleado')
-        fecha = data.get('fecha')
-
-        if not id_empleado or not fecha:
-            return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
-
-        # Buscar el registro en la base de datos
-        asistencia = EmpleadoMedidores.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-        if not asistencia:
-            return jsonify({'success': False, 'message': 'No se encontró el registro de asistencia'}), 404
-
-        # Obtener el nombre del empleado (para registrar en auditoría)
-        empleado = Empleado.query.get(id_empleado)
-        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
-
-        # Eliminar el registro
-        db.session.delete(asistencia)
-        db.session.commit()
-
-        # Registrar en auditoría
-        if 'user_id' in session:
-            registrar_evento(
-                user_id=session['user_id'],
-                usuario=session['user_name'],
-                evento='eliminar_asistencia',
-                modulo=f"Gestión de Medidores | Fecha: {fecha} | Empleado: {nombre_empleado}"
-            )
-
-        return jsonify({'success': True, 'message': 'Registro eliminado correctamente'})
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al eliminar: {str(e)}'})
-
-
-# MÓDULO PERSUASIVAS
-@app.route('/filtrar-empleados-persuasivas', methods=['GET'])
-def filtrar_empleado_persuasivas():
-    try:
-        empleados = Empleado.query.filter(
-            Empleado.area == 'PERSUASIVAS', 
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if not empleados:
-            return jsonify({"mensaje": "No se encontraron empleados en PERSUASIVAS"}), 404
-
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados
-        ]
-
-        return jsonify(empleados_data)
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener empleados", "detalles": str(e)}), 500
-
-
-@app.route('/cargar-asistencia-persuasivas', methods=['GET'])
-def cargar_asistencia_persuasivas():
-    try:
-        fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
-        if not fecha_str:
-            return jsonify({"error": "Debe proporcionar una fecha"}), 400
-
-        fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
-
-        # ====================================================================
-        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
-        # registros de asistencia ya guardados.
-        # ====================================================================
-        registros_asistencia = EmpleadoPersuasivas.query.join(Empleado).filter(
-            EmpleadoPersuasivas.fec_asist == fecha_consulta,
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if registros_asistencia:
-            # Si hay registros, se devuelven para su modificación
-            asistencia_data = [
-                {
-                    "id_persuasivas": registro.id_persuasivas,
-                    "id_empleado": registro.id_empleado,
-                    "dni": registro.dni,
-                    "nombres": registro.nombres,
-                    "cargo": registro.cargo,
-                    "area": registro.area,
-                    "mes": registro.mes,
-                    "fec_asist": registro.fec_asist.strftime("%Y-%m-%d"),
-                    "estado": registro.estado,
-                    "justificacion": registro.justificacion,
-                    "pasajes": registro.pasajes if registro.pasajes is not None else "",
-                    "viaticos": float(registro.viaticos) if registro.viaticos else 0.0,
-                    "ruta": registro.ruta,
-                    "cod_ope": registro.cod_ope
-                }
-                for registro in registros_asistencia
-            ]
-            return jsonify({"tipo": "modificacion", "datos": asistencia_data})
-
-        # ====================================================================
-        # MODIFICACIÓN 2: Filtramos empleados de PERSUASIVAS que aún no 
-        # tienen asistencia, asegurando que su estado no sea 'CESADO'.
-        # ====================================================================
-        empleados_sin_asistencia = db.session.query(Empleado).filter(
-            ~Empleado.id_empleado.in_(
-                db.session.query(EmpleadoPersuasivas.id_empleado).filter(
-                    EmpleadoPersuasivas.mes == mes_consulta
-                )
-            ),
-            Empleado.area.in_(['PERSUASIVAS']),
-            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
-        ).all()
-
-        if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
-
-        # Construir respuesta con empleados sin asistencia
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados_sin_asistencia
-        ]
-
-        return jsonify({"tipo": "nueva_asistencia", "datos": empleados_data})
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
-
-@app.route('/guardar-asistencia-detalle-persuasivas', methods=['POST'])
-def guardar_asistencia_detalle_persuasivas():
-    try:
-        data = request.get_json()
-        print("\n🔍 JSON recibido:", data)  # ✅ Depuración
-
-        if not data or "asistencias" not in data:
-            mensaje_error = "Clave 'asistencias' no encontrada en JSON"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        asistencias_crudas = data['asistencias']
-        if not asistencias_crudas:
-            mensaje_error = "Lista de asistencias vacía"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 1. FILTRAR FILAS VACÍAS Y VALIDAR DATOS BÁSICOS
-        # ====================================================================
-        asistencias_validas = []
-        for a in asistencias_crudas:
-            print("\n📌 Procesando asistencia:", a)  # ✅ Depuración
-
-            if "fecha" not in a or "id_empleado" not in a or "mes" not in a:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
-            
-            estado_val = a.get('estado', '')
-            estado = estado_val.strip() if estado_val else ''
-            pasajes = a.get('pasajes')
-            ruta = a.get('ruta', '').strip()
-            viaticos = float(a.get('viaticos') or 0.0)
-
-            # 🚫 Ignorar registros totalmente en blanco
-            if not estado and not pasajes and not ruta and viaticos == 0.0:
-                print(f"⏩ Omitiendo empleado {a['id_empleado']} por fila vacía.")
-                continue
-            
-            asistencias_validas.append(a)
-
-        if not asistencias_validas:
-            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
-
-        # ====================================================================
-        # 2. VALIDACIÓN MASIVA EN OTRAS ÁREAS (SOLUCIÓN CUELLO DE BOTELLA N+1)
-        # ====================================================================
-        try:
-            fecha_obj = datetime.strptime(asistencias_validas[0]['fecha'], '%Y-%m-%d').date()
-        except ValueError:
-            mensaje_error = f"Formato de fecha inválido -> {asistencias_validas[0]['fecha']}"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
-
-        ids_empleados = [a['id_empleado'] for a in asistencias_validas]
-
-        # En Persuasivas, revisamos contra las otras áreas
-        tablas = [
-            EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
-            EmpleadoMedidores, EmpleadoCatastro, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte
-        ]
-
-        empleados_duplicados = []
-        
-        # Consultamos cada tabla de otras áreas con todos los IDs de golpe
-        for tabla in tablas:
-            registros_otras_areas = tabla.query.filter(
-                tabla.fec_asist == fecha_obj,
-                tabla.id_empleado.in_(ids_empleados)
-            ).all()
-            for reg in registros_otras_areas:
-                empleados_duplicados.append((reg.id_empleado, tabla.__name__))
-
-        if empleados_duplicados:
-            # Traemos los nombres de los empleados duplicados
-            ids_dup = [emp_id for emp_id, _ in empleados_duplicados]
-            empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_dup)).all()
-            
-            mensajes_error_duplicados = []
-            for emp_id, tabla_nombre in empleados_duplicados:
-                emp = next((e for e in empleados_db if e.id_empleado == emp_id), None)
-                nombre = emp.nombres if emp else f"ID {emp_id}"
-                mensajes_error_duplicados.append(f"{nombre} en {tabla_nombre}")
-                
-            mensaje_error = f"Los siguientes empleados ya cuentan con asistencia en la fecha {fecha_obj} en otras áreas: " + ", ".join(mensajes_error_duplicados)
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        # ====================================================================
-        # 3. CONSULTA MASIVA DE DATOS PARA INSERCIÓN/ACTUALIZACIÓN
-        # ====================================================================
-        # Traer base de empleados de golpe
-        empleados_db = Empleado.query.filter(Empleado.id_empleado.in_(ids_empleados)).all()
-        dict_empleados = {e.id_empleado: e for e in empleados_db}
-
-        # Traer asistencias ya existentes en Persuasivas de golpe
-        asistencias_existentes = EmpleadoPersuasivas.query.filter(
-            EmpleadoPersuasivas.fec_asist == fecha_obj,
-            EmpleadoPersuasivas.id_empleado.in_(ids_empleados)
-        ).all()
-        dict_asistencias = {a.id_empleado: a for a in asistencias_existentes}
-
-        # ====================================================================
-        # 4. GUARDADO EN BASE DE DATOS
-        # ====================================================================
-        for asistencia in asistencias_validas:
-            id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha_obj}")
-
-            estado = asistencia.get('estado', '').strip() or None
-            pasajes = asistencia.get('pasajes') if asistencia.get('pasajes') else None
-            ruta = asistencia.get('ruta', '').strip() or None
-            viaticos = float(asistencia.get('viaticos') or 0.0)
-
-            registro_existente = dict_asistencias.get(int(id_empleado))
-
-            if registro_existente:
-                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                registro_existente.estado = estado
-                registro_existente.pasajes = pasajes
-                registro_existente.ruta = ruta
-                registro_existente.viaticos = viaticos
-            else:
-                print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = dict_empleados.get(int(id_empleado))
-
-                if not empleado_original:
-                    mensaje_error = f"Empleado {id_empleado} no encontrado"
-                    print(f"🚨 ERROR: {mensaje_error}")
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-                nuevo_registro = EmpleadoPersuasivas(
-                    id_empleado=empleado_original.id_empleado,
-                    nombres=empleado_original.nombres,
-                    dni=empleado_original.dni,
-                    cargo=empleado_original.cargo,
-                    area=empleado_original.area,
-                    cod_ope=empleado_original.cod_ope,
-                    mes=asistencia['mes'],
-                    fec_asist=fecha_obj,
-                    estado=estado,
-                    pasajes=pasajes,
-                    ruta=ruta,
-                    viaticos=viaticos
-                )
-                db.session.add(nuevo_registro)
-
-        db.session.commit()
-        mensaje_exito = "Registros guardados correctamente en EmpleadoPersuasivas."
-        print(f"✅ {mensaje_exito}")
-        return jsonify({'success': True, 'message': mensaje_exito})
-
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        mensaje_error = f"Error en la base de datos: {str(e)}"
-        print(f"❌ ERROR SQL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-    except Exception as e:
-        db.session.rollback()
-        mensaje_error = f"Error inesperado: {str(e)}"
-        print(f"❌ ERROR GENERAL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-
-@app.route('/eliminar-asistencia-persuasivas', methods=['POST'])
-def eliminar_asistencia_persuasivas():
-    try:
-        data = request.get_json()
-        id_empleado = data.get('id_empleado')
-        fecha = data.get('fecha')
-
-        if not id_empleado or not fecha:
-            return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
-
-        # Buscar el registro de asistencia
-        asistencia = EmpleadoPersuasivas.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-        if not asistencia:
-            return jsonify({'success': False, 'message': 'No se encontró el registro de asistencia'}), 404
-
-        # Obtener el nombre del empleado
-        empleado = Empleado.query.get(id_empleado)
-        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
-
-        # Eliminar el registro
-        db.session.delete(asistencia)
-        db.session.commit()
-
-        # Registrar en auditoría
-        if 'user_id' in session:
-            registrar_evento(
-                user_id=session['user_id'],
-                usuario=session['user_name'],
-                evento='eliminar_asistencia',
-                modulo=f"Acciones Persuasivas | Fecha: {fecha} | Empleado: {nombre_empleado}"
-            )
-
-        return jsonify({'success': True, 'message': 'Registro eliminado correctamente'})
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al eliminar: {str(e)}'})
-
-
-
-
-
-# MÓDULO NORTE
-@app.route('/filtrar-empleados-norte', methods=['GET'])
-def filtrar_empleado_norte():
-    try:
-        empleados = Empleado.query.filter(
-            Empleado.area == 'NORTE', 
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if not empleados:
-            return jsonify({"mensaje": "No se encontraron empleados en NORTE"}), 404
-
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados
-        ]
-
-        return jsonify(empleados_data)
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener empleados", "detalles": str(e)}), 500
-
-
-@app.route('/cargar-asistencia-norte', methods=['GET'])
-def cargar_asistencia_norte():
-    try:
-        fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
-        if not fecha_str:
-            return jsonify({"error": "Debe proporcionar una fecha"}), 400
-
-        fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
-
-        # ====================================================================
-        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
-        # registros de asistencia ya guardados para el área Norte.
-        # ====================================================================
-        registros_asistencia = EmpleadoNorte.query.join(Empleado).filter(
-            EmpleadoNorte.fec_asist == fecha_consulta,
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if registros_asistencia:
-            # Si hay registros, se devuelven para su modificación
-            asistencia_data = [
-                {
-                    "id_norte": registro.id_norte,
-                    "id_empleado": registro.id_empleado,
-                    "dni": registro.dni,
-                    "nombres": registro.nombres,
-                    "cargo": registro.cargo,
-                    "area": registro.area,
-                    "mes": registro.mes,
-                    "fec_asist": registro.fec_asist.strftime("%Y-%m-%d"),
-                    "estado": registro.estado,
-                    "justificacion": registro.justificacion,
-                    "pasajes": registro.pasajes if registro.pasajes is not None else "",
-                    "viaticos": float(registro.viaticos) if registro.viaticos else 0.0,
-                    "ruta": registro.ruta,
-                    "cod_ope": registro.cod_ope
-                }
-                for registro in registros_asistencia
-            ]
-            return jsonify({"tipo": "modificacion", "datos": asistencia_data})
-
-        # ====================================================================
-        # MODIFICACIÓN 2: Filtramos empleados del área NORTE que aún no 
-        # tienen asistencia, asegurando que su estado laboral no sea 'CESADO'.
-        # ====================================================================
-        empleados_sin_asistencia = db.session.query(Empleado).filter(
-            ~Empleado.id_empleado.in_(
-                db.session.query(EmpleadoNorte.id_empleado).filter(
-                    EmpleadoNorte.mes == mes_consulta
-                )
-            ),
-            Empleado.area.in_(['NORTE']),
-            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
-        ).all()
-
-        if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
-
-        # Construir respuesta con empleados sin asistencia
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados_sin_asistencia
-        ]
-
-        return jsonify({"tipo": "nueva_asistencia", "datos": empleados_data})
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
-
-@app.route('/guardar-asistencia-detalle-norte', methods=['POST'])
-def guardar_asistencia_detalle_norte():
-    try:
-        data = request.get_json()
-        print("\n🔍 JSON recibido:", data)  # ✅ Depuración
-
-        if not data or "asistencias" not in data:
-            mensaje_error = "Clave 'asistencias' no encontrada en JSON"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        asistencias = data['asistencias']
-        if not asistencias:
-            mensaje_error = "Lista de asistencias vacía"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        tablas = [
-            EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
-            EmpleadoMedidores, EmpleadoCatastro, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoPersuasivas
-        ]
-
-        for asistencia in asistencias:
-            print("\n📌 Procesando asistencia:", asistencia)  # ✅ Depuración
-
-            if "fecha" not in asistencia or "id_empleado" not in asistencia or "mes" not in asistencia:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
-
             try:
-                fecha = datetime.strptime(asistencia['fecha'], '%Y-%m-%d').date()
-            except ValueError:
-                mensaje_error = f"Formato de fecha inválido -> {asistencia['fecha']}"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
-
-            id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha}")
-
-            for tabla in tablas: 
-                asistencia_existente_otras = tabla.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-                if asistencia_existente_otras:
-                    # Obtener el nombre del empleado desde la tabla principal (Empleado)
-                    empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-                    nombre_empleado = f"{empleado.nombres}" if empleado else f"ID {id_empleado}"
-
-                    mensaje_error = f"El empleado {nombre_empleado} ya cuenta con asistencia en la fecha {fecha} en el área {tabla.__name__}."
-                    print(f"🚨 ERROR: {mensaje_error}")
-
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-            asistencia_existente = EmpleadoNorte.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-            if asistencia_existente:
-                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                asistencia_existente.estado = asistencia.get('estado', asistencia_existente.estado).strip() or None
-                asistencia_existente.pasajes = asistencia.get('pasajes', asistencia_existente.pasajes) if asistencia.get('pasajes') else None
-                asistencia_existente.ruta = asistencia.get('ruta', asistencia_existente.ruta)
-                asistencia_existente.viaticos = asistencia.get('viaticos', asistencia_existente.viaticos)
-            else:
-                print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = Empleado.query.filter_by(id_empleado=id_empleado).first()
-
-                if not empleado_original:
-                    mensaje_error = f"Empleado {id_empleado} no encontrado"
-                    print(f"🚨 ERROR: {mensaje_error}")
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-                nuevo_registro = EmpleadoNorte(
-                    id_empleado=empleado_original.id_empleado,
-                    nombres=empleado_original.nombres,
-                    dni=empleado_original.dni,
-                    cargo=empleado_original.cargo,
-                    area=empleado_original.area,
-                    cod_ope=empleado_original.cod_ope,
-                    mes=asistencia['mes'],
-                    fec_asist=fecha,
-                    estado=asistencia.get('estado', '').strip() or None,
-                    pasajes=asistencia.get('pasajes', None),
-                    ruta=asistencia.get('ruta', '').strip() or None,
-                    viaticos=asistencia.get('viaticos', 0) or 0.00
-                )
-                db.session.add(nuevo_registro)
-
-        db.session.commit()
-        mensaje_exito = "Registros guardados correctamente en EmpleadoNorte."
-        print(f"✅ {mensaje_exito}")
-        return jsonify({'success': True, 'message': mensaje_exito})
-
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        mensaje_error = f"Error en la base de datos: {str(e)}"
-        print(f"❌ ERROR SQL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-    except Exception as e:
-        db.session.rollback()
-        mensaje_error = f"Error inesperado: {str(e)}"
-        print(f"❌ ERROR GENERAL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-
-@app.route('/eliminar-asistencia-norte', methods=['POST'])
-def eliminar_asistencia_norte():
-    try:
-        data = request.get_json()
-        id_empleado = data.get('id_empleado')
-        fecha = data.get('fecha')
-
-        if not id_empleado or not fecha:
-            return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
-
-        # Buscar el registro en la base de datos
-        asistencia = EmpleadoNorte.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-        if not asistencia:
-            return jsonify({'success': False, 'message': 'No se encontró el registro de asistencia'}), 404
-
-        # Obtener el nombre del empleado desde la tabla general Empleado
-        empleado = Empleado.query.get(id_empleado)
-        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
-
-        # Eliminar el registro
-        db.session.delete(asistencia)
-        db.session.commit()
-
-        # Registrar evento en auditoría
-        if 'user_id' in session:
-            registrar_evento(
-                user_id=session['user_id'],
-                usuario=session['user_name'],
-                evento='eliminar_asistencia',
-                modulo=f"Zona Norte | Fecha: {fecha} | Empleado: {nombre_empleado}"
-            )
-
-        return jsonify({'success': True, 'message': 'Registro eliminado correctamente'})
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al eliminar: {str(e)}'})
-
-
-# MÓDULO ASISTENCIAS ADMINISTRATIVO
-@app.route('/filtrar-empleados-administrativo_1', methods=['GET'])
-def filtrar_empleado_administrativo_1():
-    try:
-        empleados = Empleado.query.filter(
-            Empleado.area == 'ADMINSTRATIVO', 
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if not empleados:
-            return jsonify({"mensaje": "No se encontraron empleados en ADMINSTRATIVO"}), 404
-
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados
-        ]
-
-        return jsonify(empleados_data)
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener empleados", "detalles": str(e)}), 500
-
-
-@app.route('/cargar-asistencia-administrativo_1', methods=['GET'])
-def cargar_asistencia_administrativo_1():
-    try:
-        fecha_str = request.args.get('fecha')  # Obtener la fecha de la solicitud
-        if not fecha_str:
-            return jsonify({"error": "Debe proporcionar una fecha"}), 400
-
-        fecha_consulta = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        mes_consulta = fecha_consulta.strftime("%Y-%m")  # Formato "YYYY-MM"
-
-        # ====================================================================
-        # MODIFICACIÓN 1: JOIN con Empleado para excluir a los cesados en 
-        # registros de asistencia ya guardados para el área Administrativa.
-        # ====================================================================
-        registros_asistencia = EmpleadoAdministrativo.query.join(Empleado).filter(
-            EmpleadoAdministrativo.fec_asist == fecha_consulta,
-            Empleado.estado != 'CESADO'
-        ).all()
-
-        if registros_asistencia:
-            # Si hay registros, se devuelven para su modificación
-            asistencia_data = [
-                {
-                    "id_administrativo": registro.id_administrativo,
-                    "id_empleado": registro.id_empleado,
-                    "dni": registro.dni,
-                    "nombres": registro.nombres,
-                    "cargo": registro.cargo,
-                    "area": registro.area,
-                    "mes": registro.mes,
-                    "fec_asist": registro.fec_asist.strftime("%Y-%m-%d"),
-                    "estado": registro.estado,
-                    "justificacion": registro.justificacion,
-                    "pasajes": float(registro.pasajes) if registro.pasajes else 0.0,
-                    "viaticos": float(registro.viaticos) if registro.viaticos else 0.0,
-                    "ruta": registro.ruta,
-                    "cod_ope": registro.cod_ope
-                }
-                for registro in registros_asistencia
-            ]
-            return jsonify({"tipo": "modificacion", "datos": asistencia_data})
-
-        # ====================================================================
-        # MODIFICACIÓN 2: Filtramos empleados del área ADMINISTRATIVO que aún no 
-        # tienen asistencia, asegurando que su estado laboral no sea 'CESADO'.
-        # ====================================================================
-        empleados_sin_asistencia = db.session.query(Empleado).filter(
-            ~Empleado.id_empleado.in_(
-                db.session.query(EmpleadoAdministrativo.id_empleado).filter(
-                    EmpleadoAdministrativo.mes == mes_consulta
-                )
-            ),
-            Empleado.area.in_(['ADMINSTRATIVO']), # Se mantiene el nombre de área de tu código original
-            Empleado.estado != 'CESADO'  # <--- Filtro agregado aquí
-        ).all()
-
-        if not empleados_sin_asistencia:
-            return jsonify({"mensaje": "Todos los empleados ya tienen asistencia en este mes o no hay personal activo"}), 404
-
-        # Construir respuesta con empleados sin asistencia
-        empleados_data = [
-            {
-                "id_empleado": empleado.id_empleado,
-                "dni": empleado.dni,
-                "nombres": empleado.nombres,
-                "cargo": empleado.cargo,
-                "cod_ope": empleado.cod_ope
-            }
-            for empleado in empleados_sin_asistencia
-        ]
-
-        return jsonify({"tipo": "nueva_asistencia", "datos": empleados_data})
-
-    except Exception as e:
-        return jsonify({"error": "Error al obtener asistencia", "detalles": str(e)}), 500
-
-
-@app.route('/guardar-asistencia-detalle-administrativo_1', methods=['POST'])
-def guardar_asistencia_detalle_administrativo_1():
-    try:
-        data = request.get_json()
-        print("\n🔍 JSON recibido:", data)  # ✅ Depuración
-
-        if not data or "asistencias" not in data:
-            mensaje_error = "Clave 'asistencias' no encontrada en JSON"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        asistencias = data['asistencias']
-        if not asistencias:
-            mensaje_error = "Lista de asistencias vacía"
-            print(f"🚨 ERROR: {mensaje_error}")
-            return jsonify({'success': False, 'message': mensaje_error}), 400
-
-        tablas = [
-            EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
-            EmpleadoMedidores, EmpleadoCatastro, EmpleadoRecaudacion, EmpleadoPersuasivas, EmpleadoNorte
-        ]
-
-        for asistencia in asistencias:
-            print("\n📌 Procesando asistencia:", asistencia)  # ✅ Depuración
-
-            if "fecha" not in asistencia or "id_empleado" not in asistencia or "mes" not in asistencia:
-                mensaje_error = "Faltan datos obligatorios en la asistencia"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': mensaje_error}), 400
-
+                id_emp = int(a['id_empleado'])
+                fecha = datetime.strptime(str(a['fecha']).strip(), '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                return jsonify({'success': False, 'message': f"Datos inválidos en asistencia: {a}"}), 400
             try:
-                fecha = datetime.strptime(asistencia['fecha'], '%Y-%m-%d').date()
-            except ValueError:
-                mensaje_error = f"Formato de fecha inválido -> {asistencia['fecha']}"
-                print(f"🚨 ERROR: {mensaje_error}")
-                return jsonify({'success': False, 'message': "Formato de fecha inválido. Use 'YYYY-MM-DD'"}), 400
-
-            id_empleado = asistencia['id_empleado']
-            print(f"👤 Verificando asistencia de empleado {id_empleado} para {fecha}")
-
-            for tabla in tablas: 
-                asistencia_existente_otras = tabla.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-                if asistencia_existente_otras:
-                    # Obtener el nombre del empleado desde la tabla principal (Empleado)
-                    empleado = Empleado.query.filter_by(id_empleado=id_empleado).first()
-                    nombre_empleado = f"{empleado.nombres}" if empleado else f"ID {id_empleado}"
-
-                    mensaje_error = f"El empleado {nombre_empleado} ya cuenta con asistencia en la fecha {fecha} en el área {tabla.__name__}."
-                    print(f"🚨 ERROR: {mensaje_error}")
-
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-            asistencia_existente = EmpleadoAdministrativo.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-            if asistencia_existente:
-                print(f"✏️ Actualizando asistencia existente para {id_empleado}")
-                asistencia_existente.estado = asistencia.get('estado', asistencia_existente.estado).strip() or None
-                asistencia_existente.pasajes = asistencia.get('pasajes', asistencia_existente.pasajes)
-                asistencia_existente.ruta = asistencia.get('ruta', asistencia_existente.ruta)
-                asistencia_existente.viaticos = asistencia.get('viaticos', asistencia_existente.viaticos)
-            else:
-                print(f"➕ Creando nueva asistencia para {id_empleado}")
-                empleado_original = Empleado.query.filter_by(id_empleado=id_empleado).first()
-
-                if not empleado_original:
-                    mensaje_error = f"Empleado {id_empleado} no encontrado"
-                    print(f"🚨 ERROR: {mensaje_error}")
-                    return jsonify({'success': False, 'message': mensaje_error}), 400
-
-                nuevo_registro = EmpleadoAdministrativo(
-                    id_empleado=empleado_original.id_empleado,
-                    nombres=empleado_original.nombres,
-                    dni=empleado_original.dni,
-                    cargo=empleado_original.cargo,
-                    area=empleado_original.area,
-                    mes=asistencia['mes'],
-                    fec_asist=fecha,
-                    estado=asistencia.get('estado', '').strip() or None,
-                    pasajes=asistencia.get('pasajes', 0) or 0.00,
-                    ruta=asistencia.get('ruta', '').strip() or None,
-                    viaticos=asistencia.get('viaticos', 0) or 0.00
-                )
-                db.session.add(nuevo_registro)
-
+                viaticos = float(a.get('viaticos') or 0)
+            except (ValueError, TypeError):
+                viaticos = 0.0
+            r = {
+                'id_empleado': id_emp, 'fecha': fecha, 'mes': a.get('mes'),
+                'estado': (a.get('estado') or '').strip() or None,
+                'pasajes': _normalizar_pasajes(a.get('pasajes'), numerico),
+                'ruta': (a.get('ruta') or '').strip() or None,
+                'viaticos': viaticos,
+            }
+            score = _puntaje(r['estado'], r['pasajes'], r['ruta'], r['viaticos'])
+            if score == 0:
+                continue
+            clave = (id_emp, fecha)
+            previo = unicas.get(clave)
+            if previo is not None:
+                repetidas += 1
+                if score < _puntaje(previo['estado'], previo['pasajes'], previo['ruta'], previo['viaticos']):
+                    continue
+            unicas[clave] = r
+ 
+        if not unicas:
+            return jsonify({'success': False, 'message': 'No hay asistencias con datos válidos para guardar.'}), 400
+        if repetidas:
+            print(f"⚠️ [{cfg['nombre']}] {repetidas} filas repetidas en el JSON fueron ignoradas")
+ 
+        validas = list(unicas.values())
+        fechas = {r['fecha'] for r in validas}
+        ids = list({r['id_empleado'] for r in validas})
+        dict_empleados = {e.id_empleado: e for e in Empleado.query.filter(Empleado.id_empleado.in_(ids)).all()}
+ 
+        # 2. ¿Ya tiene asistencia en otra área ese mismo día?
+        if cfg.get('valida_otras', True):
+            conflictos = set()
+            for T in cfg['otras_tablas']:
+                for reg in T.query.filter(T.fec_asist.in_(fechas), T.id_empleado.in_(ids)).all():
+                    if (reg.id_empleado, reg.fec_asist) in unicas:
+                        conflictos.add((reg.id_empleado, reg.fec_asist, T.__name__))
+            if conflictos:
+                detalles = []
+                for emp_id, fec, tabla in sorted(conflictos, key=lambda x: (x[1], x[0])):
+                    emp = dict_empleados.get(emp_id)
+                    detalles.append(f"{emp.nombres if emp else f'ID {emp_id}'} ({fec}) en {tabla}")
+                msg = "Los siguientes empleados ya cuentan con asistencia en otras áreas: " + ", ".join(detalles)
+                print(f"🚨 [{cfg['nombre']}] {msg}")
+                return jsonify({'success': False, 'message': msg}), 400
+ 
+        # 3. Existentes en esta área
+        existentes = {}
+        for e in M.query.filter(M.fec_asist.in_(fechas), M.id_empleado.in_(ids)).all():
+            existentes.setdefault((e.id_empleado, e.fec_asist), e)
+ 
+        # 4. Actualizar o crear
+        creados = actualizados = 0
+        for r in validas:
+            clave = (r['id_empleado'], r['fecha'])
+            reg = existentes.get(clave)
+            if reg:
+                reg.estado, reg.pasajes, reg.ruta, reg.viaticos = r['estado'], r['pasajes'], r['ruta'], r['viaticos']
+                actualizados += 1
+                continue
+            emp = dict_empleados.get(r['id_empleado'])
+            if not emp:
+                db.session.rollback()
+                return jsonify({'success': False, 'message': f"Empleado {r['id_empleado']} no encontrado en la base maestra"}), 400
+            campos = dict(
+                id_empleado=emp.id_empleado, nombres=emp.nombres, dni=emp.dni,
+                cargo=emp.cargo, area=emp.area, mes=r['mes'], fec_asist=r['fecha'],
+                estado=r['estado'], pasajes=r['pasajes'], ruta=r['ruta'], viaticos=r['viaticos'],
+            )
+            if hasattr(M, 'cod_ope'):
+                campos['cod_ope'] = emp.cod_ope
+            nuevo = M(**campos)
+            db.session.add(nuevo)
+            existentes[clave] = nuevo
+            creados += 1
+ 
         db.session.commit()
-        mensaje_exito = "Registros guardados correctamente en EmpleadoAdministrativo."
-        print(f"✅ {mensaje_exito}")
-        return jsonify({'success': True, 'message': mensaje_exito})
-
+        msg = f"{cfg['nombre']}: {creados} creados, {actualizados} actualizados."
+        if repetidas:
+            msg += f" ({repetidas} filas repetidas ignoradas)"
+        print(f"✅ {msg}")
+        return jsonify({'success': True, 'message': msg})
+ 
     except SQLAlchemyError as e:
         db.session.rollback()
-        mensaje_error = f"Error en la base de datos: {str(e)}"
-        print(f"❌ ERROR SQL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
+        print(f"❌ [{cfg['nombre']}] ERROR SQL: {e}")
+        return jsonify({'success': False, 'message': f"Error en la base de datos: {e}"}), 500
     except Exception as e:
         db.session.rollback()
-        mensaje_error = f"Error inesperado: {str(e)}"
-        print(f"❌ ERROR GENERAL: {mensaje_error}")
-        return jsonify({'success': False, 'message': mensaje_error}), 500
-
-
-@app.route('/eliminar-asistencia-administrativo_1', methods=['POST'])
-def eliminar_asistencia_administrativo_1():
+        import traceback
+        print(f"❌ [{cfg['nombre']}] ERROR: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f"Error inesperado: {e}"}), 500
+ 
+ 
+def _eliminar_asistencia(cfg):
+    M = cfg['modelo']
     try:
-        data = request.get_json()
-        id_empleado = data.get('id_empleado')
-        fecha = data.get('fecha')
-
-        if not id_empleado or not fecha:
+        data = request.get_json(silent=True) or {}
+        fecha_str = data.get('fecha')
+        try:
+            id_empleado = int(data.get('id_empleado'))
+            fecha = datetime.strptime(str(fecha_str), '%Y-%m-%d').date()
+        except (TypeError, ValueError):
             return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
-
-        # Buscar el registro en la base de datos
-        asistencia = EmpleadoAdministrativo.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).first()
-
-        if not asistencia:
+ 
+        # .all(): si hay duplicados se borran todos (antes solo el primero y "reaparecía")
+        registros = M.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).all()
+        if not registros:
             return jsonify({'success': False, 'message': 'No se encontró el registro de asistencia'}), 404
-
-        # Obtener el nombre del empleado desde la tabla general Empleado
+ 
         empleado = Empleado.query.get(id_empleado)
-        nombre_empleado = empleado.nombres if empleado else f'ID {id_empleado}'
-
-        # Eliminar el registro
-        db.session.delete(asistencia)
+        nombre = empleado.nombres if empleado else f'ID {id_empleado}'
+ 
+        for r in registros:
+            db.session.delete(r)
         db.session.commit()
-
-        # Registrar evento en auditoría
+ 
         if 'user_id' in session:
             registrar_evento(
                 user_id=session['user_id'],
                 usuario=session['user_name'],
                 evento='eliminar_asistencia',
-                modulo=f"Administrativo | Fecha: {fecha} | Empleado: {nombre_empleado}"
+                modulo=f"{cfg['nombre']} | Fecha: {fecha_str} | Empleado: {nombre}"
             )
-
         return jsonify({'success': True, 'message': 'Registro eliminado correctamente'})
-
+ 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error al eliminar: {str(e)}'})
+        return jsonify({'success': False, 'message': f'Error al eliminar: {e}'}), 500
+ 
+ 
+# ----------------------------------------------------------------------------
+# REGISTRO DE RUTAS (mismas URLs y endpoints que antes)
+# ----------------------------------------------------------------------------
+def _registrar_rutas_asistencia():
+    for clave, cfg in ASISTENCIA_AREAS.items():
+        def filtrar(cfg=cfg):
+            return _filtrar_empleados(cfg)
+ 
+        def cargar(cfg=cfg):
+            return _cargar_asistencia(cfg)
+ 
+        def guardar(cfg=cfg):
+            return _guardar_asistencia(cfg)
+ 
+        def eliminar(cfg=cfg):
+            return _eliminar_asistencia(cfg)
+ 
+        if clave == 'recaudacion':
+            filtrar = log_evento("acceso_modulo")(filtrar)   # como estaba antes
+ 
+        app.add_url_rule(f"/filtrar-empleados{cfg['url']}", endpoint=f"filtrar_empleado{cfg['ep']}",
+                         view_func=filtrar, methods=['GET'])
+        app.add_url_rule(f"/cargar-asistencia{cfg['url']}", endpoint=f"cargar_asistencia{cfg['ep']}",
+                         view_func=cargar, methods=['GET'])
+        app.add_url_rule(f"/guardar-asistencia-detalle{cfg['url']}", endpoint=f"guardar_asistencia_detalle{cfg['ep']}",
+                         view_func=guardar, methods=['POST'])
+        app.add_url_rule(f"/eliminar-asistencia{cfg['url']}", endpoint=f"eliminar_asistencia{cfg['ep']}",
+                         view_func=eliminar, methods=['POST'])
+ 
+ 
+_registrar_rutas_asistencia()
+ 
+ 
+@app.route('/añadir-empleados', methods=['GET'])
+def filtrar_empleados_añadir():
+    empleados = Empleado.query.filter(Empleado.estado != 'CESADO').all()
+    return jsonify([_empleado_basico(e) for e in empleados])
+ 
+ 
+# ----------------------------------------------------------------------------
+# LIMPIEZA DE DUPLICADOS (comando de consola, no es una ruta web)
+#   Simulación:  flask limpiar-duplicados-asistencia
+#   Aplicar:     flask limpiar-duplicados-asistencia --aplicar
+# Conserva por cada (empleado, fecha) el registro más completo; si empatan,
+# el más reciente (id más alto).
+# ----------------------------------------------------------------------------
+@app.cli.command('limpiar-duplicados-asistencia')
+@click.option('--aplicar', is_flag=True, help='Borra de verdad (sin esto solo muestra lo que haría).')
+def limpiar_duplicados_asistencia(aplicar):
+    total = 0
+    sentencias = []
+    for clave, cfg in ASISTENCIA_AREAS.items():
+        M, pk = cfg['modelo'], cfg['pk']
+        grupos = (db.session.query(M.id_empleado, M.fec_asist, func.count())
+                  .group_by(M.id_empleado, M.fec_asist)
+                  .having(func.count() > 1)
+                  .all())
+        borrar_area = 0
+        for id_emp, fec, _n in grupos:
+            filas = M.query.filter_by(id_empleado=id_emp, fec_asist=fec).all()
+            filas.sort(key=lambda r: (_puntaje_registro(r), getattr(r, pk)), reverse=True)
+            for r in filas[1:]:
+                borrar_area += 1
+                if aplicar:
+                    db.session.delete(r)
+        if aplicar:
+            db.session.commit()
+        total += borrar_area
+        print(f"{cfg['nombre']:<28} grupos duplicados: {len(grupos):>5}   registros a borrar: {borrar_area:>6}")
+ 
+        tabla = M.__tablename__
+        col_emp = M.id_empleado.expression.name
+        col_fec = M.fec_asist.expression.name
+        sentencias.append(f"ALTER TABLE `{tabla}` ADD UNIQUE KEY `uq_{tabla}_emp_fecha` (`{col_emp}`, `{col_fec}`);")
+ 
+    print("-" * 70)
+    print(f"TOTAL: {total} registros {'BORRADOS' if aplicar else 'se borrarían (simulación)'}")
+    if aplicar:
+        print("\nAhora ejecuta en MySQL para que no vuelva a pasar:\n")
+        print("\n".join(sentencias))
+    else:
+        print("\nPara aplicar:  flask limpiar-duplicados-asistencia --aplicar")
    
 
 
