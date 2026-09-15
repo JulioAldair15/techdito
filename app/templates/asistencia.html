@@ -1,0 +1,55 @@
+{% macro seccion_asistencia(area, titulo, sufijo=none, btn_agregar=none) %}
+{% set s = ('-' ~ area) if sufijo is none else sufijo %}
+{% set meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}
+<div id="{{ area }}" class="section smart-section">
+ 
+    <!-- Inputs ocultos: Vitales para que el JS envíe la fecha correcta al backend -->
+    <div style="display: none;">
+        <select name="mes" id="mes{{ s }}">
+            {% for m in meses %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+        </select>
+        <input type="date" id="fecha{{ s }}" name="fecha">
+    </div>
+ 
+    <div class="smart-page-header">
+        <div class="smart-header-titles">
+            <h2>{{ titulo }}</h2>
+            <button type="button" class="smart-btn-volver" onclick="volverAlCalendario('{{ area }}')">
+                <i class="fas fa-arrow-left"></i> Volver al Calendario
+            </button>
+        </div>
+        <div class="smart-header-actions">
+            <button type="button" class="smart-btn-leyenda" onclick="abrirModalLeyendas('modal-leyendas')">
+                <i class="fas fa-info-circle"></i> Ver Leyendas
+            </button>
+        </div>
+    </div>
+ 
+    <div class="smart-table-scroll-container">
+        <table class="empleados-table{{ s }} smart-table-modern">
+            <thead>
+                <tr>
+                    <th>N°</th><th>DNI</th><th>NOMBRES Y APELLIDOS</th><th>CARGO</th>
+                    <th>ASISTENCIA</th><th>PASAJES</th><th>VIÁTICOS</th><th>RUTA</th><th>ACCIÓN</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+ 
+    <div class="smart-add-employee-bar">
+        <label>Agregar Personal Extra:</label>
+        <div class="smart-add-employee-inputs">
+            <div class="smart-search-wrapper">
+                <select id="nuevo-empleado-selector{{ s }}"></select>
+            </div>
+            <button id="{{ btn_agregar or ('agregar-empleado-btn' ~ s) }}" class="smart-btn-icon-add" title="Agregar Registro">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>
+        <button type="submit" class="btn{{ s }} smart-btn-guardar-principal">
+            <i class="fas fa-save"></i> GUARDAR ASISTENCIA
+        </button>
+    </div>
+</div>
+{% endmacro %}
