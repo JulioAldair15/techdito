@@ -11701,181 +11701,241 @@ def obtener_detalle_carta(carta_id):
 
 ######## PRODUCCION ########
 def parse_fecha(fecha_str):
-    if not fecha_str or fecha_str == "-": return None
-    try: return datetime.strptime(fecha_str.strip(), "%d/%m/%Y").date()
-    except ValueError: return None
-
+    if not fecha_str or str(fecha_str).strip() == "-":
+        return None
+    try:
+        return datetime.strptime(str(fecha_str).strip(), "%d/%m/%Y").date()
+    except ValueError:
+        return None
+ 
+ 
 def parse_hora(hora_str):
-    if not hora_str or str(hora_str).strip() == "-" or str(hora_str).strip() == "": 
-        return None 
+    if not hora_str or str(hora_str).strip() in ("-", ""):
+        return None
     limpio = str(hora_str).strip()
-    formatos = ["%H:%M:%S", "%H:%M"]
-    for formato in formatos:
+    for formato in ("%H:%M:%S", "%H:%M"):
         try:
             return datetime.strptime(limpio, formato).time()
         except ValueError:
-            pass 
+            pass
     return None
-
-# Función mejorada para ESTE, NORTE y otros decimales normales
+ 
+ 
 def parse_decimal(num_str):
-    if not num_str or str(num_str).strip() == "-" or str(num_str).strip() == "": 
+    """Para ESTE, NORTE y otros decimales normales."""
+    if num_str is None or str(num_str).strip() in ("-", ""):
         return None
-    try: 
+    try:
         limpio = str(num_str).replace(",", ".").strip()
         limpio = re.sub(r'[^\d.-]', '', limpio)
         return float(limpio)
-    except ValueError: 
+    except ValueError:
         return None
-
-# 🔥 EL NUEVO CEREBRO GEOESPACIAL PARA ARREGLAR EXCEL ROTOS 🔥
-def reparar_coordenada(valor_str, tipo):
-    if not valor_str or str(valor_str).strip() == "-" or str(valor_str).strip() == "":
+ 
+ 
+# ---------------------------------------------------------------------------
+# COORDENADAS
+# ---------------------------------------------------------------------------
+def utm_a_latlon(este, norte, zona=17, hemisferio_sur=True):
+    """Convierte UTM (WGS84) a (lat, lon). Sin librerías externas.
+    Zona 17S = Chepén, Trujillo y toda la costa norte."""
+    a = 6378137.0
+    f = 1 / 298.257223563
+    k0 = 0.9996
+    e2 = f * (2 - f)
+    ep2 = e2 / (1 - e2)
+ 
+    x = este - 500000.0
+    y = norte - 10000000.0 if hemisferio_sur else norte
+ 
+    m = y / k0
+    mu = m / (a * (1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256))
+    e1 = (1 - math.sqrt(1 - e2)) / (1 + math.sqrt(1 - e2))
+    phi1 = (mu
+            + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * math.sin(2 * mu)
+            + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * math.sin(4 * mu)
+            + (151 * e1 ** 3 / 96) * math.sin(6 * mu)
+            + (1097 * e1 ** 4 / 512) * math.sin(8 * mu))
+ 
+    sin1, cos1, tan1 = math.sin(phi1), math.cos(phi1), math.tan(phi1)
+    n1 = a / math.sqrt(1 - e2 * sin1 ** 2)
+    t1 = tan1 ** 2
+    c1 = ep2 * cos1 ** 2
+    r1 = a * (1 - e2) / (1 - e2 * sin1 ** 2) ** 1.5
+    d = x / (n1 * k0)
+ 
+    lat = phi1 - (n1 * tan1 / r1) * (
+        d ** 2 / 2
+        - (5 + 3 * t1 + 10 * c1 - 4 * c1 ** 2 - 9 * ep2) * d ** 4 / 24
+        + (61 + 90 * t1 + 298 * c1 + 45 * t1 ** 2 - 252 * ep2 - 3 * c1 ** 2) * d ** 6 / 720)
+    lon = (d
+           - (1 + 2 * t1 + c1) * d ** 3 / 6
+           + (5 - 2 * c1 + 28 * t1 - 3 * c1 ** 2 + 8 * ep2 + 24 * t1 ** 2) * d ** 5 / 120) / cos1
+ 
+    lon0 = (zona - 1) * 6 - 180 + 3
+    return round(math.degrees(lat), 8), round(lon0 + math.degrees(lon), 8)
+ 
+ 
+def reparar_coordenada(valor, tipo):
+    """Interpreta lat/lon escritas con coma, punto o rotas por Excel.
+    Nunca devuelve un valor fuera de rango (en ese caso devuelve None)."""
+    if valor is None:
         return None
-
-    texto = str(valor_str).strip()
-    # Si el dato ya viene perfecto de origen, lo pasamos directo
-    if '.' in texto and texto.count('.') == 1 and ',' not in texto:
-        try: return float(texto)
-        except: pass
-
-    # Limpiamos basura: Quitamos comas, puntos y letras.
-    limpio = re.sub(r'[^\d-]', '', texto)
-    
-    if not limpio or limpio == "-":
+    texto = str(valor).strip().replace('−', '-').replace('–', '-').replace('—', '-')
+    if texto in ('', '-'):
         return None
-
+ 
+    limite = 90 if tipo == 'latitud' else 180
+ 
+    # 1) Intento directo: "-8.0815", "-8,0815", -8.0815 (número)
     try:
-        # Reconstrucción matemática basada en la geografía de tu zona
-        if tipo == 'latitud':
-            # La latitud siempre empieza con 1 dígito (-7 o -8)
-            if limpio.startswith('-'):
-                entero = limpio[:2]
-                decimal = limpio[2:]
-                return float(f"{entero}.{decimal}")
-                
-        elif tipo == 'longitud':
-            # La longitud siempre empieza con 2 dígitos (-79)
-            if limpio.startswith('-'):
-                entero = limpio[:3]
-                decimal = limpio[3:]
-                return float(f"{entero}.{decimal}")
-                
-        return float(limpio)
-    except Exception as e:
-        print(f"Error reparando coordenada {valor_str}: {e}")
+        v = float(texto.replace(',', '.'))
+        if -limite <= v <= limite:
+            return round(v, 8)
+    except ValueError:
+        pass
+ 
+    # 2) Reconstrucción por dígitos (en Perú lat y lon siempre son negativas)
+    digitos = re.sub(r'\D', '', texto)
+    if not digitos:
         return None
-
-
+    n_enteros = 2 if (tipo == 'longitud' or digitos.startswith('1')) else 1
+    try:
+        v = -float(f"{digitos[:n_enteros]}.{digitos[n_enteros:] or '0'}")
+    except ValueError:
+        return None
+    return round(v, 8) if -limite <= v <= limite else None
+ 
+ 
+def resolver_coordenadas(lat_txt, lon_txt, este, norte, ref=""):
+    """Devuelve (lat, lon) confiables. Si hay UTM válido, se usa para verificar."""
+    lat = reparar_coordenada(lat_txt, 'latitud')
+    lon = reparar_coordenada(lon_txt, 'longitud')
+ 
+    utm_valido = (este is not None and norte is not None
+                  and 100000 <= este <= 900000 and 0 < norte < 10000000)
+    if utm_valido:
+        lat_utm, lon_utm = utm_a_latlon(este, norte)
+        # Falta alguna o difiere más de ~1 km -> confiamos en el UTM
+        if lat is None or lon is None or abs(lat - lat_utm) > 0.01 or abs(lon - lon_utm) > 0.01:
+            if lat_txt not in (None, "", "-") or lon_txt not in (None, "", "-"):
+                print(f"[produccion] {ref} coordenada corregida por UTM: "
+                      f"{lat_txt!r},{lon_txt!r} -> {lat_utm},{lon_utm}")
+            return lat_utm, lon_utm
+ 
+    return lat, lon
+ 
+ 
+# ---------------------------------------------------------------------------
+# RUTA
+# ---------------------------------------------------------------------------
 @app.route('/cargar_produccion_csv', methods=['POST'])
 def cargar_produccion_csv():
     try:
         datos_csv = request.get_json()
         if not datos_csv:
             return jsonify({"error": "No se recibieron datos"}), 400
-
-        # Ahora el JSON SIEMPRE viene estandarizado con la llave 'cod_perd'
-        codigos_entrantes = [
-            fila.get("cod_perd", "").strip() 
-            for fila in datos_csv 
-            if fila.get("cod_perd", "").strip()
-        ]
-
+ 
+        def txt(fila, clave):
+            v = fila.get(clave)
+            return "" if v is None else str(v).strip()
+ 
+        # Códigos ya existentes en BD (para omitir duplicados)
+        codigos_entrantes = [txt(f, "cod_perd") for f in datos_csv if txt(f, "cod_perd")]
         set_codigos_existentes = set()
         if codigos_entrantes:
-            resultados = db.session.query(Produccion.cod_perd).filter(Produccion.cod_perd.in_(codigos_entrantes)).all()
+            resultados = (db.session.query(Produccion.cod_perd)
+                          .filter(Produccion.cod_perd.in_(codigos_entrantes)).all())
             set_codigos_existentes = {res[0] for res in resultados}
-
-        # CEREBRO: Búsqueda de empleados
-        todos_empleados = Empleado.query.all()
+ 
+        # Memoria de empleados para asociar operario_csv
         memoria_empleados = []
-        for emp in todos_empleados:
+        for emp in Empleado.query.all():
             nombre_completo = f"{emp.nombres or ''} {emp.apellidos or ''}".upper().replace(',', ' ')
-            palabras_clave = set(nombre_completo.split())
-            memoria_empleados.append({
-                'id': emp.id_empleado,
-                'palabras': palabras_clave
-            })
-
+            memoria_empleados.append({'id': emp.id_empleado, 'palabras': set(nombre_completo.split())})
+ 
         registros_omitidos = 0
+        coordenadas_corregidas = 0
         nuevos_registros_a_guardar = []
-
+ 
         for fila in datos_csv:
-            suministro = fila.get("suministro", "").strip()
+            suministro = txt(fila, "suministro")
             if not suministro:
                 continue
-
-            cod_perd = fila.get("cod_perd", "").strip()
+ 
+            cod_perd = txt(fila, "cod_perd")
             if cod_perd and cod_perd in set_codigos_existentes:
                 registros_omitidos += 1
                 continue
-            
             if cod_perd:
                 set_codigos_existentes.add(cod_perd)
-
-            operario_csv = fila.get("operario_csv", "").strip().upper()
+ 
+            # Empleado
+            operario_csv = txt(fila, "operario_csv").upper()
             empleado_id = None
-
             if operario_csv:
                 palabras_csv = set(operario_csv.replace(',', ' ').split())
                 mejor_coincidencia = 0
                 candidatos = []
-                
                 for emp in memoria_empleados:
-                    coincidencias = len(palabras_csv.intersection(emp['palabras']))
-                    
+                    coincidencias = len(palabras_csv & emp['palabras'])
                     if coincidencias >= 2:
                         if coincidencias > mejor_coincidencia:
                             mejor_coincidencia = coincidencias
                             candidatos = [emp['id']]
                         elif coincidencias == mejor_coincidencia:
                             candidatos.append(emp['id'])
-                
                 if len(candidatos) == 1:
                     empleado_id = candidatos[0]
-
-            # Instanciamos el objeto aplicando los filtros de datos
-            nueva_produccion = Produccion(
+ 
+            # Coordenadas
+            este = parse_decimal(fila.get("este"))
+            norte = parse_decimal(fila.get("norte"))
+            lat_directa = reparar_coordenada(fila.get("latitud"), 'latitud')
+            lon_directa = reparar_coordenada(fila.get("longitud"), 'longitud')
+            latitud, longitud = resolver_coordenadas(
+                fila.get("latitud"), fila.get("longitud"), este, norte,
+                ref=f"suministro={suministro} cod_perd={cod_perd}")
+            if (latitud, longitud) != (lat_directa, lon_directa):
+                coordenadas_corregidas += 1
+ 
+            nuevos_registros_a_guardar.append(Produccion(
                 suministro=suministro,
-                ciclo=fila.get("ciclo", ""),
-                localidad=fila.get("localidad", ""),
-                urba=fila.get("urba", ""),
-                calle=fila.get("calle", ""),
-                nromuni=fila.get("nromuni", ""),
-                
+                ciclo=txt(fila, "ciclo"),
+                localidad=txt(fila, "localidad"),
+                urba=txt(fila, "urba"),
+                calle=txt(fila, "calle"),
+                nromuni=txt(fila, "nromuni"),
+ 
                 operario_csv=operario_csv,
                 id_empleado=empleado_id,
-                
+ 
                 fecha_inicio=parse_fecha(fila.get("fecha_inicio")),
                 hora_ini=parse_hora(fila.get("hora_ini")),
                 fecha_fin=parse_fecha(fila.get("fecha_fin")),
                 hora_fin=parse_hora(fila.get("hora_fin")),
-                
-                actividad=fila.get("actividad", ""),
+ 
+                actividad=txt(fila, "actividad"),
                 cod_perd=cod_perd,
-                
-                este=parse_decimal(fila.get("este")),
-                norte=parse_decimal(fila.get("norte")),
-                
-                # 🔥 AQUÍ APLICAMOS LA REPARACIÓN INTELIGENTE DE COORDENADAS 🔥
-                latitud=reparar_coordenada(fila.get("latitud"), 'latitud'),
-                longitud=reparar_coordenada(fila.get("longitud"), 'longitud')
-            )
-
-            nuevos_registros_a_guardar.append(nueva_produccion)
-
+ 
+                este=este,
+                norte=norte,
+                latitud=latitud,
+                longitud=longitud,
+            ))
+ 
         if nuevos_registros_a_guardar:
             db.session.bulk_save_objects(nuevos_registros_a_guardar)
             db.session.commit()
-
-        registros_creados = len(nuevos_registros_a_guardar)
-
-        mensaje_final = f"Se guardaron {registros_creados} registros."
-        if registros_omitidos > 0:
+ 
+        mensaje_final = f"Se guardaron {len(nuevos_registros_a_guardar)} registros."
+        if registros_omitidos:
             mensaje_final += f" Se omitieron {registros_omitidos} duplicados."
-
+        if coordenadas_corregidas:
+            mensaje_final += f" Se corrigieron {coordenadas_corregidas} coordenadas usando Este/Norte."
+ 
         return jsonify({"status": "success", "mensaje": mensaje_final}), 200
-
+ 
     except Exception as e:
         db.session.rollback()
         print(f"Error al guardar producción: {e}")
