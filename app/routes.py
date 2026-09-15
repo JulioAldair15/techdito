@@ -808,6 +808,12 @@ def _guardar_asistencia(cfg):
  
         validas = list(unicas.values())
         fechas = {r['fecha'] for r in validas}
+ 
+        # 🔒 Periodo cerrado => no se registra (el backend manda, no el navegador)
+        bloqueo = _mensaje_periodo_bloqueado(fechas)
+        if bloqueo:
+            return jsonify({'success': False, 'bloqueado': True, 'message': bloqueo}), 403
+ 
         ids = list({r['id_empleado'] for r in validas})
         dict_empleados = {e.id_empleado: e for e in Empleado.query.filter(Empleado.id_empleado.in_(ids)).all()}
  
@@ -887,6 +893,10 @@ def _eliminar_asistencia(cfg):
         except (TypeError, ValueError):
             return jsonify({'success': False, 'message': 'Datos insuficientes'}), 400
  
+        bloqueo = _mensaje_periodo_bloqueado({fecha})
+        if bloqueo:
+            return jsonify({'success': False, 'bloqueado': True, 'message': bloqueo}), 403
+ 
         # .all(): si hay duplicados se borran todos (antes solo el primero y "reaparecía")
         registros = M.query.filter_by(fec_asist=fecha, id_empleado=id_empleado).all()
         if not registros:
@@ -951,14 +961,184 @@ def filtrar_empleados_añadir():
     empleados = Empleado.query.filter(Empleado.estado != 'CESADO').all()
     return jsonify([_empleado_basico(e) for e in empleados])
  
+import re
+from datetime import date, timedelta
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:          # Python < 3.9
+    ZoneInfo = None
  
-# ----------------------------------------------------------------------------
-# LIMPIEZA DE DUPLICADOS (comando de consola, no es una ruta web)
-#   Simulación:  flask limpiar-duplicados-asistencia
-#   Aplicar:     flask limpiar-duplicados-asistencia --aplicar
-# Conserva por cada (empleado, fecha) el registro más completo; si empatan,
-# el más reciente (id más alto).
-# ----------------------------------------------------------------------------
+ADMINS_PERIODO = ('supervisor1', 'administrativo_yta')
+ADMINS_SALTAN_BLOQUEO = True        # los admins pueden registrar aunque el periodo esté cerrado
+DIAS_GRACIA = 0                     # días extra después del 25 (0 = cierra el 26 a las 00:00)
+HORAS_REAPERTURA = (24, 48, 72)
+ 
+ 
+class PeriodoAsistencia(db.Model):   # (si prefieres, muévelo a models.py)
+    __tablename__ = 'periodo_asistencia'
+    id = db.Column(db.Integer, primary_key=True)
+    periodo = db.Column(db.String(7), unique=True, nullable=False)
+    modo = db.Column(db.String(10), nullable=False)
+    abierto_hasta = db.Column(db.DateTime, nullable=True)
+    motivo = db.Column(db.String(255), nullable=True)
+    actualizado_por = db.Column(db.String(100), nullable=True)
+    actualizado_en = db.Column(db.DateTime, nullable=True)
+ 
+ 
+def _ahora_lima():
+    """Hora de Lima sin tzinfo (el servidor puede estar en UTC)."""
+    if ZoneInfo:
+        try:
+            return datetime.now(ZoneInfo('America/Lima')).replace(tzinfo=None)
+        except Exception:
+            pass
+    return datetime.utcnow() - timedelta(hours=5)
+ 
+ 
+def periodo_de_fecha(d):
+    """date -> 'YYYY-MM' del periodo al que pertenece."""
+    y, m = d.year, d.month
+    if d.day >= 26:
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return f"{y:04d}-{m:02d}"
+ 
+ 
+def rango_periodo(periodo):
+    y, m = map(int, periodo.split('-'))
+    py, pm = (y - 1, 12) if m == 1 else (y, m - 1)
+    return date(py, pm, 26), date(y, m, 25)
+ 
+ 
+def _es_admin_periodo():
+    return session.get('user_name') in ADMINS_PERIODO
+ 
+ 
+def estado_periodo(periodo, ahora=None):
+    ahora = ahora or _ahora_lima()
+    inicio, fin = rango_periodo(periodo)
+    automatico = inicio <= ahora.date() <= fin + timedelta(days=DIAS_GRACIA)
+ 
+    fila = PeriodoAsistencia.query.filter_by(periodo=periodo).first()
+    modo, abierto, hasta = 'automatico', automatico, None
+    if fila:
+        if fila.modo == 'CERRADO':
+            modo, abierto = 'cerrado_manual', False
+        elif fila.modo == 'ABIERTO' and fila.abierto_hasta and fila.abierto_hasta > ahora:
+            modo, abierto, hasta = 'reabierto', True, fila.abierto_hasta
+ 
+    es_admin = _es_admin_periodo()
+    return {
+        'periodo': periodo,
+        'inicio': inicio.isoformat(),
+        'fin': fin.isoformat(),
+        'abierto': abierto,
+        'modo': modo,                                   # automatico | reabierto | cerrado_manual
+        'abierto_hasta': hasta.strftime('%Y-%m-%d %H:%M') if hasta else None,
+        'en_curso': automatico,
+        'motivo': fila.motivo if fila and modo != 'automatico' else None,
+        'actualizado_por': fila.actualizado_por if fila and modo != 'automatico' else None,
+        'es_admin': es_admin,
+        'puede_registrar': abierto or (es_admin and ADMINS_SALTAN_BLOQUEO),
+    }
+ 
+ 
+def _mensaje_periodo_bloqueado(fechas):
+    """None si todas las fechas se pueden registrar; si no, el mensaje de error."""
+    if ADMINS_SALTAN_BLOQUEO and _es_admin_periodo():
+        return None
+    ahora = _ahora_lima()
+    cerrados = []
+    for p in sorted({periodo_de_fecha(f) for f in fechas}):
+        st = estado_periodo(p, ahora)
+        if not st['abierto']:
+            cerrados.append(f"{st['inicio']} al {st['fin']}")
+    if not cerrados:
+        return None
+    return ("🔒 El periodo de registro está cerrado (" + "; ".join(cerrados) + "). "
+            "Solicita la reapertura a " + " o ".join(ADMINS_PERIODO) + ".")
+ 
+ 
+@app.route('/asistencia/periodo', methods=['GET'])
+def api_estado_periodo():
+    """?fecha=YYYY-MM-DD  -> estado del periodo de esa fecha."""
+    try:
+        f = datetime.strptime(request.args.get('fecha', ''), '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': "Parámetro 'fecha' inválido (YYYY-MM-DD)"}), 400
+    return jsonify(estado_periodo(periodo_de_fecha(f)))
+ 
+ 
+@app.route('/asistencia/periodos-mes', methods=['GET'])
+def api_periodos_mes():
+    """?mes=YYYY-MM (mes del calendario) -> los 2 periodos que se ven en ese mes."""
+    mes = request.args.get('mes', '')
+    if not re.fullmatch(r'\d{4}-\d{2}', mes):
+        return jsonify({'error': "Parámetro 'mes' inválido (YYYY-MM)"}), 400
+    y, m = map(int, mes.split('-'))
+    siguiente = f"{y + 1:04d}-01" if m == 12 else f"{y:04d}-{m + 1:02d}"
+    ahora = _ahora_lima()
+    return jsonify({
+        'es_admin': _es_admin_periodo(),
+        'horas_reapertura': list(HORAS_REAPERTURA),
+        'periodos': [estado_periodo(mes, ahora), estado_periodo(siguiente, ahora)],  # días 1-25, días 26-fin
+    })
+ 
+ 
+@app.route('/asistencia/periodo', methods=['POST'])
+def api_cambiar_periodo():
+    if not _es_admin_periodo():
+        return jsonify({'success': False, 'message': 'No tienes permiso para cambiar periodos.'}), 403
+ 
+    data = request.get_json(silent=True) or {}
+    periodo = str(data.get('periodo', ''))
+    accion = data.get('accion')
+    motivo = (data.get('motivo') or '').strip()[:255] or None
+    if not re.fullmatch(r'\d{4}-\d{2}', periodo) or not (1 <= int(periodo[5:]) <= 12):
+        return jsonify({'success': False, 'message': 'Periodo inválido.'}), 400
+    if accion not in ('reabrir', 'cerrar', 'automatico'):
+        return jsonify({'success': False, 'message': 'Acción inválida.'}), 400
+ 
+    try:
+        ahora = _ahora_lima()
+        usuario = session.get('user_name')
+        fila = PeriodoAsistencia.query.filter_by(periodo=periodo).first()
+        detalle = accion
+ 
+        if accion == 'automatico':
+            if fila:
+                db.session.delete(fila)
+        else:
+            if not fila:
+                fila = PeriodoAsistencia(periodo=periodo)
+                db.session.add(fila)
+            fila.motivo, fila.actualizado_por, fila.actualizado_en = motivo, usuario, ahora
+            if accion == 'reabrir':
+                try:
+                    horas = int(data.get('horas', 24))
+                except (TypeError, ValueError):
+                    horas = 0
+                if horas not in HORAS_REAPERTURA:
+                    db.session.rollback()
+                    return jsonify({'success': False, 'message': f'Horas permitidas: {HORAS_REAPERTURA}'}), 400
+                fila.modo, fila.abierto_hasta = 'ABIERTO', ahora + timedelta(hours=horas)
+                detalle = f"reabrir {horas}h (hasta {fila.abierto_hasta:%Y-%m-%d %H:%M})"
+            else:
+                fila.modo, fila.abierto_hasta = 'CERRADO', None
+ 
+        db.session.commit()
+ 
+        inicio, fin = rango_periodo(periodo)
+        if 'user_id' in session:
+            registrar_evento(
+                user_id=session['user_id'], usuario=usuario, evento='periodo_asistencia',
+                modulo=f"Periodo {inicio} al {fin} | {detalle} | Motivo: {motivo or '-'}"
+            )
+        return jsonify({'success': True, 'estado': estado_periodo(periodo)})
+ 
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error en la base de datos: {e}'}), 500
+ 
 @app.cli.command('limpiar-duplicados-asistencia')
 @click.option('--aplicar', is_flag=True, help='Borra de verdad (sin esto solo muestra lo que haría).')
 def limpiar_duplicados_asistencia(aplicar):
