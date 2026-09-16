@@ -761,5 +761,24 @@ class CoordenadasCatastro(db.Model):
     coord_y = db.Column(db.Numeric(20, 8))
 
 
-
+class BitacoraAlmacen(db.Model):
+    __tablename__ = 'bitacora_almacen'
+ 
+    id_bitacora    = db.Column(db.Integer, primary_key=True)
+    fecha          = db.Column(db.DateTime, nullable=False, index=True)  
+    id_usuario     = db.Column(db.Integer, nullable=True, index=True)     
+    usuario_login  = db.Column(db.String(255))                            
+    usuario_nombre = db.Column(db.String(255))                            
+    ip             = db.Column(db.String(45))
+ 
+    accion         = db.Column(db.String(20), nullable=False, index=True) 
+    entidad        = db.Column(db.String(30), nullable=False)             
+    id_registro    = db.Column(db.String(100))
+    descripcion    = db.Column(db.String(500))
+    datos_antes    = db.Column(db.Text)                                   
+    datos_despues  = db.Column(db.Text)                                   
+ 
+    __table_args__ = (
+        db.Index('idx_bit_entidad_reg', 'entidad', 'id_registro'),
+    )
 
