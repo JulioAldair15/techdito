@@ -1,6 +1,6 @@
 import os
-from flask import Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CoordenadasCatastro, CargaDiaria
+from flask import g, Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CoordenadasCatastro, CargaDiaria, BitacoraAlmacen
 from flask_bcrypt import check_password_hash 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func, case
@@ -95,6 +95,9 @@ codecs.register(lambda name: codecs.lookup('utf-8') if name == 'unknown_codepage
 import math
 
 import click
+
+from decimal import Decimal
+from sqlalchemy import inspect as sa_inspect
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
@@ -7062,218 +7065,207 @@ def listar_empleados_select():
     return jsonify(data)
 
 
-# ==========================================
-# 🛠️ GESTIÓN DE ALMACEN
-# ==========================================
-@app.route('/almacen/eliminar-proveedor', methods=['POST'])
-def eliminar_proveedor():
-    try:
-        data = request.get_json()
-        proveedor = Proveedor.query.get(data.get('id_proveedor'))
-        
-        if not proveedor:
-            return jsonify({'error': 'Proveedor no encontrado'}), 404
+def ahora_lima():
+    """Hora de Perú sin tzinfo (formato que espera MySQL DATETIME). Usa tu LIMA_TZ."""
+    return datetime.now(LIMA_TZ).replace(tzinfo=None)
 
-        # Borrado Lógico: Cambiamos el estado
-        proveedor.estado = 'INACTIVO'
-        db.session.commit()
-        return jsonify({'mensaje': 'Proveedor inactivado correctamente'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/almacen/reactivar-proveedor', methods=['POST'])
-def reactivar_proveedor():
-    try:
-        data = request.get_json()
-        proveedor = Proveedor.query.get(data.get('id_proveedor'))
-        
-        if not proveedor:
-            return jsonify({'error': 'Proveedor no encontrado'}), 404
-
-        proveedor.estado = 'ACTIVO'
-        db.session.commit()
-        return jsonify({'mensaje': 'Proveedor reactivado correctamente'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-    
-
-@app.route('/almacen/api/unidades', methods=['POST'])
-def agregar_unidad():
-    try:
-        data = request.get_json()
-        nombre = data.get('nombre', '').strip().upper()
-
-        if not nombre:
-            return jsonify({'error': 'Nombre inválido'}), 400
-
-        # Comprobar si ya existe
-        existe = UnidadMedida.query.filter_by(nombre_unidad=nombre).first()
-        if existe:
-            return jsonify({'error': 'La unidad ya existe'}), 400
-
-        # Guardar en BD
-        nueva_unidad = UnidadMedida(nombre_unidad=nombre)
-        db.session.add(nueva_unidad)
-        db.session.commit()
-
-        return jsonify({'mensaje': 'Unidad guardada', 'unidad': nombre}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-
-
+# --------------------------------------------------------------------------
+# 👤 USUARIO ACTUAL (según tu login: session['user_id'] -> tabla usuario)
+# --------------------------------------------------------------------------
+def obtener_usuario_actual():
+    """
+    Devuelve {id_usuario, login, nombre, rol, id_empleado} o None si no hay sesión.
+    Se consulta la tabla Usuario una sola vez por request, así un cambio de rol
+    o un usuario dado de baja surte efecto de inmediato.
+    """
+    if 'usuario_almacen' in g:
+        return g.usuario_almacen
+ 
+    usuario = None
+    id_usuario = session.get('user_id')
+    if id_usuario:
+        u = Usuario.query.get(id_usuario)
+        if u:
+            usuario = {
+                "id_usuario": u.id_usuario,
+                "login": u.user,
+                "nombre": session.get('nombre_completo') or u.user,
+                "rol": u.rol,
+                "id_empleado": u.id_empleado,   # puede ser None si el usuario no está vinculado
+            }
+ 
+    g.usuario_almacen = usuario
+    return usuario
+ 
+ 
+def id_empleado_actual():
+    return (obtener_usuario_actual() or {}).get('id_empleado')
+ 
+ 
+# --------------------------------------------------------------------------
+# 🛡️ DECORADORES
+# --------------------------------------------------------------------------
+def requiere_login(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not obtener_usuario_actual():
+            return jsonify({
+                "success": False,
+                "message": "Sesión expirada. Inicie sesión nuevamente.",
+                "error": "Sesión expirada. Inicie sesión nuevamente."
+            }), 401
+        return f(*args, **kwargs)
+    return wrapper
+ 
+ 
+def requiere_rol(*roles_permitidos):
+    """Uso: @requiere_rol('ADMIN', 'JEFE_ALMACEN')  (colócalo DEBAJO de @app.route)."""
+    permitidos = {r.upper() for r in roles_permitidos}
+ 
+    def decorador(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            usuario = obtener_usuario_actual()
+            if not usuario:
+                return jsonify({"success": False, "message": "Sesión expirada."}), 401
+            if (usuario.get('rol') or '').upper() not in permitidos:
+                registrar_bitacora('DENEGADO', 'SEGURIDAD', None,
+                                   f"Intento sin permiso a {request.path}")
+                db.session.commit()
+                return jsonify({"success": False,
+                                "message": "No tiene permisos para realizar esta acción."}), 403
+            return f(*args, **kwargs)
+        return wrapper
+    return decorador
+ 
+ 
+# --------------------------------------------------------------------------
+# 📝 HELPERS DE BITÁCORA
+# --------------------------------------------------------------------------
+def _json_default(valor):
+    if isinstance(valor, (datetime, date)):
+        return valor.isoformat()
+    if isinstance(valor, Decimal):
+        return float(valor)
+    return str(valor)
+ 
+ 
+def _normalizar(datos):
+    if datos is None:
+        return None
+    return json.loads(json.dumps(datos, default=_json_default))
+ 
+ 
+def foto(obj):
+    """Copia de todas las columnas de un registro SQLAlchemy (para 'antes' y 'después')."""
+    if obj is None:
+        return None
+    return {attr.key: getattr(obj, attr.key) for attr in sa_inspect(obj).mapper.column_attrs}
+ 
+ 
+def _ip_cliente():
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '')
+    return ip.split(',')[0].strip()[:45]
+ 
+ 
+def registrar_bitacora(accion, entidad, id_registro=None, descripcion="", antes=None, despues=None):
+    """
+    Agrega el registro a la sesión actual (NO hace commit).
+    Si se pasan 'antes' y 'despues', guarda solo los campos que cambiaron;
+    si no cambió nada, no registra.
+    """
+    antes_n, despues_n = _normalizar(antes), _normalizar(despues)
+ 
+    if antes_n is not None and despues_n is not None:
+        claves = set(antes_n) | set(despues_n)
+        cambiados = sorted(k for k in claves if str(antes_n.get(k)) != str(despues_n.get(k)))
+        if not cambiados:
+            return None
+        antes_n = {k: antes_n.get(k) for k in cambiados}
+        despues_n = {k: despues_n.get(k) for k in cambiados}
+ 
+    usuario = obtener_usuario_actual() or {}
+    registro = BitacoraAlmacen(
+        fecha=ahora_lima(),
+        id_usuario=usuario.get('id_usuario'),
+        usuario_login=usuario.get('login'),
+        usuario_nombre=usuario.get('nombre'),
+        ip=_ip_cliente(),
+        accion=accion,
+        entidad=entidad,
+        id_registro=str(id_registro) if id_registro is not None else None,
+        descripcion=(descripcion or '')[:500],
+        datos_antes=json.dumps(antes_n, ensure_ascii=False) if antes_n is not None else None,
+        datos_despues=json.dumps(despues_n, ensure_ascii=False) if despues_n is not None else None,
+    )
+    db.session.add(registro)
+    return registro
+ 
+ 
+def error_interno(e):
+    """Rollback + log completo en servidor + mensaje genérico al cliente (no expone SQL)."""
+    db.session.rollback()
+    app.logger.exception(f"[ALMACEN] Error en {request.path}: {e}")
+    msg = "Ocurrió un error interno. Intente nuevamente o contacte al administrador."
+    return jsonify({"success": False, "message": msg, "error": msg}), 500
+ 
+ 
+ 
+# ==========================================================================
+# SECCIÓN C — RUTAS DE CONSULTA (misma lógica que ya tenías + @requiere_login)
+# ==========================================================================
+ 
 @app.route('/almacen/api/unidades', methods=['GET'])
+@requiere_login
 def obtener_unidades():
     try:
         unidades = UnidadMedida.query.order_by(UnidadMedida.nombre_unidad.asc()).all()
-        # Transformamos la consulta a una lista de diccionarios
         lista_unidades = [{"nombre": u.nombre_unidad} for u in unidades]
         return jsonify(lista_unidades), 200
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
-
+        return error_interno(e)
+ 
+ 
 def generar_prefijo_categoria(nombre_cat):
     """Genera prefijo de 3 letras ignorando conectores y manejando colisiones de forma dinámica"""
     texto = nombre_cat.upper().strip()
-    # Eliminar conectores comunes de strings
     texto_limpio = re.sub(r'\b(DE|DEL|EL|LA|LOS|LAS|Y|EN|PARA|CON|POR)\b', '', texto)
     palabras = texto_limpio.split()
-    
+ 
     if len(palabras) >= 2:
-        prefijo = palabras[0][0] + palabras[1][:2] # Primera letra de la 1° palabra + dos de la 2°
+        prefijo = palabras[0][0] + palabras[1][:2]
     elif len(palabras) == 1:
-        prefijo = palabras[0][:3] # Primeras 3 letras
+        prefijo = palabras[0][:3]
     else:
         prefijo = "CAT"
-        
-    prefijo = prefijo.ljust(3, 'X')[:3] # Forzar longitud exacta de 3 caracteres
-    
-    # Resolver colisiones en la BD (ej. MEDIDORES vs MEDICINA)
+ 
+    prefijo = prefijo.ljust(3, 'X')[:3]
+ 
     base_prefijo = prefijo[:2]
-    int_caracter = 65 # Código ASCII para 'A'
+    int_caracter = 65  # 'A'
     while Categoria.query.filter_by(codigo_prefijo=prefijo).first():
         prefijo = base_prefijo + chr(int_caracter)
         int_caracter += 1
-        if int_caracter > 90: # Romper bucle si se excede la Z
+        if int_caracter > 90:
             prefijo = base_prefijo + str(int_caracter)
             break
     return prefijo
-
-
-# ==========================================
-# 🚀 RUTAS API ENDPOINTS
-# ==========================================
-@app.route('/almacen/crear-categoria', methods=['POST'])
-def crear_categoria():
-    data = request.get_json()
-    nombre = data.get('tipo_categoria', '').strip().upper()
-    
-    if not nombre:
-        return jsonify({"success": False, "message": "El nombre de categoría es requerido"}), 400
-        
-    # VALIDACIÓN: Verificar si la categoría ya existe en la BD
-    cat_existente = Categoria.query.filter_by(tipo_categoria=nombre).first()
-    if cat_existente:
-        return jsonify({
-            "success": False, 
-            "message": f"¡Alerta! La categoría '{nombre}' ya existe con el prefijo {cat_existente.codigo_prefijo}."
-        }), 400
-        
-    prefijo = generar_prefijo_categoria(nombre)
-    nueva_cat = Categoria(tipo_categoria=nombre, codigo_prefijo=prefijo)
-    db.session.add(nueva_cat)
-    db.session.commit()
-    
-    return jsonify({
-        "success": True, 
-        "prefijo": prefijo,
-        "categoria": {
-            "id": nueva_cat.id_categoria,
-            "texto": f"{nombre} ({prefijo})"
-        }
-    })
-
-
-# NUEVO ENDPOINT: Para autogenerar el código identificador en vivo
+ 
+ 
 @app.route('/almacen/siguiente-codigo/<int:id_cat>', methods=['GET'])
+@requiere_login
 def obtener_siguiente_codigo(id_cat):
     categoria = Categoria.query.get(id_cat)
     if not categoria:
         return jsonify({"success": False}), 404
-        
+ 
     total_productos = Producto.query.filter_by(id_categoria=id_cat).count()
     codigo_final = f"{categoria.codigo_prefijo}-{str(total_productos + 1).zfill(4)}"
-    
     return jsonify({"success": True, "codigo": codigo_final})
-
-
-@app.route('/almacen/crear-producto', methods=['POST'])
-def crear_producto():
-    data = request.get_json()
-    nombre = data.get('nombre_prod', '').strip()
-    id_cat = data.get('id_categoria')
-    unidad = data.get('unidad_medida')
-    precio = float(data.get('precio_igv') or 0.00)
-
-    # Validación global de nombres repetidos
-    prod_existente = Producto.query.filter_by(nombre_prod=nombre).first()
-    if prod_existente:
-        cat_duplicada = Categoria.query.get(prod_existente.id_categoria)
-        return jsonify({
-            "success": False, 
-            "message": f"¡Alerta! El nombre '{nombre}' ya fue creado en la categoría '{cat_duplicada.tipo_categoria}'."
-        }), 400
-
-    categoria = Categoria.query.get(id_cat)
-    total_productos = Producto.query.filter_by(id_categoria=id_cat).count()
-    codigo_final = f"{categoria.codigo_prefijo}-{str(total_productos + 1).zfill(4)}"
-
-    nuevo_prod = Producto(id_categoria=id_cat, codigo_identificador=codigo_final, nombre_prod=nombre, unidad_medida=unidad, precio_igv=precio)
-    db.session.add(nuevo_prod)
-    db.session.commit()
-    return jsonify({"success": True, "codigo": codigo_final})
-
-
-@app.route('/almacen/editar-producto', methods=['POST'])
-def editar_producto():
-    data = request.get_json()
-    id_prod = data.get('id_producto')
-    id_cat = data.get('id_categoria')
-    nombre = data.get('nombre_prod', '').strip().upper() # Forzado a mayúsculas
-    unidad = data.get('unidad_medida')
-    precio = float(data.get('precio_igv') or 0.00)
-
-    if not all([id_prod, id_cat, nombre, unidad]):
-        return jsonify({"success": False, "message": "Faltan datos obligatorios."}), 400
-
-    producto = Producto.query.get(id_prod)
-    if not producto:
-        return jsonify({"success": False, "message": "Producto no encontrado en la base de datos."}), 404
-
-    # Validar que el nuevo nombre no exista en OTRO producto diferente al que estamos editando
-    prod_existente = Producto.query.filter(Producto.nombre_prod == nombre, Producto.id_producto != id_prod).first()
-    if prod_existente:
-        cat_duplicada = Categoria.query.get(prod_existente.id_categoria)
-        return jsonify({
-            "success": False, 
-            "message": f"¡Alerta! El nombre '{nombre}' ya le pertenece a otro producto en la categoría '{cat_duplicada.tipo_categoria}'."
-        }), 400
-
-    # Actualizamos los campos (El código identificador NO se toca)
-    producto.id_categoria = id_cat
-    producto.nombre_prod = nombre
-    producto.unidad_medida = unidad
-    producto.precio_igv = precio
-    
-    db.session.commit()
-    
-    return jsonify({"success": True})
-
+ 
+ 
 @app.route('/almacen/api/listar-datos', methods=['GET'])
+@requiere_login
 def api_listar_datos():
     try:
         categorias = Categoria.query.order_by(Categoria.tipo_categoria.asc()).all()
@@ -7283,20 +7275,15 @@ def api_listar_datos():
             Empleado.estado.in_(['ACTIVO', 'CESADO'])
         ).order_by(Empleado.nombres.asc()).all()
         ultimas_salidas = MovimientoDetalle.query.filter_by(tipo_movimiento='SALIDA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
-
+ 
         lista_productos = []
         for p in productos:
-            # Buscar el último movimiento
             ultimo_mov = MovimientoDetalle.query.filter_by(id_producto=p.id_producto, tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).first()
-            
-            # Siempre intentamos obtener el nombre del proveedor si existe movimiento
+ 
             nombre_prov = "-"
             if ultimo_mov and ultimo_mov.entrada_rel and ultimo_mov.entrada_rel.proveedor:
                 nombre_prov = ultimo_mov.entrada_rel.proveedor.razon_social
-            
-            # Forzamos que sea True para que SIEMPRE aparezca en la lista
-            en_inventario = True 
-
+ 
             lista_productos.append({
                 "id_producto": p.id_producto,
                 "id_categoria": p.id_categoria,
@@ -7307,30 +7294,24 @@ def api_listar_datos():
                 "stock": float(p.stock or 0.00),
                 "categoria_nombre": p.categoria.tipo_categoria,
                 "ultimo_proveedor": nombre_prov,
-                "en_inventario": en_inventario 
+                "en_inventario": True
             })
-
-        # ==========================================
-        # NUEVA LISTA PARA EL INVENTARIO FÍSICO (AGRUPADO)
-        # ==========================================
-        # Filtramos solo los lotes que tienen stock disponible
+ 
+        # ---------- INVENTARIO FÍSICO (AGRUPADO) ----------
         movimientos = MovimientoDetalle.query.filter(
             MovimientoDetalle.tipo_movimiento == 'ENTRADA',
             MovimientoDetalle.stock_restante > 0,
             MovimientoDetalle.estado == 'ACTIVO'
         ).order_by(MovimientoDetalle.id_movimiento.desc()).all()
-        
+ 
         inventario_agrupado = {}
-        
         for m in movimientos:
             id_prod = m.id_producto
             talla_str = m.talla if m.talla else "-"
             prov_nombre = m.entrada_rel.proveedor.razon_social if (m.entrada_rel and m.entrada_rel.proveedor) else "-"
             precio_val = float(m.precio_unitario or m.producto_rel.precio_igv or 0.00)
-            
-            # Clave de agrupación: Mismo producto, talla, proveedor y precio = Misma fila
             clave = (id_prod, talla_str, prov_nombre, precio_val)
-            
+ 
             if clave not in inventario_agrupado:
                 inventario_agrupado[clave] = {
                     "codigo": m.producto_rel.codigo_identificador,
@@ -7345,55 +7326,40 @@ def api_listar_datos():
                     "ids_agrupados": [m.id_movimiento]
                 }
             else:
-                # Si ya existe en el diccionario, ACUMULAMOS el stock
                 inventario_agrupado[clave]["cantidad"] += float(m.stock_restante or 0)
                 inventario_agrupado[clave]["ids_agrupados"].append(m.id_movimiento)
-        
+ 
         lista_inventario = []
         for val in inventario_agrupado.values():
-            # Creamos un ID compuesto para que el frontend lo reconozca (Ej: "12_15_18")
             id_grupo = "_".join(map(str, val["ids_agrupados"]))
-            
-            # Buscamos si ya se auditó este grupo de lotes exacto
             texto_busqueda = f"%Lotes IDs: {', '.join(map(str, val['ids_agrupados']))}%"
             ultimo_conteo = InventarioAuditoria.query.filter(
                 InventarioAuditoria.observaciones.like(texto_busqueda)
             ).order_by(InventarioAuditoria.id_auditoria.desc()).first()
-            
-            conteo_val = float(ultimo_conteo.conteo_fisico) if ultimo_conteo else ""
-            
+ 
             val["id_movimiento"] = id_grupo
-            val["conteo_fisico"] = conteo_val
-            
-            del val["ids_agrupados"] # Limpiamos antes de enviar al frontend
+            val["conteo_fisico"] = float(ultimo_conteo.conteo_fisico) if ultimo_conteo else ""
+            del val["ids_agrupados"]
             lista_inventario.append(val)
-
-        # ==========================================
-        # LISTA HISTÓRICA DE ENTRADAS
-        # ==========================================
+ 
+        # ---------- HISTÓRICO DE ENTRADAS ----------
         ultimas_entradas = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
-
-        # ==========================================
-        # 🚨 NUEVO: LOTES DISPONIBLES AGRUPADOS (FIFO) PARA SALIDAS 🚨
-        # ==========================================
-        # Filtramos solo los lotes de entrada que tienen stock disponible
+ 
+        # ---------- LOTES DISPONIBLES AGRUPADOS (FIFO) PARA SALIDAS ----------
         lotes_vivos = MovimientoDetalle.query.filter(
             MovimientoDetalle.tipo_movimiento == 'ENTRADA',
             MovimientoDetalle.stock_restante > 0,
             MovimientoDetalle.estado == 'ACTIVO'
         ).order_by(MovimientoDetalle.id_movimiento.asc()).all()
-
+ 
         salidas_agrupadas = {}
-        
         for lote in lotes_vivos:
             id_prod = lote.id_producto
             talla_str = lote.talla if lote.talla else "-"
             prov_nombre = lote.entrada_rel.proveedor.razon_social if (lote.entrada_rel and lote.entrada_rel.proveedor) else "-"
             precio_val = float(lote.precio_unitario or lote.producto_rel.precio_igv or 0.00)
-            
-            # Agrupamos por Producto, Talla, Proveedor y Precio
             clave = (id_prod, talla_str, prov_nombre, precio_val)
-            
+ 
             if clave not in salidas_agrupadas:
                 salidas_agrupadas[clave] = {
                     "id_producto": id_prod,
@@ -7404,30 +7370,26 @@ def api_listar_datos():
                     "fecha_ingreso": lote.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if lote.entrada_rel and lote.entrada_rel.fecha_ingreso else "-",
                     "stock_restante": float(lote.stock_restante or 0),
                     "precio": precio_val,
-                    "ids_agrupados": [lote.id_movimiento] # Aquí vamos guardando los IDs
+                    "ids_agrupados": [lote.id_movimiento]
                 }
             else:
-                # Si ya existe, le SUMAMOS el stock y agregamos su ID al carrito
                 salidas_agrupadas[clave]["stock_restante"] += float(lote.stock_restante or 0)
                 salidas_agrupadas[clave]["ids_agrupados"].append(lote.id_movimiento)
-
+ 
         lista_lotes_salida = []
         for val in salidas_agrupadas.values():
-            # Convertimos la lista de IDs en un string (Ej: "12_15_18") para que JS lo pueda manejar
             val["id_lote"] = "_".join(map(str, val["ids_agrupados"]))
-            del val["ids_agrupados"] # Lo borramos para no ensuciar el JSON
+            del val["ids_agrupados"]
             lista_lotes_salida.append(val)
-
-        # ==========================================
-        # ESTRUCTURA FINAL DE RESPUESTA
-        # ==========================================
+ 
+        # ---------- RESPUESTA ----------
         data = {
-            "categorias": [{ "id": c.id_categoria, "texto_select": f"{c.tipo_categoria} ({c.codigo_prefijo})", "nombre": c.tipo_categoria } for c in categorias],
+            "categorias": [{"id": c.id_categoria, "texto_select": f"{c.tipo_categoria} ({c.codigo_prefijo})", "nombre": c.tipo_categoria} for c in categorias],
             "productos": lista_productos,
-            "proveedores": [{ "id_proveedor": pr.id_proveedor, "ruc": pr.ruc, "razon_social": pr.razon_social, "nombre_comercial": pr.nombre_comercial or "", "celular": pr.celular or "", "correo": pr.correo or "", "direccion": pr.direccion or "", "estado": pr.estado } for pr in proveedores],
-            "inventario_fisico": lista_inventario, 
-            
-            "entradas": [{ 
+            "proveedores": [{"id_proveedor": pr.id_proveedor, "ruc": pr.ruc, "razon_social": pr.razon_social, "nombre_comercial": pr.nombre_comercial or "", "celular": pr.celular or "", "correo": pr.correo or "", "direccion": pr.direccion or "", "estado": pr.estado} for pr in proveedores],
+            "inventario_fisico": lista_inventario,
+ 
+            "entradas": [{
                 "id_mov": e.id_movimiento,
                 "fecha_fac": e.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if e.entrada_rel.fecha_factura else "-",
                 "fecha_ing": e.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if e.entrada_rel.fecha_ingreso else "-",
@@ -7442,465 +7404,129 @@ def api_listar_datos():
                 "proveedor": e.entrada_rel.proveedor.razon_social if e.entrada_rel.proveedor else "-",
                 "obs": e.observaciones if e.observaciones else "-"
             } for e in ultimas_entradas],
-
+ 
             "empleados": [{
-                "id_empleado": emp.id_empleado, 
+                "id_empleado": emp.id_empleado,
                 "nombres": emp.nombres or "SIN NOMBRE",
-                "area": emp.area or ""   
+                "area": emp.area or ""
             } for emp in empleados],
-
+ 
             "salidas": [{
                 "id_mov": s.id_movimiento,
                 "fecha_salida": s.salida_rel.fecha_salida.strftime('%d-%m-%Y') if s.salida_rel and s.salida_rel.fecha_salida else "-",
                 "cantidad": float(s.cantidad),
                 "codigo": s.producto_rel.codigo_identificador,
                 "producto": s.producto_rel.nombre_prod,
-                
-                # 🚨 ENVIAMOS LA TALLA TAMBIÉN AL HISTORIAL DE SALIDAS
                 "talla": s.talla if s.talla else "-",
-                
                 "empleado": s.salida_rel.empleado.nombres if s.salida_rel and s.salida_rel.empleado else "-",
-                "area": s.salida_rel.empleado.area if s.salida_rel and s.salida_rel.empleado else "-", 
+                "area": s.salida_rel.empleado.area if s.salida_rel and s.salida_rel.empleado else "-",
                 "obs": s.observaciones if s.observaciones else "-"
             } for s in ultimas_salidas],
-
+ 
             "lotes_disponibles": lista_lotes_salida
         }
         return jsonify(data)
     except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/almacen/crear-proveedor', methods=['POST'])
-def crear_proveedor():
-    data = request.get_json()
-    
-    # Validar duplicado por RUC
-    ruc_prov = data.get('ruc')
-    if Proveedor.query.filter_by(ruc=ruc_prov).first():
-        return jsonify({"success": False, "message": f"El proveedor con RUC {ruc_prov} ya está registrado."}), 400
-        
-    nuevo_prov = Proveedor(
-        ruc=ruc_prov,
-        razon_social=data.get('razon_social').strip().upper(),
-        nombre_comercial=data.get('nombre_comercial').strip().upper() if data.get('nombre_comercial') else None,
-        celular=data.get('celular'),
-        correo=data.get('correo'),
-        direccion=data.get('direccion')
-    )
-    db.session.add(nuevo_prov)
-    db.session.commit()
-    
-    return jsonify({"success": True})
-
-@app.route('/almacen/editar-proveedor', methods=['POST'])
-def editar_proveedor():
-    data = request.get_json()
-    id_prov = data.get('id_proveedor')
-    ruc = data.get('ruc')
-    razon_social = data.get('razon_social').strip().upper()
-
-    if not all([id_prov, ruc, razon_social]):
-        return jsonify({"success": False, "message": "Faltan datos obligatorios (RUC o Razón Social)."}), 400
-
-    # Validar que no se duplique el RUC con OTRO proveedor distinto
-    prov_existente = Proveedor.query.filter(Proveedor.ruc == ruc, Proveedor.id_proveedor != id_prov).first()
-    if prov_existente:
-        return jsonify({"success": False, "message": f"¡Alerta! El RUC '{ruc}' ya pertenece a otro proveedor."}), 400
-
-    proveedor = Proveedor.query.get(id_prov)
-    if not proveedor:
-        return jsonify({"success": False, "message": "Proveedor no encontrado."}), 404
-
-    proveedor.ruc = ruc
-    proveedor.razon_social = razon_social
-    proveedor.nombre_comercial = data.get('nombre_comercial').strip().upper() if data.get('nombre_comercial') else None
-    proveedor.celular = data.get('celular')
-    proveedor.correo = data.get('correo')
-    proveedor.direccion = data.get('direccion')
-    
-    db.session.commit()
-    
-    return jsonify({"success": True})
-
-
-@app.route('/almacen/guardar-inventario', methods=['POST'])
-def guardar_inventario():
-    data = request.get_json()
-    id_prod = data.get('id_producto')
-    
-    if not id_prod:
-        return jsonify({"success": False, "message": "Debe seleccionar un producto."}), 400
-        
-    producto = Producto.query.get(id_prod)
-    if not producto:
-        return jsonify({"success": False, "message": "Producto no encontrado."}), 404
-
-    # Convertimos a float, si viene vacío lo dejamos en 0.00
-    try:
-        nuevo_stock = float(data.get('stock') or 0)
-        nuevo_precio = float(data.get('precio_igv') or 0)
-    except ValueError:
-        return jsonify({"success": False, "message": "Valores de stock o precio inválidos."}), 400
-
-    producto.stock = nuevo_stock
-    producto.precio_igv = nuevo_precio
-    
-    # Opcional: Aquí podrías registrar también en tu tabla InventarioAuditoria si envían conteo_fisico
-    
-    db.session.commit()
-    
-    return jsonify({"success": True, "message": "Inventario actualizado correctamente."})
-
-
-@app.route('/almacen/guardar-conteo-fisico', methods=['POST'])
-def guardar_conteo_fisico():
-    data = request.get_json()
-    id_grupo = str(data.get('id_producto')) # El JS envía '14_15_16'
-    conteo = data.get('conteo_fisico')
-    
-    if not id_grupo or conteo is None:
-        return jsonify({"success": False, "message": "Datos incompletos."}), 400
-        
-    try:
-        conteo_float = float(conteo)
-        
-        # Extraer todos los IDs de los lotes que fueron agrupados en pantalla
-        lotes_ids = [int(x) for x in id_grupo.split('_')]
-        
-        lotes = MovimientoDetalle.query.filter(MovimientoDetalle.id_movimiento.in_(lotes_ids)).all()
-        if not lotes:
-            return jsonify({"success": False, "message": "Lotes no encontrados."}), 404
-            
-        # Sumar el stock real de todos los lotes del grupo para compararlo
-        stock_actual = sum(float(l.stock_restante or 0) for l in lotes)
-        diferencia = conteo_float - stock_actual
-        
-        # Guardamos la auditoría general
-        nueva_auditoria = InventarioAuditoria(
-            id_producto=lotes[0].id_producto, 
-            id_empleado_auditor=1, # Reemplazar con session['user_id'] si usas login
-            stock_sistema=stock_actual,
-            conteo_fisico=conteo_float,
-            diferencia=diferencia,
-            observaciones=f"Conteo físico agrupado (Lotes IDs: {', '.join(map(str, lotes_ids))})"
-        )
-        db.session.add(nueva_auditoria)
-        db.session.commit()
-        
-        return jsonify({"success": True})
-        
-    except ValueError:
-        return jsonify({"success": False, "message": "El conteo debe ser un número válido."}), 400
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"success": False, "message": str(e)}), 500
-       
-
-@app.route('/almacen/guardar-entrada-lote', methods=['POST'])
-def guardar_entrada_lote():
-    data = request.get_json()
-    
-    print("\n\n====== 🚨 INICIO DEBUG GUARDAR LOTE 🚨 ======")
-    print(f"JSON COMPLETO RECIBIDO: {data}")
-    
-    cabecera = data.get('cabecera')
-    detalles = data.get('detalles')
-    
-    if not cabecera or not detalles or len(detalles) == 0:
-        return jsonify({"success": False, "message": "No hay productos para guardar."}), 400
-
-    try:
-        f_fac = datetime.strptime(cabecera['fecha_fac'], '%Y-%m-%d').date() if cabecera.get('fecha_fac') else None
-        f_ing = datetime.strptime(cabecera['fecha_ing'], '%Y-%m-%d') if cabecera.get('fecha_ing') else datetime.utcnow()
-        nro_factura = cabecera.get('factura', '').strip().upper()
-        id_prov = cabecera.get('id_proveedor')
-
-        # 1. Buscamos si la cabecera (Factura) ya existe, sino la creamos
-        entrada = Entrada.query.filter_by(nro_factura=nro_factura, id_proveedor=id_prov).first()
-        if not entrada:
-            entrada = Entrada(
-                id_proveedor=id_prov,
-                id_empleado_receptor=1, # Reemplaza con tu variable de sesión
-                fecha_ingreso=f_ing,
-                fecha_factura=f_fac,
-                nro_factura=nro_factura,
-                nro_guia=cabecera.get('guia', '').strip().upper(),
-                obs_entrada="" 
-            )
-            db.session.add(entrada)
-            db.session.flush() # Obtenemos el ID generado
-
-        # 2. Recorremos el lote de productos
-        for item in detalles:
-            print(f"\n--- PROCESANDO PRODUCTO ID: {item.get('id_producto')} ---")
-            
-            cant_float = float(item['cantidad'])
-            precio_float = float(item['precio'])
-            
-            # 🚨 CAPTURANDO Y VERIFICANDO LA TALLA
-            talla_cruda = item.get('talla')
-            print(f"1. Talla cruda que llegó de JavaScript: '{talla_cruda}' (Tipo: {type(talla_cruda)})")
-            
-            talla_val = talla_cruda
-            if talla_val == '-' or not talla_val:
-                talla_val = None  
-                print("2. Decisión: La talla se guardará como NULL (Vació o Guion)")
-            else:
-                talla_val = str(talla_val).strip().upper()
-                print(f"2. Decisión: La talla válida a guardar será: '{talla_val}'")
-            
-            id_emp_rec = item.get('id_empleado_recupero')
-            if not id_emp_rec or id_emp_rec == '':
-                id_emp_rec = None
-            
-            # Guardamos el detalle del movimiento
-            movimiento = MovimientoDetalle(
-                id_entrada=entrada.id_entrada,
-                id_producto=item['id_producto'],
-                tipo_movimiento='ENTRADA',
-                cantidad=cant_float,
-                precio_unitario=precio_float, 
-                stock_restante=cant_float,    
-                estado='ACTIVO',
-                talla=talla_val,
-                id_empleado_recupero=id_emp_rec,
-                observaciones=item.get('obs', '')
-            )
-            db.session.add(movimiento)
-            
-            print(f"3. Objeto MovimientoDetalle preparado en memoria. Talla asignada: {movimiento.talla}")
-
-            producto = Producto.query.get(item['id_producto'])
-            if producto:
-                # Actualizamos stock global
-                producto.stock = float(producto.stock or 0) + cant_float
-                
-                # 🚨 FOTO HISTÓRICA: Guardamos el stock resultante en el movimiento
-                movimiento.stock_historico = producto.stock
-
-        db.session.commit()
-        print("====== ✅ FIN DEBUG: GUARDADO EXITOSO EN MYSQL ✅ ======\n")
-        return jsonify({"success": True})
-        
-    except Exception as e:
-        db.session.rollback() 
-        print(f"====== ❌ FIN DEBUG: ERROR AL GUARDAR ❌ ======")
-        print(f"MOTIVO DEL ERROR: {str(e)}\n")
-        return jsonify({"success": False, "message": f"Error al procesar: {str(e)}"}), 500
-    
-
-@app.route('/almacen/guardar-salida-lote', methods=['POST'])
-def guardar_salida_lote():
-    data = request.get_json()
-    cabecera = data.get('cabecera')
-    detalles = data.get('detalles')
-    
-    if not cabecera or not detalles or len(detalles) == 0:
-        return jsonify({"success": False, "message": "No hay productos para despachar."}), 400
-
-    try:
-        fecha_str = cabecera.get('fecha')
-        fecha_salida = datetime.strptime(fecha_str, '%Y-%m-%d') if fecha_str else datetime.utcnow()
-        id_emp = cabecera.get('id_empleado')
-
-        # 1. Guardar Cabecera de la Salida
-        nueva_salida = Salida(
-            id_empleado_solicitante=id_emp,
-            fecha_salida=fecha_salida,
-            obs_salida=cabecera.get('area', '') 
-        )
-        db.session.add(nueva_salida)
-        db.session.flush() 
-
-        # 2. Bucle para procesar cada producto solicitado (LÓGICA FIFO)
-        for item in detalles:
-            cant_a_restar = float(item['cantidad'])
-            
-            # Separamos los IDs agrupados que mandó el Frontend (Ej: "14_15_16")
-            lotes_ids = [int(x) for x in str(item['id_lote']).split('_')]
-            
-            # Traemos los lotes de la BD ORDENADOS DEL MÁS VIEJO AL MÁS NUEVO
-            lotes_origen = MovimientoDetalle.query.filter(
-                MovimientoDetalle.id_movimiento.in_(lotes_ids)
-            ).order_by(MovimientoDetalle.id_movimiento.asc()).all()
-            
-            # NUEVA VALIDACIÓN INTELIGENTE: Verifica si la suma de todos los lotes agrupados alcanza
-            stock_total_grupo = sum(float(l.stock_restante or 0) for l in lotes_origen)
-            if cant_a_restar > stock_total_grupo:
-                db.session.rollback()
-                return jsonify({
-                    "success": False, 
-                    "message": f"Stock insuficiente. Intentaste sacar {cant_a_restar}, pero solo quedan {stock_total_grupo} unidades disponibles."
-                }), 400
-
-            # CONSUMO FIFO (Va vaciando lotes uno por uno)
-            for lote in lotes_origen:
-                if cant_a_restar <= 0:
-                    break 
-                    
-                stock_lote = float(lote.stock_restante or 0)
-                if stock_lote <= 0:
-                    continue 
-                    
-                cantidad_a_sacar_de_este_lote = min(cant_a_restar, stock_lote)
-                
-                producto = Producto.query.get(lote.id_producto)
-                
-                movimiento = MovimientoDetalle(
-                    id_salida=nueva_salida.id_salida,
-                    id_producto=lote.id_producto,
-                    tipo_movimiento='SALIDA',
-                    cantidad=cantidad_a_sacar_de_este_lote,
-                    precio_unitario=lote.precio_unitario, 
-                    estado='ACTIVO',
-                    talla=lote.talla,
-                    id_lote_origen=lote.id_movimiento,
-                    observaciones=item.get('obs', '')
-                )
-                db.session.add(movimiento)
-
-                lote.stock_restante = stock_lote - cantidad_a_sacar_de_este_lote
-                
-                if producto:
-                    producto.stock = float(producto.stock or 0) - cantidad_a_sacar_de_este_lote
-                    movimiento.stock_historico = producto.stock 
-                    
-                cant_a_restar -= cantidad_a_sacar_de_este_lote
-
-        db.session.commit()
-        return jsonify({"success": True})
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"success": False, "message": f"Error interno: {str(e)}"}), 500
-
-
+        return error_interno(e)
+ 
+ 
+def _query_kardex_filtrada(tipo, search, fecha_inicio, fecha_fin):
+    """Misma consulta para la pantalla y para el Excel del kardex."""
+    EmpleadoSolicitante = aliased(Empleado)
+    EmpleadoRetorno = aliased(Empleado)
+ 
+    query = MovimientoDetalle.query.join(Producto)
+    query = query.outerjoin(Categoria, Producto.id_categoria == Categoria.id_categoria)
+    query = query.outerjoin(Entrada, MovimientoDetalle.id_entrada == Entrada.id_entrada)
+    query = query.outerjoin(Proveedor, Entrada.id_proveedor == Proveedor.id_proveedor)
+    query = query.outerjoin(Salida, MovimientoDetalle.id_salida == Salida.id_salida)
+    query = query.outerjoin(EmpleadoSolicitante, Salida.id_empleado_solicitante == EmpleadoSolicitante.id_empleado)
+    query = query.outerjoin(EmpleadoRetorno, MovimientoDetalle.id_empleado_recupero == EmpleadoRetorno.id_empleado)
+ 
+    if tipo != 'TODO':
+        query = query.filter(MovimientoDetalle.tipo_movimiento == tipo)
+ 
+    if search:
+        for palabra in search.split():
+            search_term = f"%{palabra}%"
+            query = query.filter(or_(
+                Producto.codigo_identificador.ilike(search_term),
+                Producto.nombre_prod.ilike(search_term),
+                Categoria.tipo_categoria.ilike(search_term),
+                Proveedor.razon_social.ilike(search_term),
+                EmpleadoSolicitante.nombres.ilike(search_term),
+                EmpleadoSolicitante.area.ilike(search_term),
+                EmpleadoRetorno.nombres.ilike(search_term)
+            ))
+ 
+    if fecha_inicio and fecha_inicio.strip():
+        query = query.filter(or_(
+            Entrada.fecha_ingreso >= f"{fecha_inicio} 00:00:00",
+            Salida.fecha_salida >= f"{fecha_inicio} 00:00:00"
+        ))
+ 
+    if fecha_fin and fecha_fin.strip():
+        query = query.filter(or_(
+            Entrada.fecha_ingreso <= f"{fecha_fin} 23:59:59",
+            Salida.fecha_salida <= f"{fecha_fin} 23:59:59"
+        ))
+ 
+    return query.order_by(MovimientoDetalle.id_movimiento.desc())
+ 
+ 
 @app.route('/almacen/api/historico-kardex', methods=['GET'])
+@requiere_login
 def api_historico_kardex():
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('limit', 20, type=int)
         tipo = request.args.get('tipo', 'TODO', type=str)
         search = request.args.get('search', '', type=str)
-        
-        # 1. CAPTURAR LAS FECHAS
         fecha_inicio = request.args.get('fecha_inicio', '', type=str)
         fecha_fin = request.args.get('fecha_fin', '', type=str)
-        
-        # 2. INICIAR CONSULTA CON JOINS Y ALIAS
-        EmpleadoSolicitante = aliased(Empleado)
-        EmpleadoRetorno = aliased(Empleado)
-
-        query = MovimientoDetalle.query.join(Producto)
-        query = query.outerjoin(Categoria, Producto.id_categoria == Categoria.id_categoria)
-        query = query.outerjoin(Entrada, MovimientoDetalle.id_entrada == Entrada.id_entrada)
-        query = query.outerjoin(Proveedor, Entrada.id_proveedor == Proveedor.id_proveedor)
-        query = query.outerjoin(Salida, MovimientoDetalle.id_salida == Salida.id_salida)
-        
-        # 🚨 UNIMOS LA TABLA EMPLEADO DOS VECES (Una para salida, otra para retorno)
-        query = query.outerjoin(EmpleadoSolicitante, Salida.id_empleado_solicitante == EmpleadoSolicitante.id_empleado)
-        query = query.outerjoin(EmpleadoRetorno, MovimientoDetalle.id_empleado_recupero == EmpleadoRetorno.id_empleado)
-
-        # 3. FILTROS EXISTENTES
-        if tipo != 'TODO':
-            query = query.filter(MovimientoDetalle.tipo_movimiento == tipo)
-            
-        if search:
-            palabras = search.split()
-            for palabra in palabras:
-                search_term = f"%{palabra}%"
-                query = query.filter(or_(
-                    Producto.codigo_identificador.ilike(search_term),
-                    Producto.nombre_prod.ilike(search_term),
-                    Categoria.tipo_categoria.ilike(search_term),
-                    Proveedor.razon_social.ilike(search_term),
-                    
-                    # 🚨 BUSCAMOS EN EL EMPLEADO SOLICITANTE (Salidas)
-                    EmpleadoSolicitante.nombres.ilike(search_term),
-                    EmpleadoSolicitante.area.ilike(search_term),
-                    
-                    # 🚨 Y TAMBIÉN BUSCAMOS EN EL EMPLEADO DE RETORNO (Entradas)
-                    EmpleadoRetorno.nombres.ilike(search_term)
-                ))
-
-        # 4. APLICAR FILTRO DE FECHAS (Cubriendo ambos tipos de movimiento)
-        if fecha_inicio:
-            # Añadimos 00:00:00 para asegurar que tome todo el día desde la madrugada
-            query = query.filter(or_(
-                Entrada.fecha_ingreso >= f"{fecha_inicio} 00:00:00",
-                Salida.fecha_salida >= f"{fecha_inicio} 00:00:00"
-            ))
-            
-        if fecha_fin:
-            # Añadimos 23:59:59 para incluir hasta el último segundo del día seleccionado
-            query = query.filter(or_(
-                Entrada.fecha_ingreso <= f"{fecha_fin} 23:59:59",
-                Salida.fecha_salida <= f"{fecha_fin} 23:59:59"
-            ))
-
-        # 5. ORDENAR Y PAGINAR
-        movimientos = query.order_by(MovimientoDetalle.id_movimiento.desc()).all()
-        
+ 
+        movimientos = _query_kardex_filtrada(tipo, search, fecha_inicio, fecha_fin).all()
+ 
         lista_historial = []
         for m in movimientos:
             es_entrada = m.tipo_movimiento == 'ENTRADA'
-            
-            # 🚨 INICIAMOS LA VARIABLE TALLA
-            talla_mostrar = m.talla 
-            
-            # Lógica para cruzar datos según si es Entrada o Salida
+            talla_mostrar = m.talla
+ 
             if es_entrada:
                 fecha = m.entrada_rel.fecha_ingreso
                 f_fac = m.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if m.entrada_rel.fecha_factura else "-"
                 doc_ref = m.entrada_rel.nro_factura or "-"
                 guia = m.entrada_rel.nro_guia or "-"
                 prov = m.entrada_rel.proveedor.razon_social if m.entrada_rel.proveedor else "-"
-                
-                
-                # 🚨 CAPTURAMOS EL EMPLEADO DE RECUPERO SI EXISTE
                 emp_retorno = Empleado.query.get(m.id_empleado_recupero).nombres if m.id_empleado_recupero else "-"
-                
             else:
                 fecha = m.salida_rel.fecha_salida
-                # Rastreamos la última entrada de este producto para "prestarle" la factura y guía a esta salida
                 ultima_entrada = MovimientoDetalle.query.filter_by(id_producto=m.id_producto, tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).first()
-                
-                # 🚨 HEREDAMOS LA TALLA SI LA SALIDA NO LA TIENE GRABADA
+ 
                 if not talla_mostrar and ultima_entrada and ultima_entrada.talla:
-                     talla_mostrar = ultima_entrada.talla
-                
+                    talla_mostrar = ultima_entrada.talla
+ 
                 f_fac = ultima_entrada.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if (ultima_entrada and ultima_entrada.entrada_rel.fecha_factura) else "-"
                 doc_ref = ultima_entrada.entrada_rel.nro_factura if ultima_entrada else "-"
                 guia = ultima_entrada.entrada_rel.nro_guia if ultima_entrada else "-"
                 prov = "-"
-                
-                # 🚨 LAS SALIDAS NORMALES NO TIENEN EMPLEADO DE RECUPERO
-                emp_retorno = "-" 
-                
-                
-
-            # Datos del Empleado Solicitante (El que se lleva la salida)
+                emp_retorno = "-"
+ 
             emp = m.salida_rel.empleado.nombres if (not es_entrada and m.salida_rel.empleado) else "-"
             area = m.salida_rel.empleado.area if (not es_entrada and m.salida_rel.empleado) else "-"
             cargo = m.salida_rel.empleado.cargo if (not es_entrada and m.salida_rel.empleado) else "-"
-
+ 
             lista_historial.append({
                 "id_mov": m.id_movimiento,
                 "fecha": fecha.strftime('%d-%m-%Y') if fecha else "-",
                 "tipo": m.tipo_movimiento,
                 "codigo": m.producto_rel.codigo_identificador,
                 "producto": m.producto_rel.nombre_prod,
-                "talla": talla_mostrar if talla_mostrar else "-", # 🚨 USAMOS TALLA MOSTRAR
+                "talla": talla_mostrar if talla_mostrar else "-",
                 "unidad": m.producto_rel.unidad_medida or "-",
                 "categoria": m.producto_rel.categoria.tipo_categoria,
                 "cantidad": float(m.cantidad),
-                "stock_actual": float(m.stock_historico if m.stock_historico is not None else m.producto_rel.stock), 
+                "stock_actual": float(m.stock_historico if m.stock_historico is not None else m.producto_rel.stock),
                 "proveedor": prov,
-                
-                "empleado_recupero": emp_retorno, # 🚨 ENVIAMOS EL EMPLEADO DE RECUPERO AL FRONTEND
-                
+                "empleado_recupero": emp_retorno,
                 "empleado": emp,
                 "area": area,
                 "cargo": cargo,
@@ -7908,180 +7534,51 @@ def api_historico_kardex():
                 "fecha_factura": f_fac,
                 "guia": guia,
                 "obs": m.observaciones if m.observaciones else "-",
-                "precio": float(m.precio_unitario) if hasattr(m, 'precio_unitario') and m.precio_unitario else 0.0
+                "precio": float(m.precio_unitario) if m.precio_unitario else 0.0
             })
-
-        # 6. Devolver el JSON con metadata de paginación
-        return jsonify({
-            "success": True,
-            "data": lista_historial
-        })
-
+ 
+        return jsonify({"success": True, "data": lista_historial})
+ 
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route('/almacen/eliminar-movimiento', methods=['POST'])
-def eliminar_movimiento():
-    data = request.get_json()
-    id_mov = data.get('id_mov')
-    
-    movimiento = MovimientoDetalle.query.get(id_mov)
-    if not movimiento:
-        return jsonify({"success": False, "message": "Movimiento no encontrado."}), 404
-        
-    producto = Producto.query.get(movimiento.id_producto)
-    
-    try:
-        cant_float = float(movimiento.cantidad)
-        
-        # 1. REVERTIMOS EL STOCK
-        if movimiento.tipo_movimiento == 'SALIDA':
-            # A. Regresamos el stock al total global (+)
-            producto.stock = float(producto.stock or 0) + cant_float
-            
-            # B. 🚨 MAGIA OPCIÓN 1: Devolvemos el stock exacto al lote origen de donde salió
-            if movimiento.id_lote_origen:
-                lote_origen = MovimientoDetalle.query.get(movimiento.id_lote_origen)
-                if lote_origen:
-                    lote_origen.stock_restante = float(lote_origen.stock_restante or 0) + cant_float
-            
-            # C. Borramos el registro del detalle
-            id_padre_salida = movimiento.id_salida
-            db.session.delete(movimiento)
-            
-            # D. Limpieza: Si este era el último producto de esa Boleta de Salida, borramos la boleta.
-            detalles_restantes = MovimientoDetalle.query.filter_by(id_salida=id_padre_salida).count()
-            if detalles_restantes == 0:
-                padre_salida = Salida.query.get(id_padre_salida)
-                if padre_salida:
-                    db.session.delete(padre_salida)
-            
-        elif movimiento.tipo_movimiento == 'ENTRADA':
-            # Seguridad: Verificar si ya se despachó mercancía de este lote
-            stock_restante = float(movimiento.stock_restante or 0)
-            if stock_restante < cant_float:
-                return jsonify({
-                    "success": False, 
-                    "message": f"No se puede eliminar la entrada. Ya se han despachado productos de este lote (Quedan {stock_restante} de {cant_float}). Elimine primero las salidas vinculadas."
-                }), 400
-
-            if float(producto.stock or 0) < cant_float:
-                return jsonify({
-                    "success": False, 
-                    "message": f"No se puede eliminar. El stock actual de {producto.nombre_prod} es insuficiente para restar {cant_float}."
-                }), 400
-                
-            producto.stock = float(producto.stock or 0) - cant_float
-
-            # Borramos el detalle
-            id_padre_entrada = movimiento.id_entrada
-            db.session.delete(movimiento)
-            
-            # Limpieza: Si era el único producto de esta Factura, borramos la Factura.
-            detalles_restantes = MovimientoDetalle.query.filter_by(id_entrada=id_padre_entrada).count()
-            if detalles_restantes == 0:
-                padre_entrada = Entrada.query.get(id_padre_entrada)
-                if padre_entrada:
-                    db.session.delete(padre_entrada)
-
-        # 2. CONFIRMAMOS CAMBIOS
-        db.session.commit()
-        
-        return jsonify({"success": True, "message": "Registro eliminado y stock recalculado correctamente."})
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
+        return error_interno(e)
+ 
+ 
 @app.route('/almacen/api/exportar-excel-kardex', methods=['GET'])
+@requiere_login
 def exportar_excel_kardex():
     tipo = request.args.get('tipo', 'TODO', type=str)
     search = request.args.get('search', '', type=str)
     fecha_inicio = request.args.get('fecha_inicio', '', type=str)
     fecha_fin = request.args.get('fecha_fin', '', type=str)
-
-    # 1. REPLICAR LA CONSULTA EXACTA DE LOS FILTROS
-    EmpleadoSolicitante = aliased(Empleado)
-    EmpleadoRetorno = aliased(Empleado)
-
-    query = MovimientoDetalle.query.join(Producto)
-    query = query.outerjoin(Categoria, Producto.id_categoria == Categoria.id_categoria)
-    query = query.outerjoin(Entrada, MovimientoDetalle.id_entrada == Entrada.id_entrada)
-    query = query.outerjoin(Proveedor, Entrada.id_proveedor == Proveedor.id_proveedor)
-    query = query.outerjoin(Salida, MovimientoDetalle.id_salida == Salida.id_salida)
-        
-    query = query.outerjoin(EmpleadoSolicitante, Salida.id_empleado_solicitante == EmpleadoSolicitante.id_empleado)
-    query = query.outerjoin(EmpleadoRetorno, MovimientoDetalle.id_empleado_recupero == EmpleadoRetorno.id_empleado)
-
-    if tipo != 'TODO':
-            query = query.filter(MovimientoDetalle.tipo_movimiento == tipo)
-                
-    if search:
-        palabras = search.split()
-        for palabra in palabras:
-            search_term = f"%{palabra}%"
-            query = query.filter(or_(
-                    Producto.codigo_identificador.ilike(search_term),
-                    Producto.nombre_prod.ilike(search_term),
-                    Categoria.tipo_categoria.ilike(search_term),
-                    Proveedor.razon_social.ilike(search_term),
-                    
-                    # BUSCAMOS EN EL EMPLEADO SOLICITANTE (Salidas)
-                    EmpleadoSolicitante.nombres.ilike(search_term),
-                    EmpleadoSolicitante.area.ilike(search_term),
-                    
-                    # Y TAMBIÉN BUSCAMOS EN EL EMPLEADO DE RETORNO (Entradas)
-                    EmpleadoRetorno.nombres.ilike(search_term)
-                ))
-                
-    if fecha_inicio and fecha_inicio.strip() != "":
-        query = query.filter(or_(
-            Entrada.fecha_ingreso >= f"{fecha_inicio} 00:00:00",
-            Salida.fecha_salida >= f"{fecha_inicio} 00:00:00"
-        ))
-        
-    if fecha_fin and fecha_fin.strip() != "":
-        query = query.filter(or_(
-            Entrada.fecha_ingreso <= f"{fecha_fin} 23:59:59",
-            Salida.fecha_salida <= f"{fecha_fin} 23:59:59"
-        ))
-
-    # Obtenemos TODOS los registros filtrados (sin .paginate())
-    movimientos = query.order_by(MovimientoDetalle.id_movimiento.desc()).all()
-
-    # 2. CREAR EL EXCEL Y ESTILOS
+ 
+    movimientos = _query_kardex_filtrada(tipo, search, fecha_inicio, fecha_fin).all()
+ 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Histórico de Movimientos"
-
-    # Definir Estilos
+ 
     header_fill = PatternFill(start_color="0EA5E9", end_color="0EA5E9", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
     align_center = Alignment(horizontal="center", vertical="center")
     align_left = Alignment(horizontal="left", vertical="center")
     border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-
-    # Escribir Cabeceras (🚨 Añadimos Empleado de Retorno)
+ 
     headers = [
-        "Fecha", "Tipo", "Cód. Producto", "Nombre Producto", "Talla", "Unidad", "Categoría", 
-        "Cantidad", "Stock Final", "Proveedor (Compras)", "Empleado (Retorno)", "Empleado Solicitante", 
+        "Fecha", "Tipo", "Cód. Producto", "Nombre Producto", "Talla", "Unidad", "Categoría",
+        "Cantidad", "Stock Final", "Proveedor (Compras)", "Empleado (Retorno)", "Empleado Solicitante",
         "Área", "Cargo", "Doc. Referencia", "Fecha Factura", "Guía", "Observación"
     ]
-    
     ws.append(headers)
-    for col_num, cell in enumerate(ws[1], 1):
+    for cell in ws[1]:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = align_center
         cell.border = border_thin
-
-    # 3. LLENAR LOS DATOS
+ 
     for m in movimientos:
         es_entrada = m.tipo_movimiento == 'ENTRADA'
-        talla_val = m.talla 
-        
+        talla_val = m.talla
+ 
         if es_entrada:
             fecha = m.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_ingreso else "-"
             prov = m.entrada_rel.proveedor.razon_social if m.entrada_rel and m.entrada_rel.proveedor else "-"
@@ -8089,106 +7586,95 @@ def exportar_excel_kardex():
             f_fac = m.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_factura else "-"
             guia = m.entrada_rel.nro_guia or "-"
             obs = m.entrada_rel.obs_entrada or "-"
-            
-            # Rescatamos el empleado de recupero si lo hay
             emp_retorno = Empleado.query.get(m.id_empleado_recupero).nombres if m.id_empleado_recupero else "-"
-            
             emp, area, cargo = "-", "-", "-"
             cantidad_str = f"+{m.cantidad}"
-            cant_color = "16A34A" # Verde
+            cant_color = "16A34A"
         else:
             fecha = m.salida_rel.fecha_salida.strftime('%d-%m-%Y') if m.salida_rel and m.salida_rel.fecha_salida else "-"
-            
-            # HEREDAMOS TALLA Y DOCS DE LA ÚLTIMA ENTRADA (Igual que en la ruta JSON)
             ultima_entrada = MovimientoDetalle.query.filter_by(id_producto=m.id_producto, tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).first()
             if not talla_val and ultima_entrada and ultima_entrada.talla:
                 talla_val = ultima_entrada.talla
-                
+ 
             f_fac = ultima_entrada.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if (ultima_entrada and ultima_entrada.entrada_rel.fecha_factura) else "-"
             doc = ultima_entrada.entrada_rel.nro_factura if ultima_entrada else "-"
             guia = ultima_entrada.entrada_rel.nro_guia if ultima_entrada else "-"
-            
             emp = m.salida_rel.empleado.nombres if m.salida_rel and m.salida_rel.empleado else "-"
             area = m.salida_rel.empleado.area if m.salida_rel and m.salida_rel.empleado else "-"
             cargo = m.salida_rel.empleado.cargo if m.salida_rel and m.salida_rel.empleado else "-"
             obs = m.salida_rel.obs_salida or "-"
-            
             prov = "-"
-            emp_retorno = "-" # Las salidas no tienen empleado de retorno
-            
+            emp_retorno = "-"
             cantidad_str = f"-{m.cantidad}"
-            cant_color = "EF4444" # Rojo
-            
+            cant_color = "EF4444"
+ 
         talla_mostrar = talla_val if talla_val else "-"
-        
-        # 🚨 LA CORRECCIÓN DEL HISTÓRICO: Tomar la foto o usar el actual
         stock_kardex = float(m.stock_historico if m.stock_historico is not None else m.producto_rel.stock)
-            
-        # INCORPORAMOS 'stock_kardex' EN LA POSICIÓN CORRECTA
+ 
         row_data = [
-            fecha, m.tipo_movimiento, m.producto_rel.codigo_identificador, 
-            m.producto_rel.nombre_prod, talla_mostrar, m.producto_rel.unidad_medida, 
-            m.producto_rel.categoria.tipo_categoria, cantidad_str, stock_kardex, # <--- 🚨 CORRECCIÓN APLICADA AQUÍ
+            fecha, m.tipo_movimiento, m.producto_rel.codigo_identificador,
+            m.producto_rel.nombre_prod, talla_mostrar, m.producto_rel.unidad_medida,
+            m.producto_rel.categoria.tipo_categoria, cantidad_str, stock_kardex,
             prov, emp_retorno, emp, area, cargo, doc, f_fac, guia, obs
         ]
-        
         ws.append(row_data)
-        
-        # Estilos por fila (bordes y colores dinámicos)
+ 
         current_row = ws[ws.max_row]
         for idx, cell in enumerate(current_row):
             cell.border = border_thin
-            # Índices actualizados (3:Nombre, 9:Prov, 10:EmpRetorno, 11:Emp, 17:Obs)
-            cell.alignment = align_left if idx in [3, 9, 10, 11, 17] else align_center 
-            
-            # Pintar la celda de Cantidad de Verde o Rojo (Ahora es el índice 7)
-            if idx == 7: 
+            cell.alignment = align_left if idx in [3, 9, 10, 11, 17] else align_center
+            if idx == 7:
                 cell.font = Font(color=cant_color, bold=True)
-
-    # 4. AUTOAJUSTAR ANCHO DE COLUMNAS (Se añade 'R' y se mueven las letras)
+ 
     column_widths = {
-        'A': 12, 'B': 12, 'C': 15, 'D': 40, 'E': 10, 'F': 10, 'G': 18, 
-        'H': 12, 'I': 12, 'J': 35, 'K': 35, 'L': 35, 'M': 20, 
+        'A': 12, 'B': 12, 'C': 15, 'D': 40, 'E': 10, 'F': 10, 'G': 18,
+        'H': 12, 'I': 12, 'J': 35, 'K': 35, 'L': 35, 'M': 20,
         'N': 20, 'O': 18, 'P': 15, 'Q': 18, 'R': 40
     }
     for col, width in column_widths.items():
         ws.column_dimensions[col].width = width
-
-    # 5. PREPARAR DESCARGA
+ 
     output = BytesIO()
     wb.save(output)
     output.seek(0)
-    
+ 
+    # 📝 Registrar quién descargó el reporte
+    try:
+        registrar_bitacora('EXPORTAR', 'KARDEX', None,
+                           f"Exportó kardex ({len(movimientos)} filas | tipo={tipo} | búsqueda='{search}' | "
+                           f"{fecha_inicio or '...'} a {fecha_fin or '...'})")
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+ 
     return send_file(
-        output, 
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-        as_attachment=True, 
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
         download_name="Reporte_Kardex.xlsx"
     )
-
-
+ 
+ 
 @app.route('/almacen/api/exportar-excel-inventario', methods=['GET'])
+@requiere_login
 def exportar_excel_inventario():
     search = request.args.get('search', '', type=str).strip().upper()
     palabras_busqueda = search.split() if search else []
-
-    # Extraemos solo lotes activos y con stock
+ 
     movimientos = MovimientoDetalle.query.filter(
         MovimientoDetalle.tipo_movimiento == 'ENTRADA',
         MovimientoDetalle.stock_restante > 0,
         MovimientoDetalle.estado == 'ACTIVO'
     ).order_by(MovimientoDetalle.id_movimiento.desc()).all()
-
-    # Mismo algoritmo de agrupación
+ 
     inventario_agrupado = {}
     for m in movimientos:
         id_prod = m.id_producto
         talla_str = m.talla if m.talla else "-"
         prov_nombre = m.entrada_rel.proveedor.razon_social if (m.entrada_rel and m.entrada_rel.proveedor) else "-"
         precio_val = float(m.precio_unitario or m.producto_rel.precio_igv or 0.00)
-        
         clave = (id_prod, talla_str, prov_nombre, precio_val)
-        
+ 
         if clave not in inventario_agrupado:
             inventario_agrupado[clave] = {
                 "codigo": m.producto_rel.codigo_identificador or "-",
@@ -8205,195 +7691,866 @@ def exportar_excel_inventario():
         else:
             inventario_agrupado[clave]["stock"] += float(m.stock_restante or 0)
             inventario_agrupado[clave]["ids_agrupados"].append(m.id_movimiento)
-
-    # Configurar Excel
-    import openpyxl
-    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
-    from io import BytesIO
-
+ 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Inventario Físico"
-
+ 
     header_fill = PatternFill(start_color="0EA5E9", end_color="0EA5E9", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
     align_center = Alignment(horizontal="center", vertical="center")
     align_left = Alignment(horizontal="left", vertical="center")
     border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-
+ 
     headers = [
-        "Fecha Ingreso", "Cód. Identificador", "Nombre Producto", "Talla", "Proveedor", 
-        "Categoría", "Unidad", "Stock", "Precio (S/)", "Total (S/)", 
+        "Fecha Ingreso", "Cód. Identificador", "Nombre Producto", "Talla", "Proveedor",
+        "Categoría", "Unidad", "Stock", "Precio (S/)", "Total (S/)",
         "Conteo Físico", "Diferencia"
     ]
     ws.append(headers)
-    
     for cell in ws[1]:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = align_center
         cell.border = border_thin
-
+ 
     suma_precio = 0
     suma_total = 0
-
+    filas_exportadas = 0
+ 
     for val in inventario_agrupado.values():
-        # Buscar auditoría para el grupo
+        if palabras_busqueda:
+            fila_texto = f"{val['fecha_ingreso']} {val['codigo']} {val['nombre']} {val['talla']} {val['proveedor']} {val['categoria']}".upper()
+            if not all(palabra in fila_texto for palabra in palabras_busqueda):
+                continue
+ 
         texto_busqueda = f"%Lotes IDs: {', '.join(map(str, val['ids_agrupados']))}%"
         ultimo_conteo = InventarioAuditoria.query.filter(
             InventarioAuditoria.observaciones.like(texto_busqueda)
         ).order_by(InventarioAuditoria.id_auditoria.desc()).first()
-        
+ 
         conteo_val = float(ultimo_conteo.conteo_fisico) if ultimo_conteo else ""
         stock_fila = val["stock"]
         precio_fila = val["precio"]
         total_fila = stock_fila * precio_fila
         diferencia = (conteo_val - stock_fila) if conteo_val != "" else ""
-
-        # FILTRO INTELIGENTE
-        if palabras_busqueda:
-            fila_texto = f"{val['fecha_ingreso']} {val['codigo']} {val['nombre']} {val['talla']} {val['proveedor']} {val['categoria']}".upper()
-            if not all(palabra in fila_texto for palabra in palabras_busqueda):
-                continue 
-
+ 
         suma_precio += precio_fila
         suma_total += total_fila
-        
+        filas_exportadas += 1
+ 
         dif_str = ""
         dif_color = "475569"
         if diferencia != "":
             dif_str = f"+{diferencia}" if diferencia >= 0 else str(diferencia)
-            if diferencia > 0: dif_color = "10B981"
-            elif diferencia < 0: dif_color = "EF4444"
-
+            if diferencia > 0:
+                dif_color = "10B981"
+            elif diferencia < 0:
+                dif_color = "EF4444"
+ 
         row_data = [
-            val["fecha_ingreso"], val["codigo"], val["nombre"], val["talla"], 
-            val["proveedor"], val["categoria"], val["unidad"], stock_fila, 
+            val["fecha_ingreso"], val["codigo"], val["nombre"], val["talla"],
+            val["proveedor"], val["categoria"], val["unidad"], stock_fila,
             precio_fila, total_fila, conteo_val, dif_str
         ]
         ws.append(row_data)
-
+ 
         current_row = ws[ws.max_row]
         for idx, cell in enumerate(current_row):
             cell.border = border_thin
-            cell.alignment = align_left if idx in [2, 4] else align_center 
-            
-            if idx in [8, 9]: 
+            cell.alignment = align_left if idx in [2, 4] else align_center
+            if idx in [8, 9]:
                 cell.number_format = '"S/" #,##0.00'
             if idx == 11 and dif_str != "":
                 cell.font = Font(color=dif_color, bold=True)
-
-    # Totales Generales
+ 
     ws.append(["", "", "", "", "", "", "", "TOTALES:", suma_precio, suma_total, "", ""])
     last_row = ws[ws.max_row]
-    last_row[7].font = Font(bold=True) 
+    last_row[7].font = Font(bold=True)
     last_row[7].alignment = Alignment(horizontal="right")
-    
     for idx in [8, 9]:
         last_row[idx].font = Font(color="0369A1", bold=True)
         last_row[idx].number_format = '"S/" #,##0.00'
         last_row[idx].border = border_thin
         last_row[idx].alignment = align_center
-
+ 
     column_widths = {
-        'A': 15, 'B': 15, 'C': 40, 'D': 10, 'E': 35, 'F': 20, 
+        'A': 15, 'B': 15, 'C': 40, 'D': 10, 'E': 35, 'F': 20,
         'G': 10, 'H': 10, 'I': 15, 'J': 15, 'K': 15, 'L': 15
     }
     for col, width in column_widths.items():
         ws.column_dimensions[col].width = width
-
+ 
     output = BytesIO()
     wb.save(output)
     output.seek(0)
-    
+ 
+    # 📝 Registrar quién descargó el reporte
+    try:
+        registrar_bitacora('EXPORTAR', 'INVENTARIO', None,
+                           f"Exportó inventario físico ({filas_exportadas} filas | búsqueda='{search}')")
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+ 
     return send_file(
-        output, 
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-        as_attachment=True, 
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
         download_name="Reporte_Inventario_Fisico_Agrupado.xlsx"
     )
-
-
-@app.route('/almacen/editar-movimiento', methods=['POST'])
-def editar_movimiento():
-    data = request.get_json()
+ 
+ 
+# ==========================================================================
+# SECCIÓN B — RUTAS DE ESCRITURA CON AUDITORÍA (reemplazan a las actuales)
+# ==========================================================================
+ 
+# ------------------------------ PROVEEDORES ------------------------------
+@app.route('/almacen/eliminar-proveedor', methods=['POST'])
+@requiere_login
+def eliminar_proveedor():
+    try:
+        data = request.get_json() or {}
+        proveedor = Proveedor.query.get(data.get('id_proveedor'))
+        if not proveedor:
+            return jsonify({'error': 'Proveedor no encontrado'}), 404
+ 
+        antes = {'estado': proveedor.estado}
+        proveedor.estado = 'INACTIVO'
+        registrar_bitacora('INACTIVAR', 'PROVEEDOR', proveedor.id_proveedor,
+                           f"Inactivó al proveedor {proveedor.razon_social} (RUC {proveedor.ruc})",
+                           antes=antes, despues={'estado': 'INACTIVO'})
+        db.session.commit()
+        return jsonify({'mensaje': 'Proveedor inactivado correctamente'})
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+@app.route('/almacen/reactivar-proveedor', methods=['POST'])
+@requiere_login
+def reactivar_proveedor():
+    try:
+        data = request.get_json() or {}
+        proveedor = Proveedor.query.get(data.get('id_proveedor'))
+        if not proveedor:
+            return jsonify({'error': 'Proveedor no encontrado'}), 404
+ 
+        antes = {'estado': proveedor.estado}
+        proveedor.estado = 'ACTIVO'
+        registrar_bitacora('REACTIVAR', 'PROVEEDOR', proveedor.id_proveedor,
+                           f"Reactivó al proveedor {proveedor.razon_social} (RUC {proveedor.ruc})",
+                           antes=antes, despues={'estado': 'ACTIVO'})
+        db.session.commit()
+        return jsonify({'mensaje': 'Proveedor reactivado correctamente'})
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+@app.route('/almacen/crear-proveedor', methods=['POST'])
+@requiere_login
+def crear_proveedor():
+    try:
+        data = request.get_json() or {}
+        ruc_prov = (data.get('ruc') or '').strip()
+        razon_social = (data.get('razon_social') or '').strip().upper()
+ 
+        if not ruc_prov or not razon_social:
+            return jsonify({"success": False, "message": "RUC y Razón Social son obligatorios."}), 400
+ 
+        if Proveedor.query.filter_by(ruc=ruc_prov).first():
+            return jsonify({"success": False, "message": f"El proveedor con RUC {ruc_prov} ya está registrado."}), 400
+ 
+        nuevo_prov = Proveedor(
+            ruc=ruc_prov,
+            razon_social=razon_social,
+            nombre_comercial=(data.get('nombre_comercial') or '').strip().upper() or None,
+            celular=data.get('celular'),
+            correo=data.get('correo'),
+            direccion=data.get('direccion')
+        )
+        db.session.add(nuevo_prov)
+        db.session.flush()  # obtener id_proveedor
+ 
+        registrar_bitacora('CREAR', 'PROVEEDOR', nuevo_prov.id_proveedor,
+                           f"Registró al proveedor {razon_social} (RUC {ruc_prov})",
+                           despues=foto(nuevo_prov))
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+@app.route('/almacen/editar-proveedor', methods=['POST'])
+@requiere_login
+def editar_proveedor():
+    try:
+        data = request.get_json() or {}
+        id_prov = data.get('id_proveedor')
+        ruc = (data.get('ruc') or '').strip()
+        razon_social = (data.get('razon_social') or '').strip().upper()
+ 
+        if not all([id_prov, ruc, razon_social]):
+            return jsonify({"success": False, "message": "Faltan datos obligatorios (RUC o Razón Social)."}), 400
+ 
+        prov_existente = Proveedor.query.filter(Proveedor.ruc == ruc, Proveedor.id_proveedor != id_prov).first()
+        if prov_existente:
+            return jsonify({"success": False, "message": f"¡Alerta! El RUC '{ruc}' ya pertenece a otro proveedor."}), 400
+ 
+        proveedor = Proveedor.query.get(id_prov)
+        if not proveedor:
+            return jsonify({"success": False, "message": "Proveedor no encontrado."}), 404
+ 
+        antes = foto(proveedor)
+ 
+        proveedor.ruc = ruc
+        proveedor.razon_social = razon_social
+        proveedor.nombre_comercial = (data.get('nombre_comercial') or '').strip().upper() or None
+        proveedor.celular = data.get('celular')
+        proveedor.correo = data.get('correo')
+        proveedor.direccion = data.get('direccion')
+ 
+        registrar_bitacora('EDITAR', 'PROVEEDOR', proveedor.id_proveedor,
+                           f"Editó al proveedor {razon_social} (RUC {ruc})",
+                           antes=antes, despues=foto(proveedor))
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+# ------------------------------ UNIDADES ------------------------------
+@app.route('/almacen/api/unidades', methods=['POST'])
+@requiere_login
+def agregar_unidad():
+    try:
+        data = request.get_json() or {}
+        nombre = (data.get('nombre') or '').strip().upper()
+ 
+        if not nombre:
+            return jsonify({'error': 'Nombre inválido'}), 400
+ 
+        if UnidadMedida.query.filter_by(nombre_unidad=nombre).first():
+            return jsonify({'error': 'La unidad ya existe'}), 400
+ 
+        nueva_unidad = UnidadMedida(nombre_unidad=nombre)
+        db.session.add(nueva_unidad)
+        db.session.flush()
+ 
+        registrar_bitacora('CREAR', 'UNIDAD', nombre,
+                           f"Creó la unidad de medida {nombre}",
+                           despues=foto(nueva_unidad))
+        db.session.commit()
+        return jsonify({'mensaje': 'Unidad guardada', 'unidad': nombre}), 201
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+# ------------------------------ CATEGORÍAS ------------------------------
+@app.route('/almacen/crear-categoria', methods=['POST'])
+@requiere_login
+def crear_categoria():
+    try:
+        data = request.get_json() or {}
+        nombre = (data.get('tipo_categoria') or '').strip().upper()
+ 
+        if not nombre:
+            return jsonify({"success": False, "message": "El nombre de categoría es requerido"}), 400
+ 
+        cat_existente = Categoria.query.filter_by(tipo_categoria=nombre).first()
+        if cat_existente:
+            return jsonify({
+                "success": False,
+                "message": f"¡Alerta! La categoría '{nombre}' ya existe con el prefijo {cat_existente.codigo_prefijo}."
+            }), 400
+ 
+        prefijo = generar_prefijo_categoria(nombre)
+        nueva_cat = Categoria(tipo_categoria=nombre, codigo_prefijo=prefijo)
+        db.session.add(nueva_cat)
+        db.session.flush()
+ 
+        registrar_bitacora('CREAR', 'CATEGORIA', nueva_cat.id_categoria,
+                           f"Creó la categoría {nombre} ({prefijo})",
+                           despues=foto(nueva_cat))
+        db.session.commit()
+ 
+        return jsonify({
+            "success": True,
+            "prefijo": prefijo,
+            "categoria": {"id": nueva_cat.id_categoria, "texto": f"{nombre} ({prefijo})"}
+        })
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+# ------------------------------ PRODUCTOS ------------------------------
+@app.route('/almacen/crear-producto', methods=['POST'])
+@requiere_login
+def crear_producto():
+    try:
+        data = request.get_json() or {}
+        nombre = (data.get('nombre_prod') or '').strip()
+        id_cat = data.get('id_categoria')
+        unidad = data.get('unidad_medida')
+        precio = float(data.get('precio_igv') or 0.00)
+ 
+        prod_existente = Producto.query.filter_by(nombre_prod=nombre).first()
+        if prod_existente:
+            cat_duplicada = Categoria.query.get(prod_existente.id_categoria)
+            return jsonify({
+                "success": False,
+                "message": f"¡Alerta! El nombre '{nombre}' ya fue creado en la categoría '{cat_duplicada.tipo_categoria}'."
+            }), 400
+ 
+        categoria = Categoria.query.get(id_cat)
+        if not categoria:
+            return jsonify({"success": False, "message": "Categoría no válida."}), 400
+ 
+        total_productos = Producto.query.filter_by(id_categoria=id_cat).count()
+        codigo_final = f"{categoria.codigo_prefijo}-{str(total_productos + 1).zfill(4)}"
+ 
+        nuevo_prod = Producto(id_categoria=id_cat, codigo_identificador=codigo_final,
+                              nombre_prod=nombre, unidad_medida=unidad, precio_igv=precio)
+        db.session.add(nuevo_prod)
+        db.session.flush()
+ 
+        registrar_bitacora('CREAR', 'PRODUCTO', nuevo_prod.id_producto,
+                           f"Creó el producto {codigo_final} - {nombre} en {categoria.tipo_categoria}",
+                           despues=foto(nuevo_prod))
+        db.session.commit()
+        return jsonify({"success": True, "codigo": codigo_final})
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+@app.route('/almacen/editar-producto', methods=['POST'])
+@requiere_login
+def editar_producto():
+    try:
+        data = request.get_json() or {}
+        id_prod = data.get('id_producto')
+        id_cat = data.get('id_categoria')
+        nombre = (data.get('nombre_prod') or '').strip().upper()
+        unidad = data.get('unidad_medida')
+        precio = float(data.get('precio_igv') or 0.00)
+ 
+        if not all([id_prod, id_cat, nombre, unidad]):
+            return jsonify({"success": False, "message": "Faltan datos obligatorios."}), 400
+ 
+        producto = Producto.query.get(id_prod)
+        if not producto:
+            return jsonify({"success": False, "message": "Producto no encontrado en la base de datos."}), 404
+ 
+        prod_existente = Producto.query.filter(Producto.nombre_prod == nombre, Producto.id_producto != id_prod).first()
+        if prod_existente:
+            cat_duplicada = Categoria.query.get(prod_existente.id_categoria)
+            return jsonify({
+                "success": False,
+                "message": f"¡Alerta! El nombre '{nombre}' ya le pertenece a otro producto en la categoría '{cat_duplicada.tipo_categoria}'."
+            }), 400
+ 
+        antes = foto(producto)
+ 
+        producto.id_categoria = id_cat
+        producto.nombre_prod = nombre
+        producto.unidad_medida = unidad
+        producto.precio_igv = precio
+ 
+        registrar_bitacora('EDITAR', 'PRODUCTO', producto.id_producto,
+                           f"Editó el producto {producto.codigo_identificador} - {nombre}",
+                           antes=antes, despues=foto(producto))
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+# ------------------------------ INVENTARIO ------------------------------
+@app.route('/almacen/guardar-inventario', methods=['POST'])
+@requiere_login
+def guardar_inventario():
+    data = request.get_json() or {}
+    id_prod = data.get('id_producto')
+ 
+    if not id_prod:
+        return jsonify({"success": False, "message": "Debe seleccionar un producto."}), 400
+ 
+    producto = Producto.query.get(id_prod)
+    if not producto:
+        return jsonify({"success": False, "message": "Producto no encontrado."}), 404
+ 
+    try:
+        nuevo_stock = float(data.get('stock') or 0)
+        nuevo_precio = float(data.get('precio_igv') or 0)
+    except ValueError:
+        return jsonify({"success": False, "message": "Valores de stock o precio inválidos."}), 400
+ 
+    try:
+        antes = {'stock': producto.stock, 'precio_igv': producto.precio_igv}
+        producto.stock = nuevo_stock
+        producto.precio_igv = nuevo_precio
+ 
+        registrar_bitacora('AJUSTE', 'PRODUCTO', producto.id_producto,
+                           f"Ajustó manualmente stock/precio de {producto.codigo_identificador} - {producto.nombre_prod}",
+                           antes=antes, despues={'stock': nuevo_stock, 'precio_igv': nuevo_precio})
+        db.session.commit()
+        return jsonify({"success": True, "message": "Inventario actualizado correctamente."})
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+@app.route('/almacen/guardar-conteo-fisico', methods=['POST'])
+@requiere_login
+def guardar_conteo_fisico():
+    data = request.get_json() or {}
+    id_grupo = str(data.get('id_producto') or '')  # El JS envía '14_15_16'
+    conteo = data.get('conteo_fisico')
+ 
+    if not id_grupo or conteo is None:
+        return jsonify({"success": False, "message": "Datos incompletos."}), 400
+ 
+    id_auditor = id_empleado_actual()
+    if not id_auditor:
+        return jsonify({"success": False, "message": "Su usuario no está vinculado a un empleado. Pida al administrador que lo asigne."}), 403
+ 
+    try:
+        conteo_float = float(conteo)
+        lotes_ids = [int(x) for x in id_grupo.split('_')]
+ 
+        lotes = MovimientoDetalle.query.filter(MovimientoDetalle.id_movimiento.in_(lotes_ids)).all()
+        if not lotes:
+            return jsonify({"success": False, "message": "Lotes no encontrados."}), 404
+ 
+        stock_actual = sum(float(l.stock_restante or 0) for l in lotes)
+        diferencia = conteo_float - stock_actual
+ 
+        nueva_auditoria = InventarioAuditoria(
+            id_producto=lotes[0].id_producto,
+            id_empleado_auditor=id_auditor,            # ✅ usuario real
+            stock_sistema=stock_actual,
+            conteo_fisico=conteo_float,
+            diferencia=diferencia,
+            observaciones=f"Conteo físico agrupado (Lotes IDs: {', '.join(map(str, lotes_ids))})"
+        )
+        db.session.add(nueva_auditoria)
+        db.session.flush()
+ 
+        registrar_bitacora('CREAR', 'CONTEO_FISICO', nueva_auditoria.id_auditoria,
+                           f"Registró conteo físico de {lotes[0].producto_rel.nombre_prod}: "
+                           f"sistema {stock_actual}, físico {conteo_float}, diferencia {diferencia:+}",
+                           despues=foto(nueva_auditoria))
+        db.session.commit()
+        return jsonify({"success": True})
+ 
+    except ValueError:
+        return jsonify({"success": False, "message": "El conteo debe ser un número válido."}), 400
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+# ------------------------------ ENTRADAS ------------------------------
+@app.route('/almacen/guardar-entrada-lote', methods=['POST'])
+@requiere_login
+def guardar_entrada_lote():
+    data = request.get_json() or {}
+    cabecera = data.get('cabecera')
+    detalles = data.get('detalles')
+ 
+    if not cabecera or not detalles or len(detalles) == 0:
+        return jsonify({"success": False, "message": "No hay productos para guardar."}), 400
+ 
+    id_receptor = id_empleado_actual()
+    if not id_receptor:
+        return jsonify({"success": False, "message": "Su usuario no está vinculado a un empleado. Pida al administrador que lo asigne."}), 403
+ 
+    try:
+        f_fac = datetime.strptime(cabecera['fecha_fac'], '%Y-%m-%d').date() if cabecera.get('fecha_fac') else None
+        f_ing = datetime.strptime(cabecera['fecha_ing'], '%Y-%m-%d') if cabecera.get('fecha_ing') else ahora_lima()
+        nro_factura = (cabecera.get('factura') or '').strip().upper()
+        id_prov = cabecera.get('id_proveedor')
+ 
+        entrada = Entrada.query.filter_by(nro_factura=nro_factura, id_proveedor=id_prov).first()
+        if not entrada:
+            entrada = Entrada(
+                id_proveedor=id_prov,
+                id_empleado_receptor=id_receptor,       # ✅ usuario real
+                fecha_ingreso=f_ing,
+                fecha_factura=f_fac,
+                nro_factura=nro_factura,
+                nro_guia=(cabecera.get('guia') or '').strip().upper(),
+                obs_entrada=""
+            )
+            db.session.add(entrada)
+            db.session.flush()
+            registrar_bitacora('CREAR', 'ENTRADA', entrada.id_entrada,
+                               f"Registró la factura {nro_factura or '(sin número)'} del proveedor ID {id_prov}",
+                               despues=foto(entrada))
+ 
+        for item in detalles:
+            cant_float = float(item['cantidad'])
+            precio_float = float(item['precio'])
+ 
+            talla_val = item.get('talla')
+            talla_val = None if (talla_val == '-' or not talla_val) else str(talla_val).strip().upper()
+ 
+            id_emp_rec = item.get('id_empleado_recupero') or None
+ 
+            movimiento = MovimientoDetalle(
+                id_entrada=entrada.id_entrada,
+                id_producto=item['id_producto'],
+                tipo_movimiento='ENTRADA',
+                cantidad=cant_float,
+                precio_unitario=precio_float,
+                stock_restante=cant_float,
+                estado='ACTIVO',
+                talla=talla_val,
+                id_empleado_recupero=id_emp_rec,
+                observaciones=item.get('obs', '')
+            )
+            db.session.add(movimiento)
+ 
+            producto = Producto.query.get(item['id_producto'])
+            if producto:
+                producto.stock = float(producto.stock or 0) + cant_float
+                movimiento.stock_historico = producto.stock
+ 
+            db.session.flush()  # obtener id_movimiento
+            nombre_prod = producto.nombre_prod if producto else f"producto ID {item['id_producto']}"
+            registrar_bitacora('CREAR', 'MOVIMIENTO', movimiento.id_movimiento,
+                               f"ENTRADA de {cant_float} x {nombre_prod} "
+                               f"(Factura {nro_factura or '-'}, Talla {talla_val or '-'}, S/ {precio_float})",
+                               despues=foto(movimiento))
+ 
+        db.session.commit()
+        return jsonify({"success": True})
+ 
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+# ------------------------------ SALIDAS ------------------------------
+@app.route('/almacen/guardar-salida-lote', methods=['POST'])
+@requiere_login
+def guardar_salida_lote():
+    data = request.get_json() or {}
+    cabecera = data.get('cabecera')
+    detalles = data.get('detalles')
+ 
+    if not cabecera or not detalles or len(detalles) == 0:
+        return jsonify({"success": False, "message": "No hay productos para despachar."}), 400
+ 
+    try:
+        fecha_str = cabecera.get('fecha')
+        fecha_salida = datetime.strptime(fecha_str, '%Y-%m-%d') if fecha_str else ahora_lima()
+        id_emp = cabecera.get('id_empleado')
+        empleado = Empleado.query.get(id_emp) if id_emp else None
+        nombre_emp = empleado.nombres if empleado else f"ID {id_emp}"
+ 
+        nueva_salida = Salida(
+            id_empleado_solicitante=id_emp,   # quien RECIBE el material
+            fecha_salida=fecha_salida,
+            obs_salida=cabecera.get('area', '')
+        )
+        db.session.add(nueva_salida)
+        db.session.flush()
+        registrar_bitacora('CREAR', 'SALIDA', nueva_salida.id_salida,
+                           f"Registró salida para {nombre_emp}",
+                           despues=foto(nueva_salida))
+ 
+        for item in detalles:
+            cant_a_restar = float(item['cantidad'])
+            lotes_ids = [int(x) for x in str(item['id_lote']).split('_')]
+ 
+            lotes_origen = (MovimientoDetalle.query
+                            .filter(MovimientoDetalle.id_movimiento.in_(lotes_ids))
+                            .order_by(MovimientoDetalle.id_movimiento.asc())
+                            .with_for_update()
+                            .all())
+ 
+            stock_total_grupo = sum(float(l.stock_restante or 0) for l in lotes_origen)
+            if cant_a_restar > stock_total_grupo:
+                db.session.rollback()
+                return jsonify({
+                    "success": False,
+                    "message": f"Stock insuficiente. Intentaste sacar {cant_a_restar}, pero solo quedan {stock_total_grupo} unidades disponibles."
+                }), 400
+ 
+            for lote in lotes_origen:
+                if cant_a_restar <= 0:
+                    break
+                stock_lote = float(lote.stock_restante or 0)
+                if stock_lote <= 0:
+                    continue
+ 
+                cantidad_lote = min(cant_a_restar, stock_lote)
+                producto = Producto.query.get(lote.id_producto)
+ 
+                movimiento = MovimientoDetalle(
+                    id_salida=nueva_salida.id_salida,
+                    id_producto=lote.id_producto,
+                    tipo_movimiento='SALIDA',
+                    cantidad=cantidad_lote,
+                    precio_unitario=lote.precio_unitario,
+                    estado='ACTIVO',
+                    talla=lote.talla,
+                    id_lote_origen=lote.id_movimiento,
+                    observaciones=item.get('obs', '')
+                )
+                db.session.add(movimiento)
+ 
+                lote.stock_restante = stock_lote - cantidad_lote
+                if producto:
+                    producto.stock = float(producto.stock or 0) - cantidad_lote
+                    movimiento.stock_historico = producto.stock
+ 
+                db.session.flush()
+                registrar_bitacora('CREAR', 'MOVIMIENTO', movimiento.id_movimiento,
+                                   f"SALIDA de {cantidad_lote} x {producto.nombre_prod if producto else lote.id_producto} "
+                                   f"para {nombre_emp} (lote origen {lote.id_movimiento})",
+                                   despues=foto(movimiento))
+ 
+                cant_a_restar -= cantidad_lote
+ 
+        db.session.commit()
+        return jsonify({"success": True})
+ 
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+# ------------------------------ ELIMINAR MOVIMIENTO ------------------------------
+@app.route('/almacen/eliminar-movimiento', methods=['POST'])
+@requiere_login
+# @requiere_rol('ADMIN')   # 👈 descomenta si solo ciertos roles pueden eliminar
+def eliminar_movimiento():
+    data = request.get_json() or {}
     id_mov = data.get('id_mov')
-    nueva_cantidad = float(data.get('cantidad', 0))
-    nueva_talla = data.get('talla', '')
-    nueva_obs = data.get('obs', '')
-
+ 
     movimiento = MovimientoDetalle.query.get(id_mov)
     if not movimiento:
         return jsonify({"success": False, "message": "Movimiento no encontrado."}), 404
-
+ 
+    producto = Producto.query.get(movimiento.id_producto)
+ 
+    try:
+        cant_float = float(movimiento.cantidad)
+        foto_mov = foto(movimiento)                       # ✅ copia ANTES de borrar
+        nombre_prod = producto.nombre_prod if producto else f"producto ID {movimiento.id_producto}"
+ 
+        if movimiento.tipo_movimiento == 'SALIDA':
+            producto.stock = float(producto.stock or 0) + cant_float
+ 
+            if movimiento.id_lote_origen:
+                lote_origen = MovimientoDetalle.query.get(movimiento.id_lote_origen)
+                if lote_origen:
+                    lote_origen.stock_restante = float(lote_origen.stock_restante or 0) + cant_float
+ 
+            id_padre_salida = movimiento.id_salida
+            registrar_bitacora('ELIMINAR', 'MOVIMIENTO', id_mov,
+                               f"Eliminó SALIDA de {cant_float} x {nombre_prod} "
+                               f"(stock devuelto al lote {movimiento.id_lote_origen or '-'})",
+                               antes=foto_mov)
+            db.session.delete(movimiento)
+ 
+            detalles_restantes = MovimientoDetalle.query.filter_by(id_salida=id_padre_salida).count()
+            if detalles_restantes == 0:
+                padre_salida = Salida.query.get(id_padre_salida)
+                if padre_salida:
+                    registrar_bitacora('ELIMINAR', 'SALIDA', id_padre_salida,
+                                       "Eliminó la cabecera de salida (sin detalles restantes)",
+                                       antes=foto(padre_salida))
+                    db.session.delete(padre_salida)
+ 
+        elif movimiento.tipo_movimiento == 'ENTRADA':
+            stock_restante = float(movimiento.stock_restante or 0)
+            if stock_restante < cant_float:
+                return jsonify({
+                    "success": False,
+                    "message": f"No se puede eliminar la entrada. Ya se han despachado productos de este lote (Quedan {stock_restante} de {cant_float}). Elimine primero las salidas vinculadas."
+                }), 400
+ 
+            if float(producto.stock or 0) < cant_float:
+                return jsonify({
+                    "success": False,
+                    "message": f"No se puede eliminar. El stock actual de {producto.nombre_prod} es insuficiente para restar {cant_float}."
+                }), 400
+ 
+            producto.stock = float(producto.stock or 0) - cant_float
+ 
+            id_padre_entrada = movimiento.id_entrada
+            registrar_bitacora('ELIMINAR', 'MOVIMIENTO', id_mov,
+                               f"Eliminó ENTRADA de {cant_float} x {nombre_prod}",
+                               antes=foto_mov)
+            db.session.delete(movimiento)
+ 
+            detalles_restantes = MovimientoDetalle.query.filter_by(id_entrada=id_padre_entrada).count()
+            if detalles_restantes == 0:
+                padre_entrada = Entrada.query.get(id_padre_entrada)
+                if padre_entrada:
+                    registrar_bitacora('ELIMINAR', 'ENTRADA', id_padre_entrada,
+                                       f"Eliminó la factura {padre_entrada.nro_factura or '-'} (sin detalles restantes)",
+                                       antes=foto(padre_entrada))
+                    db.session.delete(padre_entrada)
+ 
+        db.session.commit()
+        return jsonify({"success": True, "message": "Registro eliminado y stock recalculado correctamente."})
+ 
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+# ------------------------------ EDITAR MOVIMIENTO ------------------------------
+@app.route('/almacen/editar-movimiento', methods=['POST'])
+@requiere_login
+def editar_movimiento():
+    data = request.get_json() or {}
+    id_mov = data.get('id_mov')
+ 
+    try:
+        nueva_cantidad = float(data.get('cantidad', 0))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Cantidad inválida."}), 400
+ 
+    nueva_talla = data.get('talla', '')
+    nueva_obs = data.get('obs', '')
+ 
+    movimiento = MovimientoDetalle.query.get(id_mov)
+    if not movimiento:
+        return jsonify({"success": False, "message": "Movimiento no encontrado."}), 404
+ 
     producto = Producto.query.get(movimiento.id_producto)
     cantidad_anterior = float(movimiento.cantidad)
     diferencia_cantidad = nueva_cantidad - cantidad_anterior
-
+ 
     try:
-        # --- 1. ACTUALIZAR CANTIDADES Y STOCK ---
+        # ✅ Fotos ANTES de modificar
+        antes_mov = foto(movimiento)
+        cabecera = (Entrada.query.get(movimiento.id_entrada) if movimiento.tipo_movimiento == 'ENTRADA'
+                    else Salida.query.get(movimiento.id_salida))
+        antes_cab = foto(cabecera)
+ 
+        # --- 1. CANTIDADES Y STOCK ---
         if diferencia_cantidad != 0:
             if movimiento.tipo_movimiento == 'ENTRADA':
-                stock_restante_actual = float(movimiento.stock_restante or 0)
-                nuevo_stock_restante = stock_restante_actual + diferencia_cantidad
-
+                nuevo_stock_restante = float(movimiento.stock_restante or 0) + diferencia_cantidad
                 if nuevo_stock_restante < 0:
+                    db.session.rollback()
                     return jsonify({"success": False, "message": "Stock insuficiente. Ya se despacharon productos de este lote."}), 400
-
                 movimiento.stock_restante = nuevo_stock_restante
                 producto.stock = float(producto.stock or 0) + diferencia_cantidad
-
+ 
             elif movimiento.tipo_movimiento == 'SALIDA':
                 if float(producto.stock or 0) - diferencia_cantidad < 0:
+                    db.session.rollback()
                     return jsonify({"success": False, "message": "Stock global insuficiente."}), 400
-                
+ 
+                lote_origen = MovimientoDetalle.query.get(movimiento.id_lote_origen) if movimiento.id_lote_origen else None
+                if lote_origen and float(lote_origen.stock_restante or 0) - diferencia_cantidad < 0:
+                    db.session.rollback()
+                    return jsonify({"success": False, "message": "El lote de origen no tiene saldo suficiente."}), 400
+ 
                 producto.stock = float(producto.stock or 0) - diferencia_cantidad
-
-                if movimiento.id_lote_origen:
-                    lote_origen = MovimientoDetalle.query.get(movimiento.id_lote_origen)
-                    if lote_origen:
-                        if float(lote_origen.stock_restante or 0) - diferencia_cantidad < 0:
-                            return jsonify({"success": False, "message": "El lote de origen no tiene saldo suficiente."}), 400
-                        lote_origen.stock_restante = float(lote_origen.stock_restante or 0) - diferencia_cantidad
-
-        # --- 2. ACTUALIZAR CAMPOS COMUNES (Módulo MovimientoDetalle) ---
+                if lote_origen:
+                    lote_origen.stock_restante = float(lote_origen.stock_restante or 0) - diferencia_cantidad
+ 
+        # --- 2. CAMPOS COMUNES ---
         movimiento.cantidad = nueva_cantidad
         movimiento.observaciones = nueva_obs
         movimiento.talla = nueva_talla if nueva_talla else None
-        
-        # --- 3. ACTUALIZAR CAMPOS EXCLUSIVOS DE ENTRADA ---
+ 
+        # --- 3. EXCLUSIVOS DE ENTRADA ---
         if movimiento.tipo_movimiento == 'ENTRADA':
             movimiento.precio_unitario = float(data.get('precio', 0))
-            
-            entrada_cabecera = Entrada.query.get(movimiento.id_entrada)
-            if entrada_cabecera:
-                entrada_cabecera.nro_factura = data.get('factura', '').strip().upper()
-                entrada_cabecera.nro_guia = data.get('guia', '').strip().upper()
-                
-                fecha_fac_str = data.get('fecha_fac')
-                fecha_ing_str = data.get('fecha_ing')
-                
-                if fecha_fac_str:
-                    entrada_cabecera.fecha_factura = datetime.strptime(fecha_fac_str, '%Y-%m-%d').date()
-                if fecha_ing_str:
-                    entrada_cabecera.fecha_ingreso = datetime.strptime(fecha_ing_str, '%Y-%m-%d')
-
-        # --- 4. ACTUALIZAR CAMPOS EXCLUSIVOS DE SALIDA ---
+            if cabecera:
+                cabecera.nro_factura = (data.get('factura') or '').strip().upper()
+                cabecera.nro_guia = (data.get('guia') or '').strip().upper()
+                if data.get('fecha_fac'):
+                    cabecera.fecha_factura = datetime.strptime(data['fecha_fac'], '%Y-%m-%d').date()
+                if data.get('fecha_ing'):
+                    cabecera.fecha_ingreso = datetime.strptime(data['fecha_ing'], '%Y-%m-%d')
+ 
+        # --- 4. EXCLUSIVOS DE SALIDA ---
         elif movimiento.tipo_movimiento == 'SALIDA':
-            fecha_sal_str = data.get('fecha_salida')
-            
-            if fecha_sal_str:
-                salida_cabecera = Salida.query.get(movimiento.id_salida) 
-                if salida_cabecera:
-                    # Lo guarda como DateTime gracias a strptime
-                    salida_cabecera.fecha_salida = datetime.strptime(fecha_sal_str, '%Y-%m-%d')
-
+            if data.get('fecha_salida') and cabecera:
+                cabecera.fecha_salida = datetime.strptime(data['fecha_salida'], '%Y-%m-%d')
+ 
+        # --- 5. BITÁCORA (solo guarda los campos que realmente cambiaron) ---
+        nombre_prod = producto.nombre_prod if producto else movimiento.id_producto
+        registrar_bitacora('EDITAR', 'MOVIMIENTO', movimiento.id_movimiento,
+                           f"Editó {movimiento.tipo_movimiento} de {nombre_prod}",
+                           antes=antes_mov, despues=foto(movimiento))
+        if cabecera:
+            entidad_cab = 'ENTRADA' if movimiento.tipo_movimiento == 'ENTRADA' else 'SALIDA'
+            id_cab = movimiento.id_entrada if entidad_cab == 'ENTRADA' else movimiento.id_salida
+            registrar_bitacora('EDITAR', entidad_cab, id_cab,
+                               f"Editó la cabecera de {entidad_cab.lower()} desde el movimiento {movimiento.id_movimiento}",
+                               antes=antes_cab, despues=foto(cabecera))
+ 
         db.session.commit()
         return jsonify({"success": True, "message": "Movimiento editado correctamente."})
-
+ 
     except Exception as e:
-        db.session.rollback()
-        return jsonify({"success": False, "message": str(e)}), 500
+        return error_interno(e)
+ 
+ 
+# ------------------------------ CONSULTAR BITÁCORA ------------------------------
+@app.route('/almacen/api/bitacora', methods=['GET'])
+@requiere_login
+def api_bitacora():
+    """
+    Ejemplos:
+      /almacen/api/bitacora?page=1&limit=50
+      /almacen/api/bitacora?entidad=MOVIMIENTO&id_registro=125     -> historial de un movimiento
+      /almacen/api/bitacora?accion=ELIMINAR&fecha_inicio=2026-09-01
+      /almacen/api/bitacora?usuario=JUAN
+    """
+    try:
+        page = request.args.get('page', 1, type=int)
+        limit = min(request.args.get('limit', 50, type=int), 500)
+        entidad = request.args.get('entidad', '', type=str).strip().upper()
+        accion = request.args.get('accion', '', type=str).strip().upper()
+        id_registro = request.args.get('id_registro', '', type=str).strip()
+        usuario = request.args.get('usuario', '', type=str).strip()
+        fecha_inicio = request.args.get('fecha_inicio', '', type=str)
+        fecha_fin = request.args.get('fecha_fin', '', type=str)
+ 
+        q = BitacoraAlmacen.query
+        if entidad:
+            q = q.filter(BitacoraAlmacen.entidad == entidad)
+        if accion:
+            q = q.filter(BitacoraAlmacen.accion == accion)
+        if id_registro:
+            q = q.filter(BitacoraAlmacen.id_registro == id_registro)
+        if usuario:
+            q = q.filter(or_(BitacoraAlmacen.usuario_nombre.ilike(f"%{usuario}%"),
+                             BitacoraAlmacen.usuario_login.ilike(f"%{usuario}%")))
+        if fecha_inicio:
+            q = q.filter(BitacoraAlmacen.fecha >= f"{fecha_inicio} 00:00:00")
+        if fecha_fin:
+            q = q.filter(BitacoraAlmacen.fecha <= f"{fecha_fin} 23:59:59")
+ 
+        pag = q.order_by(BitacoraAlmacen.id_bitacora.desc()).paginate(page=page, per_page=limit, error_out=False)
+ 
+        return jsonify({
+            "success": True,
+            "page": page,
+            "pages": pag.pages,
+            "total": pag.total,
+            "data": [{
+                "id": b.id_bitacora,
+                "fecha": b.fecha.strftime('%d-%m-%Y %H:%M:%S') if b.fecha else "-",
+                "usuario": b.usuario_nombre or "-",
+                "login": b.usuario_login or "-",
+                "ip": b.ip or "-",
+                "accion": b.accion,
+                "entidad": b.entidad,
+                "id_registro": b.id_registro,
+                "descripcion": b.descripcion,
+                "antes": json.loads(b.datos_antes) if b.datos_antes else None,
+                "despues": json.loads(b.datos_despues) if b.datos_despues else None,
+            } for b in pag.items]
+        })
+    except Exception as e:
+        return error_interno(e)
 
 
 ##### MODULO DE REVALIDACION DE LECTURAS #####
