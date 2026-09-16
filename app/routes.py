@@ -7264,172 +7264,6 @@ def obtener_siguiente_codigo(id_cat):
     return jsonify({"success": True, "codigo": codigo_final})
  
  
-@app.route('/almacen/api/listar-datos', methods=['GET'])
-@requiere_login
-def api_listar_datos():
-    try:
-        categorias = Categoria.query.order_by(Categoria.tipo_categoria.asc()).all()
-        productos = Producto.query.order_by(Producto.nombre_prod.asc()).all()
-        proveedores = Proveedor.query.order_by(Proveedor.razon_social.asc()).all()
-        empleados = Empleado.query.filter(
-            Empleado.estado.in_(['ACTIVO', 'CESADO'])
-        ).order_by(Empleado.nombres.asc()).all()
-        ultimas_salidas = MovimientoDetalle.query.filter_by(tipo_movimiento='SALIDA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
- 
-        lista_productos = []
-        for p in productos:
-            ultimo_mov = MovimientoDetalle.query.filter_by(id_producto=p.id_producto, tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).first()
- 
-            nombre_prov = "-"
-            if ultimo_mov and ultimo_mov.entrada_rel and ultimo_mov.entrada_rel.proveedor:
-                nombre_prov = ultimo_mov.entrada_rel.proveedor.razon_social
- 
-            lista_productos.append({
-                "id_producto": p.id_producto,
-                "id_categoria": p.id_categoria,
-                "codigo": p.codigo_identificador,
-                "nombre": p.nombre_prod,
-                "unidad": p.unidad_medida,
-                "precio_igv": float(p.precio_igv or 0.00),
-                "stock": float(p.stock or 0.00),
-                "categoria_nombre": p.categoria.tipo_categoria,
-                "ultimo_proveedor": nombre_prov,
-                "en_inventario": True
-            })
- 
-        # ---------- INVENTARIO FÍSICO (AGRUPADO) ----------
-        movimientos = MovimientoDetalle.query.filter(
-            MovimientoDetalle.tipo_movimiento == 'ENTRADA',
-            MovimientoDetalle.stock_restante > 0,
-            MovimientoDetalle.estado == 'ACTIVO'
-        ).order_by(MovimientoDetalle.id_movimiento.desc()).all()
- 
-        inventario_agrupado = {}
-        for m in movimientos:
-            id_prod = m.id_producto
-            talla_str = m.talla if m.talla else "-"
-            prov_nombre = m.entrada_rel.proveedor.razon_social if (m.entrada_rel and m.entrada_rel.proveedor) else "-"
-            precio_val = float(m.precio_unitario or m.producto_rel.precio_igv or 0.00)
-            clave = (id_prod, talla_str, prov_nombre, precio_val)
- 
-            if clave not in inventario_agrupado:
-                inventario_agrupado[clave] = {
-                    "codigo": m.producto_rel.codigo_identificador,
-                    "nombre": m.producto_rel.nombre_prod,
-                    "talla": talla_str,
-                    "categoria": m.producto_rel.categoria.tipo_categoria,
-                    "unidad": m.producto_rel.unidad_medida,
-                    "precio_igv": precio_val,
-                    "cantidad": float(m.stock_restante or 0),
-                    "fecha_ingreso": m.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if m.entrada_rel and m.entrada_rel.fecha_ingreso else "-",
-                    "proveedor": prov_nombre,
-                    "ids_agrupados": [m.id_movimiento]
-                }
-            else:
-                inventario_agrupado[clave]["cantidad"] += float(m.stock_restante or 0)
-                inventario_agrupado[clave]["ids_agrupados"].append(m.id_movimiento)
- 
-        lista_inventario = []
-        for val in inventario_agrupado.values():
-            id_grupo = "_".join(map(str, val["ids_agrupados"]))
-            texto_busqueda = f"%Lotes IDs: {', '.join(map(str, val['ids_agrupados']))}%"
-            ultimo_conteo = InventarioAuditoria.query.filter(
-                InventarioAuditoria.observaciones.like(texto_busqueda)
-            ).order_by(InventarioAuditoria.id_auditoria.desc()).first()
- 
-            val["id_movimiento"] = id_grupo
-            val["conteo_fisico"] = float(ultimo_conteo.conteo_fisico) if ultimo_conteo else ""
-            del val["ids_agrupados"]
-            lista_inventario.append(val)
- 
-        # ---------- HISTÓRICO DE ENTRADAS ----------
-        ultimas_entradas = MovimientoDetalle.query.filter_by(tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).limit(100).all()
- 
-        # ---------- LOTES DISPONIBLES AGRUPADOS (FIFO) PARA SALIDAS ----------
-        lotes_vivos = MovimientoDetalle.query.filter(
-            MovimientoDetalle.tipo_movimiento == 'ENTRADA',
-            MovimientoDetalle.stock_restante > 0,
-            MovimientoDetalle.estado == 'ACTIVO'
-        ).order_by(MovimientoDetalle.id_movimiento.asc()).all()
- 
-        salidas_agrupadas = {}
-        for lote in lotes_vivos:
-            id_prod = lote.id_producto
-            talla_str = lote.talla if lote.talla else "-"
-            prov_nombre = lote.entrada_rel.proveedor.razon_social if (lote.entrada_rel and lote.entrada_rel.proveedor) else "-"
-            precio_val = float(lote.precio_unitario or lote.producto_rel.precio_igv or 0.00)
-            clave = (id_prod, talla_str, prov_nombre, precio_val)
- 
-            if clave not in salidas_agrupadas:
-                salidas_agrupadas[clave] = {
-                    "id_producto": id_prod,
-                    "codigo": lote.producto_rel.codigo_identificador,
-                    "nombre": lote.producto_rel.nombre_prod,
-                    "talla": talla_str,
-                    "proveedor": prov_nombre,
-                    "fecha_ingreso": lote.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if lote.entrada_rel and lote.entrada_rel.fecha_ingreso else "-",
-                    "stock_restante": float(lote.stock_restante or 0),
-                    "precio": precio_val,
-                    "ids_agrupados": [lote.id_movimiento]
-                }
-            else:
-                salidas_agrupadas[clave]["stock_restante"] += float(lote.stock_restante or 0)
-                salidas_agrupadas[clave]["ids_agrupados"].append(lote.id_movimiento)
- 
-        lista_lotes_salida = []
-        for val in salidas_agrupadas.values():
-            val["id_lote"] = "_".join(map(str, val["ids_agrupados"]))
-            del val["ids_agrupados"]
-            lista_lotes_salida.append(val)
- 
-        # ---------- RESPUESTA ----------
-        data = {
-            "categorias": [{"id": c.id_categoria, "texto_select": f"{c.tipo_categoria} ({c.codigo_prefijo})", "nombre": c.tipo_categoria} for c in categorias],
-            "productos": lista_productos,
-            "proveedores": [{"id_proveedor": pr.id_proveedor, "ruc": pr.ruc, "razon_social": pr.razon_social, "nombre_comercial": pr.nombre_comercial or "", "celular": pr.celular or "", "correo": pr.correo or "", "direccion": pr.direccion or "", "estado": pr.estado} for pr in proveedores],
-            "inventario_fisico": lista_inventario,
- 
-            "entradas": [{
-                "id_mov": e.id_movimiento,
-                "fecha_fac": e.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if e.entrada_rel.fecha_factura else "-",
-                "fecha_ing": e.entrada_rel.fecha_ingreso.strftime('%d-%m-%Y') if e.entrada_rel.fecha_ingreso else "-",
-                "factura": e.entrada_rel.nro_factura,
-                "guia": e.entrada_rel.nro_guia or "-",
-                "codigo": e.producto_rel.codigo_identificador,
-                "producto": e.producto_rel.nombre_prod,
-                "talla": e.talla if e.talla else "-",
-                "empleado_recupero": Empleado.query.get(e.id_empleado_recupero).nombres if e.id_empleado_recupero else "-",
-                "cantidad": float(e.cantidad),
-                "precio": float(e.precio_unitario or e.producto_rel.precio_igv or 0),
-                "proveedor": e.entrada_rel.proveedor.razon_social if e.entrada_rel.proveedor else "-",
-                "obs": e.observaciones if e.observaciones else "-"
-            } for e in ultimas_entradas],
- 
-            "empleados": [{
-                "id_empleado": emp.id_empleado,
-                "nombres": emp.nombres or "SIN NOMBRE",
-                "area": emp.area or ""
-            } for emp in empleados],
- 
-            "salidas": [{
-                "id_mov": s.id_movimiento,
-                "fecha_salida": s.salida_rel.fecha_salida.strftime('%d-%m-%Y') if s.salida_rel and s.salida_rel.fecha_salida else "-",
-                "cantidad": float(s.cantidad),
-                "codigo": s.producto_rel.codigo_identificador,
-                "producto": s.producto_rel.nombre_prod,
-                "talla": s.talla if s.talla else "-",
-                "empleado": s.salida_rel.empleado.nombres if s.salida_rel and s.salida_rel.empleado else "-",
-                "area": s.salida_rel.empleado.area if s.salida_rel and s.salida_rel.empleado else "-",
-                "obs": s.observaciones if s.observaciones else "-"
-            } for s in ultimas_salidas],
- 
-            "lotes_disponibles": lista_lotes_salida
-        }
-        return jsonify(data)
-    except Exception as e:
-        return error_interno(e)
- 
- 
 def _query_kardex_filtrada(tipo, search, fecha_inicio, fecha_fin):
     """Misma consulta para la pantalla y para el Excel del kardex."""
     EmpleadoSolicitante = aliased(Empleado)
@@ -7473,74 +7307,480 @@ def _query_kardex_filtrada(tipo, search, fecha_inicio, fecha_fin):
  
     return query.order_by(MovimientoDetalle.id_movimiento.desc())
  
+
+def _ultima_entrada_por_producto(ids_productos=None):
+    """
+    Devuelve {id_producto: fila} con la última entrada de cada producto.
+    fila tiene: talla, fecha_factura, nro_factura, nro_guia, razon_social
+    """
+    sub = db.session.query(
+        MovimientoDetalle.id_producto.label('id_producto'),
+        func.max(MovimientoDetalle.id_movimiento).label('max_id')
+    ).filter(MovimientoDetalle.tipo_movimiento == 'ENTRADA')
+ 
+    if ids_productos is not None:
+        if not ids_productos:
+            return {}
+        sub = sub.filter(MovimientoDetalle.id_producto.in_(list(ids_productos)))
+ 
+    sub = sub.group_by(MovimientoDetalle.id_producto).subquery()
+ 
+    filas = (db.session.query(
+                MovimientoDetalle.id_producto,
+                MovimientoDetalle.talla,
+                Entrada.fecha_factura,
+                Entrada.nro_factura,
+                Entrada.nro_guia,
+                Proveedor.razon_social)
+             .join(sub, MovimientoDetalle.id_movimiento == sub.c.max_id)
+             .outerjoin(Entrada, MovimientoDetalle.id_entrada == Entrada.id_entrada)
+             .outerjoin(Proveedor, Entrada.id_proveedor == Proveedor.id_proveedor)
+             .all())
+ 
+    return {f.id_producto: f for f in filas}
+ 
+ 
+def _fmt_fecha(valor):
+    return valor.strftime('%d-%m-%Y') if valor else "-"
+ 
+ 
+# ==========================================================================
+# 📋 LISTAR DATOS (pantalla principal de almacén)
+# ==========================================================================
+@app.route('/almacen/api/listar-datos', methods=['GET'])
+@requiere_login
+def api_listar_datos():
+    try:
+        # ---------- 1. CATÁLOGOS ----------
+        categorias = (db.session.query(Categoria.id_categoria, Categoria.tipo_categoria, Categoria.codigo_prefijo)
+                      .order_by(Categoria.tipo_categoria.asc()).all())
+        nombre_categoria = {c.id_categoria: c.tipo_categoria for c in categorias}
+ 
+        proveedores = (db.session.query(Proveedor.id_proveedor, Proveedor.ruc, Proveedor.razon_social,
+                                         Proveedor.nombre_comercial, Proveedor.celular, Proveedor.correo,
+                                         Proveedor.direccion, Proveedor.estado)
+                       .order_by(Proveedor.razon_social.asc()).all())
+ 
+        empleados = (db.session.query(Empleado.id_empleado, Empleado.nombres, Empleado.area)
+                     .filter(Empleado.estado.in_(['ACTIVO', 'CESADO']))
+                     .order_by(Empleado.nombres.asc()).all())
+ 
+        # ---------- 2. PRODUCTOS + ÚLTIMO PROVEEDOR (2 consultas en total) ----------
+        ultimas_entradas_prod = _ultima_entrada_por_producto()
+ 
+        productos = (db.session.query(Producto.id_producto, Producto.id_categoria, Producto.codigo_identificador,
+                                      Producto.nombre_prod, Producto.unidad_medida, Producto.precio_igv, Producto.stock)
+                     .order_by(Producto.nombre_prod.asc()).all())
+ 
+        lista_productos = []
+        for p in productos:
+            ult = ultimas_entradas_prod.get(p.id_producto)
+            lista_productos.append({
+                "id_producto": p.id_producto,
+                "id_categoria": p.id_categoria,
+                "codigo": p.codigo_identificador,
+                "nombre": p.nombre_prod,
+                "unidad": p.unidad_medida,
+                "precio_igv": float(p.precio_igv or 0),
+                "stock": float(p.stock or 0),
+                "categoria_nombre": nombre_categoria.get(p.id_categoria, "-"),
+                "ultimo_proveedor": (ult.razon_social if ult and ult.razon_social else "-"),
+                "en_inventario": True
+            })
+ 
+        # ---------- 3. LOTES VIVOS: UNA consulta para inventario físico Y para salidas ----------
+        lotes = (db.session.query(
+                    MovimientoDetalle.id_movimiento,
+                    MovimientoDetalle.id_producto,
+                    MovimientoDetalle.talla,
+                    MovimientoDetalle.precio_unitario,
+                    MovimientoDetalle.stock_restante,
+                    Producto.codigo_identificador,
+                    Producto.nombre_prod,
+                    Producto.unidad_medida,
+                    Producto.precio_igv,
+                    Producto.id_categoria,
+                    Entrada.fecha_ingreso,
+                    Proveedor.razon_social)
+                 .join(Producto, MovimientoDetalle.id_producto == Producto.id_producto)
+                 .outerjoin(Entrada, MovimientoDetalle.id_entrada == Entrada.id_entrada)
+                 .outerjoin(Proveedor, Entrada.id_proveedor == Proveedor.id_proveedor)
+                 .filter(MovimientoDetalle.tipo_movimiento == 'ENTRADA',
+                         MovimientoDetalle.estado == 'ACTIVO',
+                         MovimientoDetalle.stock_restante > 0)
+                 .order_by(MovimientoDetalle.id_movimiento.asc())
+                 .all())
+ 
+        def _clave(l):
+            talla = l.talla if l.talla else "-"
+            prov = l.razon_social or "-"
+            precio = float(l.precio_unitario or l.precio_igv or 0)
+            return (l.id_producto, talla, prov, precio), talla, prov, precio
+ 
+        # 3a. Inventario físico (del más nuevo al más antiguo, igual que antes)
+        inventario_agrupado = {}
+        for l in reversed(lotes):
+            clave, talla, prov, precio = _clave(l)
+            grupo = inventario_agrupado.get(clave)
+            if grupo is None:
+                inventario_agrupado[clave] = {
+                    "codigo": l.codigo_identificador,
+                    "nombre": l.nombre_prod,
+                    "talla": talla,
+                    "categoria": nombre_categoria.get(l.id_categoria, "-"),
+                    "unidad": l.unidad_medida,
+                    "precio_igv": precio,
+                    "cantidad": float(l.stock_restante or 0),
+                    "fecha_ingreso": _fmt_fecha(l.fecha_ingreso),
+                    "proveedor": prov,
+                    "ids_agrupados": [l.id_movimiento]
+                }
+            else:
+                grupo["cantidad"] += float(l.stock_restante or 0)
+                grupo["ids_agrupados"].append(l.id_movimiento)
+ 
+        # 3b. Últimos conteos físicos: UNA consulta (antes era 1 LIKE por grupo)
+        conteos = {}
+        ids_prod_vivos = {l.id_producto for l in lotes}
+        if ids_prod_vivos:
+            auditorias = (db.session.query(InventarioAuditoria.observaciones, InventarioAuditoria.conteo_fisico)
+                          .filter(InventarioAuditoria.id_producto.in_(list(ids_prod_vivos)),
+                                  InventarioAuditoria.observaciones.like('%Lotes IDs:%'))
+                          .order_by(InventarioAuditoria.id_auditoria.asc())
+                          .all())
+            for a in auditorias:
+                ids_txt = a.observaciones.split('Lotes IDs:', 1)[1].strip().rstrip(')').strip()
+                conteos[ids_txt] = float(a.conteo_fisico)  # al ir en orden, el último conteo gana
+ 
+        lista_inventario = []
+        for val in inventario_agrupado.values():
+            ids = val.pop("ids_agrupados")
+            val["id_movimiento"] = "_".join(map(str, ids))
+            val["conteo_fisico"] = conteos.get(", ".join(map(str, ids)), "")
+            lista_inventario.append(val)
+ 
+        # 3c. Lotes disponibles para salidas (FIFO: del más antiguo al más nuevo)
+        salidas_agrupadas = {}
+        for l in lotes:
+            clave, talla, prov, precio = _clave(l)
+            grupo = salidas_agrupadas.get(clave)
+            if grupo is None:
+                salidas_agrupadas[clave] = {
+                    "id_producto": l.id_producto,
+                    "codigo": l.codigo_identificador,
+                    "nombre": l.nombre_prod,
+                    "talla": talla,
+                    "proveedor": prov,
+                    "fecha_ingreso": _fmt_fecha(l.fecha_ingreso),
+                    "stock_restante": float(l.stock_restante or 0),
+                    "precio": precio,
+                    "ids_agrupados": [l.id_movimiento]
+                }
+            else:
+                grupo["stock_restante"] += float(l.stock_restante or 0)
+                grupo["ids_agrupados"].append(l.id_movimiento)
+ 
+        lista_lotes_salida = []
+        for val in salidas_agrupadas.values():
+            val["id_lote"] = "_".join(map(str, val.pop("ids_agrupados")))
+            lista_lotes_salida.append(val)
+ 
+        # ---------- 4. ÚLTIMAS 100 ENTRADAS (1 consulta con todo unido) ----------
+        EmpRecupero = aliased(Empleado)
+        ultimas_entradas = (db.session.query(
+                                MovimientoDetalle.id_movimiento,
+                                MovimientoDetalle.talla,
+                                MovimientoDetalle.cantidad,
+                                MovimientoDetalle.precio_unitario,
+                                MovimientoDetalle.observaciones,
+                                Producto.codigo_identificador,
+                                Producto.nombre_prod,
+                                Producto.precio_igv,
+                                Entrada.fecha_factura,
+                                Entrada.fecha_ingreso,
+                                Entrada.nro_factura,
+                                Entrada.nro_guia,
+                                Proveedor.razon_social,
+                                EmpRecupero.nombres.label('recupero_nombres'))
+                            .join(Producto, MovimientoDetalle.id_producto == Producto.id_producto)
+                            .join(Entrada, MovimientoDetalle.id_entrada == Entrada.id_entrada)
+                            .outerjoin(Proveedor, Entrada.id_proveedor == Proveedor.id_proveedor)
+                            .outerjoin(EmpRecupero, MovimientoDetalle.id_empleado_recupero == EmpRecupero.id_empleado)
+                            .filter(MovimientoDetalle.tipo_movimiento == 'ENTRADA')
+                            .order_by(MovimientoDetalle.id_movimiento.desc())
+                            .limit(100).all())
+ 
+        # ---------- 5. ÚLTIMAS 100 SALIDAS (1 consulta con todo unido) ----------
+        ultimas_salidas = (db.session.query(
+                               MovimientoDetalle.id_movimiento,
+                               MovimientoDetalle.talla,
+                               MovimientoDetalle.cantidad,
+                               MovimientoDetalle.observaciones,
+                               Producto.codigo_identificador,
+                               Producto.nombre_prod,
+                               Salida.fecha_salida,
+                               Empleado.nombres,
+                               Empleado.area)
+                           .join(Producto, MovimientoDetalle.id_producto == Producto.id_producto)
+                           .outerjoin(Salida, MovimientoDetalle.id_salida == Salida.id_salida)
+                           .outerjoin(Empleado, Salida.id_empleado_solicitante == Empleado.id_empleado)
+                           .filter(MovimientoDetalle.tipo_movimiento == 'SALIDA')
+                           .order_by(MovimientoDetalle.id_movimiento.desc())
+                           .limit(100).all())
+ 
+        # ---------- 6. RESPUESTA (mismas claves que antes) ----------
+        data = {
+            "categorias": [{
+                "id": c.id_categoria,
+                "texto_select": f"{c.tipo_categoria} ({c.codigo_prefijo})",
+                "nombre": c.tipo_categoria
+            } for c in categorias],
+ 
+            "productos": lista_productos,
+ 
+            "proveedores": [{
+                "id_proveedor": pr.id_proveedor,
+                "ruc": pr.ruc,
+                "razon_social": pr.razon_social,
+                "nombre_comercial": pr.nombre_comercial or "",
+                "celular": pr.celular or "",
+                "correo": pr.correo or "",
+                "direccion": pr.direccion or "",
+                "estado": pr.estado
+            } for pr in proveedores],
+ 
+            "inventario_fisico": lista_inventario,
+ 
+            "entradas": [{
+                "id_mov": e.id_movimiento,
+                "fecha_fac": _fmt_fecha(e.fecha_factura),
+                "fecha_ing": _fmt_fecha(e.fecha_ingreso),
+                "factura": e.nro_factura,
+                "guia": e.nro_guia or "-",
+                "codigo": e.codigo_identificador,
+                "producto": e.nombre_prod,
+                "talla": e.talla if e.talla else "-",
+                "empleado_recupero": e.recupero_nombres or "-",
+                "cantidad": float(e.cantidad),
+                "precio": float(e.precio_unitario or e.precio_igv or 0),
+                "proveedor": e.razon_social or "-",
+                "obs": e.observaciones if e.observaciones else "-"
+            } for e in ultimas_entradas],
+ 
+            "empleados": [{
+                "id_empleado": emp.id_empleado,
+                "nombres": emp.nombres or "SIN NOMBRE",
+                "area": emp.area or ""
+            } for emp in empleados],
+ 
+            "salidas": [{
+                "id_mov": s.id_movimiento,
+                "fecha_salida": _fmt_fecha(s.fecha_salida),
+                "cantidad": float(s.cantidad),
+                "codigo": s.codigo_identificador,
+                "producto": s.nombre_prod,
+                "talla": s.talla if s.talla else "-",
+                "empleado": s.nombres or "-",
+                "area": s.area or "-",
+                "obs": s.observaciones if s.observaciones else "-"
+            } for s in ultimas_salidas],
+ 
+            "lotes_disponibles": lista_lotes_salida
+        }
+        return jsonify(data)
+    except Exception as e:
+        return error_interno(e)
+ 
+ 
+# ==========================================================================
+# 📚 HISTÓRICO KARDEX
+# ==========================================================================
+def _kardex_filas(tipo, search, fecha_inicio, fecha_fin, page=None, limit=None):
+    """
+    Devuelve (lista_de_diccionarios, total).
+    - Todo en 1 consulta con JOINs (antes: 1 consulta extra por cada fila).
+    - La factura/guía/talla de una SALIDA se toman de su LOTE DE ORIGEN real
+      (id_lote_origen). Solo si es una salida antigua sin lote, se usa la
+      última entrada del producto, como hacía la versión anterior.
+    """
+    EmpSolicitante = aliased(Empleado)
+    EmpRetorno = aliased(Empleado)
+    LoteOrigen = aliased(MovimientoDetalle)
+    EntradaOrigen = aliased(Entrada)
+ 
+    q = (db.session.query(
+            MovimientoDetalle.id_movimiento,
+            MovimientoDetalle.tipo_movimiento,
+            MovimientoDetalle.id_producto,
+            MovimientoDetalle.talla,
+            MovimientoDetalle.cantidad,
+            MovimientoDetalle.stock_historico,
+            MovimientoDetalle.observaciones,
+            MovimientoDetalle.precio_unitario,
+            MovimientoDetalle.id_lote_origen,
+            Producto.codigo_identificador,
+            Producto.nombre_prod,
+            Producto.unidad_medida,
+            Producto.stock.label('stock_producto'),
+            Categoria.tipo_categoria,
+            Entrada.fecha_ingreso,
+            Entrada.fecha_factura,
+            Entrada.nro_factura,
+            Entrada.nro_guia,
+            Proveedor.razon_social,
+            Salida.fecha_salida,
+            EmpSolicitante.nombres.label('sol_nombres'),
+            EmpSolicitante.area.label('sol_area'),
+            EmpSolicitante.cargo.label('sol_cargo'),
+            EmpRetorno.nombres.label('ret_nombres'),
+            LoteOrigen.talla.label('ori_talla'),
+            EntradaOrigen.fecha_factura.label('ori_fecha_factura'),
+            EntradaOrigen.nro_factura.label('ori_factura'),
+            EntradaOrigen.nro_guia.label('ori_guia'))
+         .select_from(MovimientoDetalle)
+         .join(Producto, MovimientoDetalle.id_producto == Producto.id_producto)
+         .outerjoin(Categoria, Producto.id_categoria == Categoria.id_categoria)
+         .outerjoin(Entrada, MovimientoDetalle.id_entrada == Entrada.id_entrada)
+         .outerjoin(Proveedor, Entrada.id_proveedor == Proveedor.id_proveedor)
+         .outerjoin(Salida, MovimientoDetalle.id_salida == Salida.id_salida)
+         .outerjoin(EmpSolicitante, Salida.id_empleado_solicitante == EmpSolicitante.id_empleado)
+         .outerjoin(EmpRetorno, MovimientoDetalle.id_empleado_recupero == EmpRetorno.id_empleado)
+         .outerjoin(LoteOrigen, MovimientoDetalle.id_lote_origen == LoteOrigen.id_movimiento)
+         .outerjoin(EntradaOrigen, LoteOrigen.id_entrada == EntradaOrigen.id_entrada))
+ 
+    # ----- Filtros (idénticos a la versión anterior) -----
+    if tipo != 'TODO':
+        q = q.filter(MovimientoDetalle.tipo_movimiento == tipo)
+ 
+    if search:
+        for palabra in search.split():
+            t = f"%{palabra}%"
+            q = q.filter(or_(
+                Producto.codigo_identificador.ilike(t),
+                Producto.nombre_prod.ilike(t),
+                Categoria.tipo_categoria.ilike(t),
+                Proveedor.razon_social.ilike(t),
+                EmpSolicitante.nombres.ilike(t),
+                EmpSolicitante.area.ilike(t),
+                EmpRetorno.nombres.ilike(t)
+            ))
+ 
+    if fecha_inicio and fecha_inicio.strip():
+        q = q.filter(or_(Entrada.fecha_ingreso >= f"{fecha_inicio} 00:00:00",
+                         Salida.fecha_salida >= f"{fecha_inicio} 00:00:00"))
+    if fecha_fin and fecha_fin.strip():
+        q = q.filter(or_(Entrada.fecha_ingreso <= f"{fecha_fin} 23:59:59",
+                         Salida.fecha_salida <= f"{fecha_fin} 23:59:59"))
+ 
+    # ----- Paginación opcional -----
+    total = None
+    if page and limit:
+        total = q.count()
+        q = q.order_by(MovimientoDetalle.id_movimiento.desc()).offset((page - 1) * limit).limit(limit)
+    else:
+        q = q.order_by(MovimientoDetalle.id_movimiento.desc())
+ 
+    filas = q.all()
+    if total is None:
+        total = len(filas)
+ 
+    # ----- Salidas antiguas sin lote de origen: 1 sola consulta de respaldo -----
+    ids_sin_lote = {f.id_producto for f in filas if f.tipo_movimiento == 'SALIDA' and not f.id_lote_origen}
+    respaldo = _ultima_entrada_por_producto(ids_sin_lote) if ids_sin_lote else {}
+ 
+    lista = []
+    for m in filas:
+        es_entrada = m.tipo_movimiento == 'ENTRADA'
+ 
+        if es_entrada:
+            fecha = m.fecha_ingreso
+            talla = m.talla
+            f_fac = _fmt_fecha(m.fecha_factura)
+            doc_ref = m.nro_factura or "-"
+            guia = m.nro_guia or "-"
+            prov = m.razon_social or "-"
+            emp_retorno = m.ret_nombres or "-"
+            emp = area = cargo = "-"
+        else:
+            fecha = m.fecha_salida
+            if m.id_lote_origen:
+                talla = m.talla or m.ori_talla
+                f_fac = _fmt_fecha(m.ori_fecha_factura)
+                doc_ref = m.ori_factura or "-"
+                guia = m.ori_guia or "-"
+            else:
+                r = respaldo.get(m.id_producto)
+                talla = m.talla or (r.talla if r else None)
+                f_fac = _fmt_fecha(r.fecha_factura) if r else "-"
+                doc_ref = (r.nro_factura if r else None) or "-"
+                guia = (r.nro_guia if r else None) or "-"
+            prov = "-"
+            emp_retorno = "-"
+            emp = m.sol_nombres or "-"
+            area = m.sol_area or "-"
+            cargo = m.sol_cargo or "-"
+ 
+        stock_mostrar = m.stock_historico if m.stock_historico is not None else m.stock_producto
+ 
+        lista.append({
+            "id_mov": m.id_movimiento,
+            "fecha": _fmt_fecha(fecha),
+            "tipo": m.tipo_movimiento,
+            "codigo": m.codigo_identificador,
+            "producto": m.nombre_prod,
+            "talla": talla if talla else "-",
+            "unidad": m.unidad_medida or "-",
+            "categoria": m.tipo_categoria or "-",
+            "cantidad": float(m.cantidad),
+            "stock_actual": float(stock_mostrar or 0),
+            "proveedor": prov,
+            "empleado_recupero": emp_retorno,
+            "empleado": emp,
+            "area": area,
+            "cargo": cargo,
+            "documento": doc_ref,
+            "fecha_factura": f_fac,
+            "guia": guia,
+            "obs": m.observaciones if m.observaciones else "-",
+            "precio": float(m.precio_unitario) if m.precio_unitario else 0.0
+        })
+ 
+    return lista, total
+ 
  
 @app.route('/almacen/api/historico-kardex', methods=['GET'])
 @requiere_login
 def api_historico_kardex():
+    """
+    Sin cambios en el frontend: devuelve TODO igual que antes.
+    Para paginar en el servidor (recomendado cuando haya miles de movimientos),
+    el JS debe enviar  paginado=1&page=N&limit=50  y usar  total / pages.
+    """
     try:
         tipo = request.args.get('tipo', 'TODO', type=str)
         search = request.args.get('search', '', type=str)
         fecha_inicio = request.args.get('fecha_inicio', '', type=str)
         fecha_fin = request.args.get('fecha_fin', '', type=str)
  
-        movimientos = _query_kardex_filtrada(tipo, search, fecha_inicio, fecha_fin).all()
+        paginado = request.args.get('paginado', '0') == '1'
+        page = max(request.args.get('page', 1, type=int), 1) if paginado else None
+        limit = min(max(request.args.get('limit', 50, type=int), 1), 500) if paginado else None
  
-        lista_historial = []
-        for m in movimientos:
-            es_entrada = m.tipo_movimiento == 'ENTRADA'
-            talla_mostrar = m.talla
+        lista, total = _kardex_filas(tipo, search, fecha_inicio, fecha_fin, page, limit)
  
-            if es_entrada:
-                fecha = m.entrada_rel.fecha_ingreso
-                f_fac = m.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if m.entrada_rel.fecha_factura else "-"
-                doc_ref = m.entrada_rel.nro_factura or "-"
-                guia = m.entrada_rel.nro_guia or "-"
-                prov = m.entrada_rel.proveedor.razon_social if m.entrada_rel.proveedor else "-"
-                emp_retorno = Empleado.query.get(m.id_empleado_recupero).nombres if m.id_empleado_recupero else "-"
-            else:
-                fecha = m.salida_rel.fecha_salida
-                ultima_entrada = MovimientoDetalle.query.filter_by(id_producto=m.id_producto, tipo_movimiento='ENTRADA').order_by(MovimientoDetalle.id_movimiento.desc()).first()
- 
-                if not talla_mostrar and ultima_entrada and ultima_entrada.talla:
-                    talla_mostrar = ultima_entrada.talla
- 
-                f_fac = ultima_entrada.entrada_rel.fecha_factura.strftime('%d-%m-%Y') if (ultima_entrada and ultima_entrada.entrada_rel.fecha_factura) else "-"
-                doc_ref = ultima_entrada.entrada_rel.nro_factura if ultima_entrada else "-"
-                guia = ultima_entrada.entrada_rel.nro_guia if ultima_entrada else "-"
-                prov = "-"
-                emp_retorno = "-"
- 
-            emp = m.salida_rel.empleado.nombres if (not es_entrada and m.salida_rel.empleado) else "-"
-            area = m.salida_rel.empleado.area if (not es_entrada and m.salida_rel.empleado) else "-"
-            cargo = m.salida_rel.empleado.cargo if (not es_entrada and m.salida_rel.empleado) else "-"
- 
-            lista_historial.append({
-                "id_mov": m.id_movimiento,
-                "fecha": fecha.strftime('%d-%m-%Y') if fecha else "-",
-                "tipo": m.tipo_movimiento,
-                "codigo": m.producto_rel.codigo_identificador,
-                "producto": m.producto_rel.nombre_prod,
-                "talla": talla_mostrar if talla_mostrar else "-",
-                "unidad": m.producto_rel.unidad_medida or "-",
-                "categoria": m.producto_rel.categoria.tipo_categoria,
-                "cantidad": float(m.cantidad),
-                "stock_actual": float(m.stock_historico if m.stock_historico is not None else m.producto_rel.stock),
-                "proveedor": prov,
-                "empleado_recupero": emp_retorno,
-                "empleado": emp,
-                "area": area,
-                "cargo": cargo,
-                "documento": doc_ref,
-                "fecha_factura": f_fac,
-                "guia": guia,
-                "obs": m.observaciones if m.observaciones else "-",
-                "precio": float(m.precio_unitario) if m.precio_unitario else 0.0
+        respuesta = {"success": True, "data": lista}
+        if paginado:
+            respuesta.update({
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "pages": (total + limit - 1) // limit
             })
- 
-        return jsonify({"success": True, "data": lista_historial})
+        return jsonify(respuesta)
  
     except Exception as e:
         return error_interno(e)
+
  
  
 @app.route('/almacen/api/exportar-excel-kardex', methods=['GET'])
