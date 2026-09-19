@@ -9585,6 +9585,14 @@ def analizar_pdf_ocr():
     # Retorno directo que el frontend interpretará para abrir el formulario vacío
     return jsonify({"exito": True, "datos": {"numero_carta": "", "asunto": ""}}), 200
 
+def _resumen_referencias(carta):
+    """Devuelve {'ids': [...], 'numeros': 'C-001, C-002'} para la bitácora."""
+    refs = list(carta.referencias_pasadas)
+    return {
+        "ids": sorted(r.id for r in refs),
+        "numeros": ", ".join(r.numero_carta for r in refs) or "-"
+    }
+ 
 
 # ---------------------------------------------------------
 # 2. GUARDAR CARTA Y ARMAR EL HILO
@@ -9592,47 +9600,48 @@ def analizar_pdf_ocr():
 
 # --ivargas 
 @app.route('/api/cartas/registrar', methods=['POST'])
+@requiere_login
 def registrar_carta():
+    temp_filepath = None
     try:
-        numero_carta = request.form.get('numero_carta')
-        asunto = request.form.get('asunto')
+        numero_carta = (request.form.get('numero_carta') or '').strip()
+        asunto = (request.form.get('asunto') or '').strip().upper()
         tipo = request.form.get('tipo')
         fecha_str = request.form.get('fecha')
         fecha_limite_str = request.form.get('fecha_limite')
         estado_form = request.form.get('estado')
-        
-        # Aquí capturamos la cadena que puede contener "1" o "1,4,7"
         referencia_id = request.form.get('carta_referencia_id')
-        
         file = request.files.get('archivo_pdf')
-
+ 
+        if not numero_carta or not asunto or tipo not in ['EMITIDA', 'RECIBIDA']:
+            return jsonify({"error": "Número, asunto y flujo son obligatorios."}), 400
+ 
         if not file or not allowed_file_cartas(file.filename):
             return jsonify({"error": "Debe adjuntar un documento PDF válido"}), 400
-
+ 
+        # Aviso claro en vez del error de MySQL por el UNIQUE de numero_carta
+        if Carta.query.filter_by(numero_carta=numero_carta).first():
+            return jsonify({"error": f"Ya existe un documento registrado con el número '{numero_carta}'."}), 400
+ 
         fecha_obj = datetime.strptime(fecha_str, '%Y-%m-%d').date() if fecha_str else None
         fecha_limite_obj = datetime.strptime(fecha_limite_str, '%Y-%m-%d').date() if fecha_limite_str else None
-
+ 
+        # ----- Subida a GCS -----
         filename = secure_filename(file.filename)
         nombre_unico = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
-
-        # IVARGAS - 11/07/2026
-        # ========================================
         temp_filepath = os.path.join(tempfile.gettempdir(), nombre_unico)
         file.save(temp_filepath)
-
+ 
         blob_name = f"cartas/{nombre_unico}"
         upload_pdf_to_gcs(temp_filepath, blob_name)
-
-        # Limpiar temporal
+ 
         try:
             if os.path.exists(temp_filepath):
                 os.remove(temp_filepath)
-        except Exception:
-            pass
-
-        ruta_relativa_bd = blob_name
-        # ========================================
-
+        except Exception as e_temp:
+            app.logger.warning(f"[CARTAS] No se pudo eliminar el temporal: {e_temp}")
+ 
+        # ----- Alta en BD -----
         nueva_carta = Carta(
             numero_carta=numero_carta,
             asunto=asunto,
@@ -9640,59 +9649,66 @@ def registrar_carta():
             fecha_emision=fecha_obj if tipo == 'EMITIDA' else None,
             fecha_recepcion=fecha_obj if tipo == 'RECIBIDA' else None,
             fecha_limite=fecha_limite_obj,
-            ruta_pdf=ruta_relativa_bd,
+            ruta_pdf=blob_name,
             estado=estado_form
         )
         db.session.add(nueva_carta)
         db.session.flush()
-
-        # =========================================================
-        # MODIFICACIÓN PARA MÚLTIPLES REFERENCIAS
-        # =========================================================
+ 
+        # ----- Referencias -----
         if referencia_id:
-            # Separamos la cadena por comas y limpiamos espacios vacíos
-            lista_ids = [r_id.strip() for r_id in referencia_id.split(',') if r_id.strip().isdigit()]
-            
-            for ref_id_single in lista_ids:
-                carta_origen = Carta.query.get(int(ref_id_single))
-                if carta_origen:
-                    nueva_carta.referencias_pasadas.append(carta_origen)
-                    if tipo == 'EMITIDA' and carta_origen.tipo == 'RECIBIDA' and carta_origen.estado == 'PENDIENTE':
-                        carta_origen.estado = 'ATENDIDA'
-        # =========================================================
-
+            lista_ids = [r.strip() for r in referencia_id.split(',') if r.strip().isdigit()]
+            for ref_id in lista_ids:
+                carta_origen = Carta.query.get(int(ref_id))
+                if not carta_origen:
+                    continue
+ 
+                nueva_carta.referencias_pasadas.append(carta_origen)
+ 
+                if tipo == 'EMITIDA' and carta_origen.tipo == 'RECIBIDA' and carta_origen.estado == 'PENDIENTE':
+                    carta_origen.estado = 'ATENDIDA'
+                    registrar_bitacora('EDITAR', 'CARTA', carta_origen.id,
+                                       f"Estado de {carta_origen.numero_carta} cambiado automáticamente al ser "
+                                       f"respondida por {numero_carta}",
+                                       antes={'estado': 'PENDIENTE'}, despues={'estado': 'ATENDIDA'})
+ 
+        refs = _resumen_referencias(nueva_carta)
+        datos_nuevos = foto(nueva_carta)
+        datos_nuevos['referencias'] = refs['numeros']
+ 
+        registrar_bitacora('CREAR', 'CARTA', nueva_carta.id,
+                           f"Registró el documento {numero_carta} ({tipo}) — {asunto[:120]} "
+                           f"| Referencias: {refs['numeros']}",
+                           despues=datos_nuevos)
+ 
         db.session.commit()
         return jsonify({"exito": True, "mensaje": "Documento registrado correctamente"}), 201
-
+ 
     except Exception as e:
-        db.session.rollback()
-        
-        # IVARGAS - 11/07/2026
-        # ========================================
-        if 'temp_filepath' in locals() and os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
-        # ========================================
-
-        print(f"Error Guardado: {e}")
+        if temp_filepath and os.path.exists(temp_filepath):
+            try:
+                os.remove(temp_filepath)
+            except Exception:
+                pass
         traceback.print_exc()
-        return jsonify({"error": f"Fallo al guardar: {str(e)}"}), 500
+        return error_interno(e)
 
 # ==============================================================================
 # LISTAR CARTAS
 # ==============================================================================
 @app.route('/api/cartas/listar', methods=['GET'])
+@requiere_login
 def listar_cartas():
     try:
         page = request.args.get('page', 1, type=int)
         search = request.args.get('search', '').strip()
         tipo = request.args.get('tipo', '').strip()
         estado = request.args.get('estado', '').strip()
-        
         sort_by = request.args.get('sort_by', 'fecha').strip()
         sort_dir = request.args.get('sort_dir', 'desc').strip()
-
+ 
         query = Carta.query
-
+ 
         if search:
             query = query.filter(db.or_(
                 Carta.numero_carta.ilike(f'%{search}%'),
@@ -9702,43 +9718,24 @@ def listar_cartas():
             query = query.filter(Carta.tipo == tipo)
         if estado:
             query = query.filter(Carta.estado == estado)
-
-        # =========================================================
-        # EL NUEVO ORDENAMIENTO (CON FECHAS REALES DB.DATE)
-        # =========================================================
+ 
         if sort_by == 'fecha':
             columna_virtual_fecha = case(
                 (Carta.tipo == 'EMITIDA', Carta.fecha_emision),
                 else_=Carta.fecha_recepcion
             )
-            if sort_dir == 'asc':
-                query = query.order_by(columna_virtual_fecha.asc())
-            else:
-                query = query.order_by(columna_virtual_fecha.desc())
-                
+            query = query.order_by(columna_virtual_fecha.asc() if sort_dir == 'asc' else columna_virtual_fecha.desc())
         elif sort_by == 'fecha_limite':
-            if sort_dir == 'asc':
-                query = query.order_by(Carta.fecha_limite.asc())
-            else:
-                query = query.order_by(Carta.fecha_limite.desc())
-                
+            query = query.order_by(Carta.fecha_limite.asc() if sort_dir == 'asc' else Carta.fecha_limite.desc())
         elif hasattr(Carta, sort_by):
             columna = getattr(Carta, sort_by)
-            if sort_dir == 'asc':
-                query = query.order_by(columna.asc())
-            else:
-                query = query.order_by(columna.desc())
+            query = query.order_by(columna.asc() if sort_dir == 'asc' else columna.desc())
         else:
             query = query.order_by(Carta.id.desc())
-        # =========================================================
-
+ 
         paginacion = query.paginate(page=page, per_page=10, error_out=False)
-        
-        # ========================================
-        # RESTAURADO A TU FUNCIÓN ORIGINAL (IVARGAS)
-        # ========================================
         datos = [carta_to_dict(carta) for carta in paginacion.items]
-
+ 
         meta = {
             "total_items": paginacion.total,
             "total_pages": paginacion.pages,
@@ -9746,100 +9743,118 @@ def listar_cartas():
             "has_next": paginacion.has_next,
             "has_prev": paginacion.has_prev
         }
-
         return jsonify({"exito": True, "datos": datos, "meta": meta}), 200
-
+ 
     except Exception as e:
-        print(f"Error al listar cartas: {e}")
-        return jsonify({"error": str(e)}), 500
+        return error_interno(e)
     
 # ==============================================================================
 # OBTENER CARTAS PARA EL BUSCADOR DEL MODAL
 # ==============================================================================
 @app.route('/api/cartas/todas-basico', methods=['GET'])
+@requiere_login
 def listar_cartas_basico():
     try:
-        # Traemos todas las cartas (solo los campos necesarios para el buscador)
-        cartas = Carta.query.order_by(Carta.id.desc()).all()
+        cartas = (db.session.query(Carta.id, Carta.numero_carta, Carta.asunto)
+                  .order_by(Carta.id.desc()).all())
         datos = [{"id": c.id, "numero_carta": c.numero_carta, "asunto": c.asunto} for c in cartas]
         return jsonify({"exito": True, "datos": datos}), 200
     except Exception as e:
-        print(f"Error al listar cartas para el buscador: {e}")
-        return jsonify({"error": str(e)}), 500
-
+        return error_interno(e)
 
 # IVARGAS - 11/07/2026
 # ========================================
 @app.route('/api/cartas/documento/<int:carta_id>', methods=['GET'])
+@requiere_login
 def obtener_documento_carta(carta_id):
     try:
         carta = Carta.query.get_or_404(carta_id)
         if not carta.ruta_pdf:
             return jsonify({"error": "No se encontró un documento asociado a esta carta."}), 404
-
+ 
         signed_url = get_signed_url(carta.ruta_pdf)
+ 
+        # Si también quieres registrar cada VISUALIZACIÓN, descomenta estas líneas.
+        # Genera bastantes registros, por eso viene apagado.
+        # registrar_bitacora('VER', 'CARTA', carta.id, f"Abrió el PDF de {carta.numero_carta}")
+        # db.session.commit()
+ 
         return jsonify({"exito": True, "url": signed_url}), 200
-
+ 
     except Exception as e:
-        print(f"Error generando URL de documento GCS: {e}")
-        return jsonify({"error": str(e)}), 500
+        return error_interno(e)
 
 
 @app.route('/api/cartas/descargar/<int:carta_id>', methods=['GET'])
+@requiere_login
 def descargar_carta(carta_id):
     try:
         carta = Carta.query.get_or_404(carta_id)
         if not carta.ruta_pdf:
             return jsonify({"error": "No se encontró un documento asociado a esta carta."}), 404
-
+ 
         filename = os.path.basename(carta.ruta_pdf)
         signed_url = get_signed_url(carta.ruta_pdf, as_attachment=True, filename=filename)
+ 
+        registrar_bitacora('DESCARGAR', 'CARTA', carta.id,
+                           f"Descargó el PDF de {carta.numero_carta}")
+        db.session.commit()
+ 
         return redirect(signed_url)
-
+ 
     except Exception as e:
-        print(f"Error generando descarga GCS: {e}")
-        return jsonify({"error": str(e)}), 500
+        return error_interno(e)
 
 
 @app.route('/api/cartas/eliminar/<int:carta_id>', methods=['DELETE'])
+@requiere_login
+# @requiere_rol('ADMIN')   # 👈 descomenta si solo ciertos roles pueden eliminar
 def eliminar_carta(carta_id):
     try:
         carta = Carta.query.get_or_404(carta_id)
+ 
+        # 📸 Copia completa ANTES de borrar (queda guardada en la bitácora)
+        datos_antes = foto(carta)
+        refs = _resumen_referencias(carta)
+        datos_antes['referencias'] = refs['numeros']
         ruta_pdf = carta.ruta_pdf
-
-        # 1. Eliminar de GCS
-        if ruta_pdf:
-            delete_blob_from_gcs(ruta_pdf)
-
-        # 2. Eliminar referencias (lazy=True para no cargar todas de una vez)
+        numero = carta.numero_carta
+ 
+        # Desvincular referencias en ambos sentidos
         carta.referencias_pasadas.clear()
-        # Si hay referencias futuras, también limpiarlas
-        for hijo in Carta.query.filter(Carta.referencias_pasadas.any(Carta.id == carta.id)).all():
+        for hijo in carta.referencias_futuras.all():
             hijo.referencias_pasadas.remove(carta)
-
-        # 3. Eliminar de BD
+ 
+        registrar_bitacora('ELIMINAR', 'CARTA', carta_id,
+                           f"Eliminó el documento {numero} (referencias: {refs['numeros']})",
+                           antes=datos_antes)
+ 
         db.session.delete(carta)
         db.session.commit()
-
+ 
+        # El archivo se borra de GCS solo si la BD confirmó el borrado
+        if ruta_pdf:
+            delete_blob_from_gcs(ruta_pdf)
+ 
         return jsonify({"exito": True, "mensaje": "Carta eliminada correctamente"}), 200
-
+ 
     except Exception as e:
-        db.session.rollback()
-        print(f"Error eliminando carta: {e}")
-        return jsonify({"error": str(e)}), 500
+        traceback.print_exc()
+        return error_interno(e)
 
 
 @app.route('/api/cartas/actualizar/<int:carta_id>', methods=['PUT'])
+@requiere_login
 def actualizar_carta(carta_id):
+    temp_filepath = None
     try:
-        print("========================================")
-        print(f">>> INICIANDO ACTUALIZACIÓN DE CARTA ID: {carta_id} <<<")
-        print("========================================")
-
         carta = Carta.query.get_or_404(carta_id)
-        print(f"[BD] Carta encontrada: ID {carta.id} | Número Actual: {carta.numero_carta}")
-
-        # Capturar campos a actualizar
+ 
+        # 📸 Foto ANTES de tocar nada
+        antes = foto(carta)
+        refs_antes = _resumen_referencias(carta)
+        pdf_anterior = carta.ruta_pdf
+ 
         numero_carta = request.form.get('numero_carta')
         asunto = request.form.get('asunto')
         tipo = request.form.get('tipo')
@@ -9848,200 +9863,167 @@ def actualizar_carta(carta_id):
         estado_form = request.form.get('estado')
         referencia_id = request.form.get('carta_referencia_id')
         file = request.files.get('archivo_pdf')
-
-        print(f"[FORM DATA RECEIVED] numero_carta: {numero_carta}")
-        print(f"[FORM DATA RECEIVED] asunto: {asunto}")
-        print(f"[FORM DATA RECEIVED] tipo: {tipo}")
-        print(f"[FORM DATA RECEIVED] fecha_str: {fecha_str}")
-        print(f"[FORM DATA RECEIVED] fecha_limite_str: {fecha_limite_str}")
-        print(f"[FORM DATA RECEIVED] estado_form: {estado_form}")
-        print(f"[FORM DATA RECEIVED] carta_referencia_id (raw): {referencia_id}")
-        print(f"[FILE RECEIVED] {file.filename if file else 'Sin archivo nuevo'}")
-
-        # Actualizar campos simples
+ 
         if numero_carta:
-            carta.numero_carta = numero_carta
+            carta.numero_carta = numero_carta.strip()
         if asunto:
-            carta.asunto = asunto.upper()
+            carta.asunto = asunto.strip().upper()
         if tipo in ['EMITIDA', 'RECIBIDA']:
             carta.tipo = tipo
         if estado_form in ['PENDIENTE', 'ATENDIDA', 'ARCHIVADA']:
             carta.estado = estado_form
-
+ 
         if fecha_str:
             try:
                 fecha_obj = datetime.strptime(fecha_str, '%Y-%m-%d').date()
-                if tipo == 'EMITIDA' or carta.tipo == 'EMITIDA':
+                if carta.tipo == 'EMITIDA':
                     carta.fecha_emision = fecha_obj
-                elif tipo == 'RECIBIDA' or carta.tipo == 'RECIBIDA':
+                else:
                     carta.fecha_recepcion = fecha_obj
-                print(f"[FECHAS] Fecha actualizada correctamente: {fecha_obj}")
-            except ValueError as ve:
-                print(f"[FECHAS WARNING] Formato de fecha invalido ({fecha_str}): {ve}")
-
+            except ValueError:
+                app.logger.warning(f"[CARTAS] Formato de fecha inválido: {fecha_str}")
+ 
         if fecha_limite_str:
             try:
-                fecha_limite_obj = datetime.strptime(fecha_limite_str, '%Y-%m-%d').date()
-                carta.fecha_limite = fecha_limite_obj
-                print(f"[FECHAS] Fecha límite actualizada correctamente: {fecha_limite_obj}")
-            except ValueError as ve:
-                print(f"[FECHAS WARNING] Formato de fecha limite invalido ({fecha_limite_str}): {ve}")
-
-        # =========================================================
-        # PROCESAMIENTO DE REFERENCIAS (Añadido para actualización)
-        # =========================================================
+                carta.fecha_limite = datetime.strptime(fecha_limite_str, '%Y-%m-%d').date()
+            except ValueError:
+                app.logger.warning(f"[CARTAS] Formato de fecha límite inválido: {fecha_limite_str}")
+ 
+        # ----- Referencias -----
+        # El modal ya precarga los chips, así que lo que llegue aquí es la lista
+        # completa y definitiva. Si llega vacía, el usuario quitó todas.
         if referencia_id is not None:
-            print(f"[REFERENCIAS] Procesando actualización de referencias con payload: '{referencia_id}'")
-            # Limpiamos las referencias previas si deseas reemplazar la lista entera
             carta.referencias_pasadas.clear()
-            print("[REFERENCIAS] Referencias anteriores limpiadas de la relación.")
-
-            lista_ids = [r_id.strip() for r_id in referencia_id.split(',') if r_id.strip().isdigit()]
-            print(f"[REFERENCIAS] IDs válidos a vincular: {lista_ids}")
-
-            for ref_id_single in lista_ids:
-                carta_origen = Carta.query.get(int(ref_id_single))
-                if carta_origen:
-                    carta.referencias_pasadas.append(carta_origen)
-                    print(f"[REFERENCIAS] Vinculada exitosamente con Carta Origen ID: {carta_origen.id}")
-
-                    tipo_actual = tipo if tipo in ['EMITIDA', 'RECIBIDA'] else carta.tipo
-                    if tipo_actual == 'EMITIDA' and carta_origen.tipo == 'RECIBIDA' and carta_origen.estado == 'PENDIENTE':
-                        carta_origen.estado = 'ATENDIDA'
-                        print(f"[REFERENCIAS] Estado de Carta Origen ID {carta_origen.id} actualizado a 'ATENDIDA'")
-                else:
-                    print(f"[REFERENCIAS WARNING] No se encontró en BD la Carta Origen con ID: {ref_id_single}")
-        else:
-            print("[REFERENCIAS] No se envió la clave 'carta_referencia_id' en el Form Data.")
-
-        # Reemplazo de archivo PDF si aplica
+ 
+            for ref_id in [r.strip() for r in referencia_id.split(',') if r.strip().isdigit()]:
+                if int(ref_id) == carta.id:
+                    continue  # una carta no puede referenciarse a sí misma
+                carta_origen = Carta.query.get(int(ref_id))
+                if not carta_origen:
+                    continue
+ 
+                carta.referencias_pasadas.append(carta_origen)
+ 
+                if carta.tipo == 'EMITIDA' and carta_origen.tipo == 'RECIBIDA' and carta_origen.estado == 'PENDIENTE':
+                    carta_origen.estado = 'ATENDIDA'
+                    registrar_bitacora('EDITAR', 'CARTA', carta_origen.id,
+                                       f"Estado de {carta_origen.numero_carta} cambiado automáticamente al ser "
+                                       f"vinculada desde {carta.numero_carta}",
+                                       antes={'estado': 'PENDIENTE'}, despues={'estado': 'ATENDIDA'})
+ 
+        # ----- Reemplazo del PDF -----
         if file and allowed_file_cartas(file.filename):
-            print(f"[FILE] Reemplazando PDF con el archivo: {file.filename}")
-            
-            # Eliminar antiguo de GCS
-            if carta.ruta_pdf:
-                print(f"[GCS] Eliminando archivo anterior en GCS: {carta.ruta_pdf}")
-                delete_blob_from_gcs(carta.ruta_pdf)
-
-            # Subir nuevo
             filename = secure_filename(file.filename)
             nombre_unico = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
             temp_filepath = os.path.join(tempfile.gettempdir(), nombre_unico)
             file.save(temp_filepath)
-            print(f"[GCS] Archivo temporal para actualización guardado en: {temp_filepath}")
-
+ 
             blob_name = f"cartas/{nombre_unico}"
             upload_pdf_to_gcs(temp_filepath, blob_name)
-            print(f"[GCS] Nuevo PDF subido correctamente: {blob_name}")
-
-            # Limpiar temporal
+ 
             try:
                 if os.path.exists(temp_filepath):
                     os.remove(temp_filepath)
-                    print(f"[GCS] Archivo temporal limpiado: {temp_filepath}")
             except Exception as e_temp:
-                print(f"[WARNING] No se pudo eliminar el archivo temporal: {e_temp}")
-
+                app.logger.warning(f"[CARTAS] No se pudo eliminar el temporal: {e_temp}")
+ 
             carta.ruta_pdf = blob_name
-
+ 
+            registrar_bitacora('EDITAR', 'CARTA', carta.id,
+                               f"Reemplazó el PDF de {carta.numero_carta} por {file.filename}",
+                               antes={'ruta_pdf': pdf_anterior},
+                               despues={'ruta_pdf': blob_name})
+ 
+        # ----- Bitácora de los campos y de las referencias -----
+        refs_despues = _resumen_referencias(carta)
+ 
+        registrar_bitacora('EDITAR', 'CARTA', carta.id,
+                           f"Editó el documento {carta.numero_carta}",
+                           antes=antes, despues=foto(carta))
+ 
+        if refs_antes['ids'] != refs_despues['ids']:
+            registrar_bitacora('EDITAR', 'CARTA_REFERENCIAS', carta.id,
+                               f"Cambió las referencias de {carta.numero_carta}: "
+                               f"antes [{refs_antes['numeros']}] → ahora [{refs_despues['numeros']}]",
+                               antes={'referencias': refs_antes['numeros']},
+                               despues={'referencias': refs_despues['numeros']})
+ 
         db.session.commit()
-        print("[BD] Transaction COMMIT realizada exitosamente en la base de datos.")
-        print("========================================")
+ 
+        # El PDF anterior se borra de GCS solo cuando el commit fue exitoso
+        if file and allowed_file_cartas(file.filename) and pdf_anterior and pdf_anterior != carta.ruta_pdf:
+            delete_blob_from_gcs(pdf_anterior)
+ 
         return jsonify({"exito": True, "mensaje": "Carta actualizada correctamente"}), 200
-
+ 
     except Exception as e:
-        db.session.rollback()
-        print("[BD] Transaction ROLLBACK ejecutada debido a un error.")
-        
-        if 'temp_filepath' in locals() and os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
-            print(f"[CLEANUP ERROR] Archivo temporal borrado tras excepción: {temp_filepath}")
-
-        print(f"[ERROR CRÍTICO] Error actualizando carta ID {carta_id}: {e}")
+        if temp_filepath and os.path.exists(temp_filepath):
+            try:
+                os.remove(temp_filepath)
+            except Exception:
+                pass
         traceback.print_exc()
-        print("========================================")
-        return jsonify({"error": str(e)}), 500
+        return error_interno(e)
 # ========================================
 
 # ==============================================================================
 # OBTENER EL HILO COMPLETO DE UNA CARTA (EXPEDIENTE)
 # ==============================================================================
 @app.route('/api/cartas/hilo/<int:carta_id>', methods=['GET'])
+@requiere_login
 def obtener_hilo_carta(carta_id):
     try:
-        # Encontramos la carta solicitada
         carta_actual = Carta.query.get_or_404(carta_id)
-        
-        hilo_completo = []
-        
-        # 1. Función para subir hacia el origen (padres)
+        hilo_completo = [carta_actual]
+        vistos = {carta_actual.id}
+ 
         def buscar_padres(carta):
-            # Si tu modelo usa "referencias_pasadas" como colección ManyToMany:
-            if carta.referencias_pasadas:
-                for padre in carta.referencias_pasadas:
-                    if padre not in hilo_completo:
-                        hilo_completo.append(padre)
-                        buscar_padres(padre)
-
-        # 2. Función para bajar hacia el futuro (hijos)
-        # Esto busca qué cartas tienen a ESTA carta como su referencia pasada.
+            for padre in carta.referencias_pasadas:
+                if padre.id not in vistos:
+                    vistos.add(padre.id)
+                    hilo_completo.append(padre)
+                    buscar_padres(padre)
+ 
         def buscar_hijos(carta):
-            # En SQLAlchemy, si definiste un backref (ej. 'respuestas'), úsalo.
-            # Si no, podemos consultar la BD:
-            todas_las_cartas = Carta.query.all()
-            for posible_hijo in todas_las_cartas:
-                if carta in posible_hijo.referencias_pasadas:
-                    if posible_hijo not in hilo_completo:
-                        hilo_completo.append(posible_hijo)
-                        buscar_hijos(posible_hijo)
-
-        # Agregamos la carta que buscó el usuario
-        hilo_completo.append(carta_actual)
-        
-        # Poblamos la lista hacia atrás y hacia adelante
+            # Antes se recorría TODA la tabla de cartas por cada nivel.
+            # El backref 'referencias_futuras' hace la misma búsqueda en 1 consulta.
+            for hijo in carta.referencias_futuras.all():
+                if hijo.id not in vistos:
+                    vistos.add(hijo.id)
+                    hilo_completo.append(hijo)
+                    buscar_hijos(hijo)
+ 
         buscar_padres(carta_actual)
         buscar_hijos(carta_actual)
-
-        # Ordenamos del más reciente al más antiguo basados en la fecha del documento
-        hilo_completo = sorted(
-            hilo_completo, 
-            key=lambda x: x.fecha_emision if x.tipo == 'EMITIDA' else x.fecha_recepcion, 
-            reverse=True
-        )
-
-        # Retornamos los datos limpios para el Frontend
-        # IVARGAS - 11/07/2026
-        # =====================================
+ 
+        # Si una carta no tiene fecha, antes esto reventaba al ordenar
+        def clave_fecha(c):
+            f = c.fecha_emision if c.tipo == 'EMITIDA' else c.fecha_recepcion
+            return f or date.min
+ 
+        hilo_completo = sorted(hilo_completo, key=clave_fecha, reverse=True)
         datos = [carta_to_dict(c) for c in hilo_completo]
-        # =====================================
-
+ 
         return jsonify({"exito": True, "datos": datos}), 200
-
+ 
     except Exception as e:
-        print(f"Error armando el hilo: {e}")
-        return jsonify({"error": str(e)}), 500
+        return error_interno(e)
 
 
 @app.route('/api/cartas/detalle/<int:carta_id>', methods=['GET'])
+@requiere_login
 def obtener_detalle_carta(carta_id):
     try:
         carta = Carta.query.get_or_404(carta_id)
- 
-        # Lo que ya devolvías (para no romper nada que dependa de estas claves)
         datos = carta_to_dict(carta)
  
-        # ---------- 1. FECHAS EN FORMATO ISO (AAAA-MM-DD) ----------
-        # La fecha "de registro" depende del flujo: emisión o recepción.
         fecha_registro = carta.fecha_emision if carta.tipo == 'EMITIDA' else carta.fecha_recepcion
-        # Respaldo: si por algún motivo la que corresponde está vacía, usa la otra
         if not fecha_registro:
             fecha_registro = carta.fecha_emision or carta.fecha_recepcion
  
         datos['fecha_input'] = fecha_registro.strftime('%Y-%m-%d') if fecha_registro else ''
         datos['fecha_limite_input'] = carta.fecha_limite.strftime('%Y-%m-%d') if carta.fecha_limite else ''
  
-        # ---------- 2. REFERENCIAS VINCULADAS ----------
-        # El JS espera objetos con  id  y  numero_carta  para armar los chips.
         datos['referencias'] = [{
             "id": r.id,
             "numero_carta": r.numero_carta,
@@ -10053,9 +10035,33 @@ def obtener_detalle_carta(carta_id):
         return jsonify({"exito": True, "datos": datos}), 200
  
     except Exception as e:
-        print(f"Error obteniendo detalle de carta: {e}")
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return error_interno(e)
+
+
+@app.route('/api/cartas/bitacora/<int:carta_id>', methods=['GET'])
+@requiere_login
+def bitacora_de_carta(carta_id):
+    """Historial de quién creó, editó, descargó o eliminó este documento."""
+    try:
+        registros = (BitacoraAlmacen.query
+                     .filter(BitacoraAlmacen.entidad.in_(['CARTA', 'CARTA_REFERENCIAS']),
+                             BitacoraAlmacen.id_registro == str(carta_id))
+                     .order_by(BitacoraAlmacen.id_bitacora.desc())
+                     .limit(200).all())
+ 
+        return jsonify({"exito": True, "datos": [{
+            "fecha": b.fecha.strftime('%d-%m-%Y %H:%M:%S') if b.fecha else "-",
+            "usuario": b.usuario_nombre or "-",
+            "login": b.usuario_login or "-",
+            "accion": b.accion,
+            "descripcion": b.descripcion,
+            "antes": json.loads(b.datos_antes) if b.datos_antes else None,
+            "despues": json.loads(b.datos_despues) if b.datos_despues else None
+        } for b in registros]}), 200
+ 
+    except Exception as e:
+        return error_interno(e)
 
 
 
