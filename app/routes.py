@@ -10025,15 +10025,36 @@ def obtener_hilo_carta(carta_id):
 @app.route('/api/cartas/detalle/<int:carta_id>', methods=['GET'])
 def obtener_detalle_carta(carta_id):
     try:
-        # Busca la carta por su ID exacto
         carta = Carta.query.get_or_404(carta_id)
-        
-        # Reutilizamos la función que ya formatea los datos
+ 
+        # Lo que ya devolvías (para no romper nada que dependa de estas claves)
         datos = carta_to_dict(carta)
-        
+ 
+        # ---------- 1. FECHAS EN FORMATO ISO (AAAA-MM-DD) ----------
+        # La fecha "de registro" depende del flujo: emisión o recepción.
+        fecha_registro = carta.fecha_emision if carta.tipo == 'EMITIDA' else carta.fecha_recepcion
+        # Respaldo: si por algún motivo la que corresponde está vacía, usa la otra
+        if not fecha_registro:
+            fecha_registro = carta.fecha_emision or carta.fecha_recepcion
+ 
+        datos['fecha_input'] = fecha_registro.strftime('%Y-%m-%d') if fecha_registro else ''
+        datos['fecha_limite_input'] = carta.fecha_limite.strftime('%Y-%m-%d') if carta.fecha_limite else ''
+ 
+        # ---------- 2. REFERENCIAS VINCULADAS ----------
+        # El JS espera objetos con  id  y  numero_carta  para armar los chips.
+        datos['referencias'] = [{
+            "id": r.id,
+            "numero_carta": r.numero_carta,
+            "asunto": r.asunto or "",
+            "tipo": r.tipo,
+            "estado": r.estado
+        } for r in carta.referencias_pasadas]
+ 
         return jsonify({"exito": True, "datos": datos}), 200
+ 
     except Exception as e:
         print(f"Error obteniendo detalle de carta: {e}")
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
