@@ -12463,44 +12463,80 @@ async function rastrearExpediente() {
 // =========================================================
 let cartasSeleccionadasChipsEditar = [];
 
+// Convierte cualquier fecha a AAAA-MM-DD, que es lo único que acepta <input type="date">
+function aFechaISO(valor) {
+    if (!valor || valor === '-') return '';
+    const v = String(valor).trim();
+ 
+    // Ya viene bien: 2026-09-15
+    if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.substring(0, 10);
+ 
+    // Formato de pantalla: 15-09-2026  o  15/09/2026
+    const m = v.match(/^(\d{2})[-\/](\d{2})[-\/](\d{4})$/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+ 
+    return '';
+}
+ 
 function abrirModalEditarCarta(cartaId) {
     const modal = document.getElementById('modalEditarCarta');
-    modal.style.display = 'flex'; 
+    modal.style.display = 'flex';
     document.getElementById('formEditarCarta').reset();
     document.getElementById('input_id_editar').value = cartaId;
-
+ 
     // Limpiar chips del modal de edición
     cartasSeleccionadasChipsEditar = [];
     actualizarVistaChipsEditar();
-
+ 
     document.getElementById('input_numero_carta_editar').value = "Cargando...";
     document.getElementById('input_asunto_editar').value = "Cargando...";
-
+ 
     fetch(`/api/cartas/detalle/${cartaId}`)
         .then(res => res.json())
         .then(data => {
             if (data.exito && data.datos) {
                 const carta = data.datos;
-                
+ 
+                // 👀 Útil mientras pruebas: muestra TODO lo que devuelve el backend
+                console.log('Detalle de carta recibido:', carta);
+ 
                 document.getElementById('input_numero_carta_editar').value = carta.numero_carta || '';
                 document.getElementById('input_asunto_editar').value = carta.asunto || '';
-                document.getElementById('input_fecha_editar').value = carta.fecha !== '-' ? carta.fecha : '';
-                
-                if (carta.fecha_limite && carta.fecha_limite !== '-') {
-                    document.getElementById('input_fecha_limite_editar').value = carta.fecha_limite;
-                } else {
-                    document.getElementById('input_fecha_limite_editar').value = '';
-                }
-
+ 
+                // ---------- FECHAS ----------
+                // Usa la clave nueva (fecha_input) y, si no existe, convierte la de pantalla
+                document.getElementById('input_fecha_editar').value =
+                    carta.fecha_input || aFechaISO(carta.fecha) || aFechaISO(carta.fecha_emision) || aFechaISO(carta.fecha_recepcion);
+ 
+                document.getElementById('input_fecha_limite_editar').value =
+                    carta.fecha_limite_input || aFechaISO(carta.fecha_limite);
+ 
                 document.getElementById('input_tipo_editar').value = carta.tipo || '';
                 document.getElementById('input_estado_editar').value = carta.estado || 'PENDIENTE';
-
-                // Si tu backend devuelve las referencias pasadas en el JSON (ej. carta.referencias), las precargamos
-                // Si no las devuelve actualmente, esto simplemente no hará nada.
-                if (carta.referencias && carta.referencias.length > 0) {
-                    carta.referencias.forEach(ref => agregarChipReferenciaEditar(ref));
-                }
-
+ 
+                // ---------- REFERENCIAS (CHIPS) ----------
+                const refs = carta.referencias || carta.referencias_pasadas || [];
+                refs.forEach(ref => {
+                    let obj = ref;
+ 
+                    // Si el backend manda solo el ID o solo el número, lo buscamos en la lista global
+                    if (typeof ref !== 'object') {
+                        obj = (cartasGlobalesBD || []).find(c => c.id == ref || c.numero_carta == ref);
+                    }
+                    // Si manda un objeto sin numero_carta, lo completamos
+                    else if (!ref.numero_carta) {
+                        obj = (cartasGlobalesBD || []).find(c => c.id == ref.id) || ref;
+                    }
+ 
+                    if (obj && obj.id) {
+                        // Evitamos el alert de "no puede referenciarse a sí misma" al precargar
+                        if (obj.id == cartaId) return;
+                        if (cartasSeleccionadasChipsEditar.some(c => c.id === obj.id)) return;
+                        cartasSeleccionadasChipsEditar.push(obj);
+                    }
+                });
+                actualizarVistaChipsEditar();
+ 
             } else {
                 alert("No se pudieron cargar los datos de la carta.");
                 cerrarModalEditarCarta();
