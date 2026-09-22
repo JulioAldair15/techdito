@@ -10775,7 +10775,65 @@ def generar_matriz():
     except Exception as e:
         app.logger.exception(f"[MATRIZ] Error generando la matriz: {e}")
         return jsonify({"error": "Error interno"}), 500
-    
+
+
+@app.route('/api/matriz/reenlazar-operadores', methods=['POST'])
+@requiere_login
+def reenlazar_operadores_matriz():
+    try:
+        memoria_empleados = cargar_memoria_empleados()
+ 
+        # Operadores distintos que aún no tienen empleado asignado
+        pendientes = (db.session.query(MatrizValidacion.operador)
+                      .filter(MatrizValidacion.id_empleado.is_(None),
+                              MatrizValidacion.operador.isnot(None),
+                              MatrizValidacion.operador != '')
+                      .distinct().all())
+ 
+        enlazados = []
+        sin_enlazar = []
+        total_filas = 0
+ 
+        for (operador,) in pendientes:
+            id_empleado = buscar_empleado_por_nombre(operador, memoria_empleados)
+ 
+            if not id_empleado:
+                sin_enlazar.append(operador)
+                continue
+ 
+            filas = (db.session.query(MatrizValidacion)
+                     .filter(MatrizValidacion.operador == operador,
+                             MatrizValidacion.id_empleado.is_(None))
+                     .update({MatrizValidacion.id_empleado: id_empleado},
+                             synchronize_session=False))
+ 
+            total_filas += filas
+            enlazados.append({
+                "operador": operador,
+                "id_empleado": id_empleado,
+                "filas_actualizadas": filas
+            })
+ 
+        if total_filas:
+            registrar_bitacora('EDITAR', 'MATRIZ_LECTURAS', None,
+                               f"Re-enlazó {len(enlazados)} operadores "
+                               f"({total_filas} lecturas) con su empleado.")
+        db.session.commit()
+ 
+        return jsonify({
+            "success": True,
+            "mensaje": (f"Se enlazaron {len(enlazados)} operadores "
+                        f"({total_filas} lecturas). "
+                        f"Quedaron {len(sin_enlazar)} sin coincidencia."),
+            "enlazados": enlazados,
+            "sin_enlazar": sorted(sin_enlazar)
+        }), 200
+ 
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception(f"[RE-ENLACE] Error: {e}")
+        return jsonify({"error": "Error interno al re-enlazar operadores."}), 500
+
 
 @app.route('/api/obtener_filtros_produccion', methods=['POST'])
 def obtener_filtros_produccion():
