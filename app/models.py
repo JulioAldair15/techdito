@@ -638,6 +638,13 @@ class MatrizValidacion(db.Model):
     nueva_obs = db.Column(db.String(100), nullable=True)
     nuevo_obs2 = db.Column(db.String(100), nullable=True)
     nuevo_med = db.Column(db.String(50), nullable=True)
+    latitud  = db.Column(db.Numeric(10, 8), nullable=True)
+    longitud = db.Column(db.Numeric(11, 8), nullable=True)
+    este     = db.Column(db.Numeric(12, 4), nullable=True)   
+    norte    = db.Column(db.Numeric(12, 4), nullable=True)   
+
+    fecha_lectura = db.Column(db.Date, nullable=True, index=True)   # feclec convertido a fecha real
+    id_empleado   = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=True)
 
 
 class UnidadMedida(db.Model):
