@@ -8794,40 +8794,103 @@ def api_bitacora():
 
 
 ##### MODULO DE REVALIDACION DE LECTURAS #####
+FORMATOS_FECHA = ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y", "%Y/%m/%d", "%m/%d/%Y")
+ 
+ 
+def parse_fecha_flexible(valor):
+    """Convierte a date un texto de fecha en cualquiera de los formatos usuales."""
+    if not valor:
+        return None
+    texto = str(valor).strip()
+    if texto in ("", "-"):
+        return None
+ 
+    # Si trae hora ("25/12/2026 08:30"), nos quedamos con la fecha
+    texto = texto.split(" ")[0].split("T")[0]
+ 
+    for fmt in FORMATOS_FECHA:
+        try:
+            return datetime.strptime(texto, fmt).date()
+        except ValueError:
+            continue
+    return None
+ 
+ 
+def cargar_memoria_empleados():
+    """[{id, palabras}] para emparejar nombres escritos de cualquier forma."""
+    memoria = []
+    for emp in db.session.query(Empleado.id_empleado, Empleado.nombres, Empleado.apellidos).all():
+        nombre_completo = f"{emp.nombres or ''} {emp.apellidos or ''}".upper().replace(',', ' ')
+        memoria.append({'id': emp.id_empleado, 'palabras': set(nombre_completo.split())})
+    return memoria
+ 
+ 
+def buscar_empleado_por_nombre(texto_operario, memoria_empleados):
+    """
+    Devuelve id_empleado si hay UNA sola coincidencia clara (2+ palabras en común).
+    Es la misma lógica que ya usabas en cargar_produccion_csv.
+    """
+    if not texto_operario:
+        return None
+ 
+    palabras_csv = set(str(texto_operario).upper().replace(',', ' ').split())
+    mejor = 0
+    candidatos = []
+ 
+    for emp in memoria_empleados:
+        coincidencias = len(palabras_csv & emp['palabras'])
+        if coincidencias >= 2:
+            if coincidencias > mejor:
+                mejor = coincidencias
+                candidatos = [emp['id']]
+            elif coincidencias == mejor:
+                candidatos.append(emp['id'])
+ 
+    return candidatos[0] if len(candidatos) == 1 else None
+ 
+ 
+def _clave_persona(id_empleado, nombre_texto):
+    """
+    Identifica a la misma persona aunque su nombre esté escrito distinto en
+    cada tabla ("PEREZ, JUAN" y "JUAN PEREZ" dan la misma clave).
+    Si hay id_empleado, ese manda.
+    """
+    if id_empleado:
+        return ('E', id_empleado)
+    palabras = tuple(sorted(set(str(nombre_texto or '').upper().replace(',', ' ').split())))
+    return ('N', palabras)
+ 
+ 
+# ==========================================================================
+# SECCIÓN C — SUBIR CSV DE LECTURAS (ahora enlaza fecha y empleado)
+# ==========================================================================
 @app.route('/subir_matriz_csv', methods=['POST'])
 def subir_matriz_csv():
-    print("\n[DEBUG] === INICIANDO SUBIDA DE MATRIZ CSV ===")
-    
     if 'archivo_csv' not in request.files:
         return jsonify({'error': 'No se encontró el archivo en la petición.'}), 400
-    
+ 
     file = request.files['archivo_csv']
     if file.filename == '':
         return jsonify({'error': 'No seleccionó ningún archivo.'}), 400
-        
     if not file.filename.lower().endswith('.csv'):
         return jsonify({'error': 'El formato debe ser .csv estrictamente.'}), 400
-
+ 
     try:
-        # Decodificar el archivo
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
-        
-        # Detectar delimitador leyendo algunas líneas
+ 
         primera_linea = stream.readline()
         segunda_linea = stream.readline()
         delimiter = ';' if ';' in primera_linea + segunda_linea else ','
-        
+ 
         stream.seek(0)
         reader = csv.reader(stream, delimiter=delimiter)
-        
-        # 1. LEER LAS CABECERAS (Directamente la primera fila)
+ 
         headers_raw = next(reader, None)
         if not headers_raw:
             return jsonify({'error': 'El archivo está vacío o no tiene cabeceras válidas.'}), 400
-            
+ 
         headers = [h.strip().upper() for h in headers_raw]
-        
-        # 2. MAPEAR SOLO LAS COLUMNAS QUE QUEREMOS MANTENER
+ 
         columnas_requeridas = {
             'CLICODFAC': 'clicodfac',
             'MEDCODYGO': 'medcodygo',
@@ -8842,96 +8905,155 @@ def subir_matriz_csv():
             'CARGA': 'carga',
             'PERIODO': 'periodo'
         }
-        
-        # Obtener los índices de estas columnas en el CSV
+ 
+        # 🗺️ NUEVO: columnas de geolocalización. Son OPCIONALES: si el CSV no
+        # las trae, la carga sigue funcionando igual que antes.
+        columnas_opcionales = {
+            'LATITUD': 'latitud',
+            'LONGITUD': 'longitud',
+            'ESTE': 'este',
+            'NORTE': 'norte'
+        }
+ 
         indices_col = {}
         for col_csv, col_db in columnas_requeridas.items():
+            if col_csv not in headers:
+                return jsonify({'error': f'Falta la columna requerida en el CSV: {col_csv}'}), 400
+            indices_col[col_db] = headers.index(col_csv)
+ 
+        for col_csv, col_db in columnas_opcionales.items():
             if col_csv in headers:
                 indices_col[col_db] = headers.index(col_csv)
-            else:
-                return jsonify({'error': f'Falta la columna requerida en el CSV: {col_csv}'}), 400
-
+ 
         def clean_val(val):
             return val.strip() if val and val.strip() else None
-
-        # 3. EXTRAER LOS DATOS DEL CSV
+ 
         filas_csv = []
-        periodos_en_csv = set() 
-        
+        periodos_en_csv = set()
+ 
         for row in reader:
-            if not row or not any(row): continue # Ignorar filas totalmente vacías
-            
-            # Construimos un diccionario solo con las columnas deseadas
+            if not row or not any(row):
+                continue
+ 
             datos_fila = {
                 col_db: clean_val(row[idx]) if idx < len(row) else None
                 for col_db, idx in indices_col.items()
             }
-            
             filas_csv.append(datos_fila)
             if datos_fila['periodo']:
                 periodos_en_csv.add(datos_fila['periodo'])
-
-        # 4. VALIDACIÓN DE REGISTROS EXISTENTES POR (CLICODFAC, PERIODO)
+ 
+        # ----- Duplicados ya existentes (clicodfac + periodo) -----
         registros_existentes = set()
-        
         if periodos_en_csv:
-            existentes_db = db.session.query(MatrizValidacion.clicodfac, MatrizValidacion.periodo)\
-                .filter(MatrizValidacion.periodo.in_(periodos_en_csv)).all()
-                
+            existentes_db = (db.session.query(MatrizValidacion.clicodfac, MatrizValidacion.periodo)
+                             .filter(MatrizValidacion.periodo.in_(periodos_en_csv)).all())
             registros_existentes = {(r.clicodfac, r.periodo) for r in existentes_db}
-
-        # 5. FILTRAR E INSERTAR SOLO LOS NUEVOS
+ 
+        # 🔥 NUEVO: memoria de empleados y caché de operadores ya resueltos
+        memoria_empleados = cargar_memoria_empleados()
+        cache_operadores = {}
+ 
         registros_a_insertar = []
         filas_ignoradas_por_duplicidad = 0
-        
+        filas_sin_fecha = 0
+        filas_sin_coordenada = 0
+        operadores_sin_enlazar = set()
+        ahora = datetime.now(LIMA_TZ).replace(tzinfo=None)
+ 
         for fila in filas_csv:
             clave = (fila['clicodfac'], fila['periodo'])
-            
-            # Si la tupla (clicodfac, periodo) ya existe, se ignora
             if clave in registros_existentes:
                 filas_ignoradas_por_duplicidad += 1
                 continue
-                
-            # Si no existe, preparamos el registro
-            nueva_matriz = MatrizValidacion(
+ 
+            # 🔥 NUEVO: fecha real a partir de feclec
+            fecha_lectura = parse_fecha_flexible(fila['feclec'])
+            if fila['feclec'] and not fecha_lectura:
+                filas_sin_fecha += 1
+ 
+            # 🔥 NUEVO: enlazar el operador con un empleado
+            operador = fila['operador']
+            if operador not in cache_operadores:
+                cache_operadores[operador] = buscar_empleado_por_nombre(operador, memoria_empleados)
+            id_empleado = cache_operadores[operador]
+            if operador and not id_empleado:
+                operadores_sin_enlazar.add(operador)
+ 
+            # 🗺️ NUEVO: coordenadas del propio CSV.
+            # Se reutilizan tus funciones: reparar_coordenada() arregla comas,
+            # signos y números rotos por Excel; resolver_coordenadas() verifica
+            # contra el UTM (Este/Norte) cuando el CSV lo trae.
+            este = parse_decimal(fila.get('este'))
+            norte = parse_decimal(fila.get('norte'))
+            latitud, longitud = resolver_coordenadas(
+                fila.get('latitud'), fila.get('longitud'), este, norte,
+                ref=f"lectura suministro={fila['clicodfac']}")
+ 
+            if latitud is None or longitud is None:
+                filas_sin_coordenada += 1
+ 
+            registros_a_insertar.append(MatrizValidacion(
                 clicodfac=fila['clicodfac'],
                 medcodygo=fila['medcodygo'],
                 lectura=fila['lectura'],
                 feclec=fila['feclec'],
+                fecha_lectura=fecha_lectura,      # 🔥 NUEVO
                 horalec=fila['horalec'],
                 obs1=fila['obs1'],
                 obs2=fila['obs2'],
                 newmed=fila['newmed'],
-                operador=fila['operador'],
+                operador=operador,
+                id_empleado=id_empleado,          # 🔥 NUEVO
                 ciclo=fila['ciclo'],
                 carga=fila['carga'],
                 periodo=fila['periodo'],
+                latitud=latitud,                  # 🗺️ NUEVO
+                longitud=longitud,                # 🗺️ NUEVO
+                este=este,                        # 🗺️ NUEVO (si el CSV lo trae)
+                norte=norte,                      # 🗺️ NUEVO (si el CSV lo trae)
                 estado='PENDIENTE',
-                fecha_subida=datetime.utcnow() - timedelta(hours=5)
-            )
-            registros_a_insertar.append(nueva_matriz)
-            
-            # Agregamos al set para evitar que se dupliquen si vienen repetidos en el mismo CSV
+                fecha_subida=ahora
+            ))
             registros_existentes.add(clave)
-
-        # 6. COMMIT A LA BASE DE DATOS
+ 
         cantidad_insertados = len(registros_a_insertar)
         if cantidad_insertados > 0:
-            db.session.add_all(registros_a_insertar)
+            db.session.bulk_save_objects(registros_a_insertar)
+ 
+            # Bitácora (si ya pegaste la Sección A de almacén; si no, borra estas 5 líneas)
+            registrar_bitacora('CREAR', 'MATRIZ_LECTURAS', None,
+                               f"Subió {file.filename}: {cantidad_insertados} lecturas nuevas, "
+                               f"{filas_ignoradas_por_duplicidad} duplicadas | Periodos: "
+                               f"{', '.join(sorted(periodos_en_csv)) or '-'}")
             db.session.commit()
-            
-        print(f"[DEBUG] Nuevos: {cantidad_insertados} | Ignorados (Ya en sistema): {filas_ignoradas_por_duplicidad}")
-        print("[DEBUG] === FIN DE SUBIDA ===\n")
-        
+ 
+        mensaje = (f'Se guardaron {cantidad_insertados} registros nuevos. '
+                   f'Se ignoraron {filas_ignoradas_por_duplicidad} que ya existían para el mismo periodo.')
+        if filas_sin_fecha:
+            mensaje += f' ⚠️ {filas_sin_fecha} filas tienen FECLEC con un formato no reconocido.'
+        if filas_sin_coordenada:
+            mensaje += (f' ⚠️ {filas_sin_coordenada} filas quedaron sin coordenadas válidas '
+                        f'(no se verán en el mapa).')
+        if operadores_sin_enlazar:
+            mensaje += (f' ⚠️ {len(operadores_sin_enlazar)} operadores no se pudieron enlazar '
+                        f'con un empleado: {", ".join(sorted(operadores_sin_enlazar)[:5])}'
+                        f'{"..." if len(operadores_sin_enlazar) > 5 else ""}.')
+ 
         return jsonify({
-            'success': True, 
-            'mensaje': f'Se guardaron {cantidad_insertados} registros nuevos. Se ignoraron {filas_ignoradas_por_duplicidad} registros que ya existían para el mismo periodo.'
+            'success': True,
+            'mensaje': mensaje,
+            'insertados': cantidad_insertados,
+            'duplicados': filas_ignoradas_por_duplicidad,
+            'sin_fecha': filas_sin_fecha,
+            'sin_coordenada': filas_sin_coordenada,
+            'operadores_sin_enlazar': sorted(operadores_sin_enlazar)
         }), 200
-
+ 
     except Exception as e:
         db.session.rollback()
-        print(f"[ERROR DB] Error general al procesar CSV de Matriz: {e}")
-        return jsonify({'error': f'Ocurrió un error interno: {str(e)}'}), 500
+        app.logger.exception(f"[MATRIZ CSV] Error procesando el archivo: {e}")
+        return jsonify({'error': 'Ocurrió un error interno al procesar el CSV.'}), 500
 
 
 @app.route('/obtener_operarios_matriz', methods=['GET'])
@@ -10416,208 +10538,242 @@ METAS_POR_ACTIVIDAD = {
 
 @app.route('/api/generar_matriz', methods=['POST'])
 def generar_matriz():
-    print("\n" + "="*50)
-    print("🚀 [DEBUG] INICIANDO GENERACIÓN DE MATRIZ")
-    print("="*50)
-    
     try:
-        data = request.get_json()
-        print(f"📥 [DEBUG] 1. Datos crudos recibidos del JS: {data}")
-        sys.stdout.flush()
-
-        fecha_inicio_str = data.get('fecha_inicio')
-        fecha_fin_str = data.get('fecha_fin')
-        area = data.get('area') # <--- 1. EXTRAEMOS EL ÁREA DEL JSON
+        data = request.get_json() or {}
+        fecha_inicio = datetime.strptime(data.get('fecha_inicio'), "%Y-%m-%d").date()
+        fecha_fin = datetime.strptime(data.get('fecha_fin'), "%Y-%m-%d").date()
+        area = data.get('area')
         actividad = data.get('actividad')
         operario = data.get('operario')
-
-        fecha_inicio = datetime.strptime(fecha_inicio_str, "%Y-%m-%d").date()
-        fecha_fin = datetime.strptime(fecha_fin_str, "%Y-%m-%d").date()
-        
-        print(f"📅 [DEBUG] 2. Rango de SQL: Desde {fecha_inicio} a {fecha_fin} | Área: '{area}' | Actividad: '{actividad}' | Operario: '{operario}'")
-
-        # 1. CONSULTA INVERTIDA
-        query = db.session.query(
+ 
+        filas = []   # estructura común: dicts con las mismas claves
+ 
+        # ==================================================================
+        # FUENTE 1: MATRIZ DE VALIDACIÓN (lecturas) — se consulta PRIMERO
+        # ==================================================================
+        # cobertura_matriz guarda los (persona, día) que la matriz ya resuelve.
+        cobertura_matriz = set()
+        incluir_lecturas = (not actividad) or actividad in ('TODAS', 'LECTURA')
+ 
+        if incluir_lecturas:
+            q_lec = db.session.query(
+                MatrizValidacion.operador.label('operario_csv'),
+                MatrizValidacion.id_empleado,
+                MatrizValidacion.fecha_lectura.label('fecha'),
+                func.count(MatrizValidacion.id_matriz).label('ejecutado')
+            ).outerjoin(
+                Empleado, MatrizValidacion.id_empleado == Empleado.id_empleado
+            ).filter(
+                MatrizValidacion.fecha_lectura >= fecha_inicio,
+                MatrizValidacion.fecha_lectura <= fecha_fin
+            )
+ 
+            if area and area != 'TODAS':
+                q_lec = q_lec.filter(Empleado.area == area)
+            if operario and operario != 'TODOS':
+                q_lec = q_lec.filter(MatrizValidacion.operador == operario)
+ 
+            for r in q_lec.group_by(
+                    MatrizValidacion.operador, MatrizValidacion.id_empleado,
+                    MatrizValidacion.fecha_lectura).all():
+ 
+                filas.append({
+                    "operario_csv": r.operario_csv,
+                    "id_empleado": r.id_empleado,
+                    "actividad": "LECTURA",
+                    "fecha": r.fecha,
+                    "ejecutado": r.ejecutado
+                })
+                cobertura_matriz.add((_clave_persona(r.id_empleado, r.operario_csv), r.fecha))
+ 
+        # ==================================================================
+        # FUENTE 2: PRODUCCIÓN (todas las actividades)
+        # ==================================================================
+        # Ojo: ya NO se une Remuneracion aquí. Si un empleado tiene más de una
+        # remuneración, ese JOIN duplicaba las filas y DOBLABA el ejecutado.
+        q_prod = db.session.query(
             Produccion.operario_csv,
-            Empleado.id_empleado,
-            Empleado.apellidos,
-            Empleado.nombres,
-            Remuneracion.sueldo_basico,
+            Produccion.id_empleado,
             Produccion.actividad,
             func.date(Produccion.fecha_fin).label('fecha'),
             func.count(Produccion.id_produccion).label('ejecutado')
         ).outerjoin(
             Empleado, Produccion.id_empleado == Empleado.id_empleado
-        ).outerjoin(
-            Remuneracion, Remuneracion.empleado_id == Empleado.id_empleado
         ).filter(
             Produccion.fecha_fin >= fecha_inicio,
             Produccion.fecha_fin <= fecha_fin
         )
-
-        # 🔥 2. FILTRO DE ÁREA (Relacionado con la tabla Empleado)
+ 
         if area and area != 'TODAS':
-            query = query.filter(Empleado.area == area)
-
-        # Filtro de Actividad
+            q_prod = q_prod.filter(Empleado.area == area)
         if actividad and actividad != 'TODAS':
-            query = query.filter(Produccion.actividad == actividad)
-
-        # Filtro de Operario
+            q_prod = q_prod.filter(Produccion.actividad == actividad)
         if operario and operario != 'TODOS':
-            query = query.filter(Produccion.operario_csv == operario)
-
-        resultados_produccion = query.group_by(
-            Produccion.operario_csv, Empleado.id_empleado, Empleado.apellidos, 
-            Empleado.nombres, Remuneracion.sueldo_basico, Produccion.actividad, func.date(Produccion.fecha_fin)
-        ).all()
-
-        print(f"📊 [DEBUG] 4. Registros encontrados en BD tras el cruce: {len(resultados_produccion)}")
-        
-        if len(resultados_produccion) == 0:
-            print("⚠️ [ALERTA] No se encontró ninguna producción. Verifica que los registros en la tabla 'produccion' tengan el 'id_empleado' lleno y no en NULL.")
-
-        empleados_ids = list(set([r.id_empleado for r in resultados_produccion if r.id_empleado]))
-        print(f"🧑‍🔧 [DEBUG] 5. IDs de empleados únicos que trabajaron: {empleados_ids}")
-
-        # 2. BARRIDO DE ASISTENCIAS (AHORA DETECTA EL MÓDULO)
-        asistencia_dict = {} 
-        
+            q_prod = q_prod.filter(Produccion.operario_csv == operario)
+ 
+        lecturas_omitidas = 0
+ 
+        for r in q_prod.group_by(
+                Produccion.operario_csv, Produccion.id_empleado,
+                Produccion.actividad, func.date(Produccion.fecha_fin)).all():
+ 
+            es_lectura = (r.actividad or '').strip().upper().startswith('LECTURA')
+ 
+            # 🔑 Si la matriz ya cubre a esa persona ese día, producción se ignora
+            if es_lectura and (_clave_persona(r.id_empleado, r.operario_csv), r.fecha) in cobertura_matriz:
+                lecturas_omitidas += r.ejecutado
+                continue
+ 
+            filas.append({
+                "operario_csv": r.operario_csv,
+                "id_empleado": r.id_empleado,
+                "actividad": r.actividad,
+                "fecha": r.fecha,
+                "ejecutado": r.ejecutado
+            })
+ 
+        if lecturas_omitidas:
+            app.logger.info(
+                f"[MATRIZ] Se ignoraron {lecturas_omitidas} lecturas de 'produccion' "
+                f"porque esos días ya están en matriz_validacion."
+            )
+ 
+        # ==================================================================
+        # DATOS DE APOYO: nombres y sueldos (1 consulta cada uno)
+        # ==================================================================
+        empleados_ids = sorted({f["id_empleado"] for f in filas if f["id_empleado"]})
+ 
+        datos_empleado = {}
+        sueldos = {}
+        if empleados_ids:
+            for e in db.session.query(Empleado.id_empleado, Empleado.nombres, Empleado.apellidos)\
+                               .filter(Empleado.id_empleado.in_(empleados_ids)).all():
+                datos_empleado[e.id_empleado] = f"{e.apellidos or ''}, {e.nombres or ''}".strip(" ,")
+ 
+            # Si un empleado tiene varias remuneraciones se toma la mayor.
+            # Si tienes una columna de fecha/vigencia, ordénalo por ella.
+            for rem in db.session.query(Remuneracion.empleado_id, Remuneracion.sueldo_basico)\
+                                 .filter(Remuneracion.empleado_id.in_(empleados_ids)).all():
+                valor = float(rem.sueldo_basico or 0)
+                if valor > sueldos.get(rem.empleado_id, 0):
+                    sueldos[rem.empleado_id] = valor
+ 
+        # ==================================================================
+        # ASISTENCIAS (igual que antes)
+        # ==================================================================
+        asistencia_dict = {}
         if empleados_ids:
             tablas_asistencia = [
-                EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, 
-                EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, 
+                EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones,
+                EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores,
                 EmpleadoNorte, EmpleadoRecaudacion, EmpleadoAdministrativo
             ]
-            
-            total_asistencias_encontradas = 0
             for modelo in tablas_asistencia:
-                # 🔥 Sacamos el nombre del área basados en el modelo (Ej: "EmpleadoLectura" -> "Lectura")
                 nombre_modulo = modelo.__name__.replace('Empleado', '')
-
-                # Si tu tabla de asistencia tiene una columna de usuario, la podrías añadir aquí a la consulta
                 asistencias = db.session.query(modelo.id_empleado, modelo.fec_asist, modelo.estado).filter(
                     modelo.id_empleado.in_(empleados_ids),
                     modelo.fec_asist >= fecha_inicio,
                     modelo.fec_asist <= fecha_fin
                 ).all()
-                
+ 
                 for asist in asistencias:
-                    emp_id = asist.id_empleado
-                    fec = asist.fec_asist.strftime("%d/%m") if asist.fec_asist else None
-                    estado = asist.estado
-                    
-                    if emp_id and fec and estado:
-                        if emp_id not in asistencia_dict:
-                            asistencia_dict[emp_id] = {}
-                        
-                        # 🔥 Guardamos un diccionario con el estado Y el origen
-                        asistencia_dict[emp_id][fec] = {
-                            "estado": estado,
+                    if asist.id_empleado and asist.fec_asist and asist.estado:
+                        fec = asist.fec_asist.strftime("%d/%m")
+                        asistencia_dict.setdefault(asist.id_empleado, {})[fec] = {
+                            "estado": asist.estado,
                             "origen": nombre_modulo
                         }
-                        total_asistencias_encontradas += 1
-            
-            print(f"⏰ [DEBUG] 6. Se escanearon las asistencias y se encontraron: {total_asistencias_encontradas} registros.")
-
-        # 3. CONSTRUIR EL RANGO DE FECHAS
+ 
+        # ==================================================================
+        # RANGO DE FECHAS
+        # ==================================================================
         fechas_rango = []
         fecha_actual = fecha_inicio
         while fecha_actual <= fecha_fin:
             fechas_rango.append(fecha_actual.strftime("%d/%m"))
             fecha_actual += timedelta(days=1)
-
-        print(f"🗓️ [DEBUG] 7. Columnas de fechas a dibujar en JS: {fechas_rango}")
-
-        # 4. CONSTRUIR JSON Y CALCULAR RATIOS DINÁMICOS
+ 
+        # ==================================================================
+        # CONSTRUIR LA MATRIZ Y LOS RATIOS (misma lógica de siempre)
+        # ==================================================================
         matriz = {}
-
-        for r in resultados_produccion:
-            llave_agrupacion = r.id_empleado if r.id_empleado else r.operario_csv
-            
-            if r.id_empleado:
-                nombre_mostrar = f"{r.apellidos or ''}, {r.nombres or ''}".strip(" ,")
-            else:
-                nombre_mostrar = f"⚠️ {r.operario_csv} (No enlazado)"
-
-            fecha_str = r.fecha.strftime("%d/%m")
-            ejecutado = r.ejecutado
-            sueldo_basico = float(r.sueldo_basico) if r.sueldo_basico else 0.0
-
-            # Extraemos la actividad EXACTA que viene de la BD
-            actividad_real = (r.actividad or "").strip().upper()
-
-            # Obtenemos la meta del diccionario (500 por defecto si la actividad no está en la lista)
+ 
+        for f in filas:
+            if not f["fecha"]:
+                continue
+ 
+            id_emp = f["id_empleado"]
+            llave = id_emp if id_emp else f["operario_csv"]
+ 
+            nombre_mostrar = (datos_empleado.get(id_emp)
+                              if id_emp else f"⚠️ {f['operario_csv']} (No enlazado)")
+            if not nombre_mostrar:
+                nombre_mostrar = f"⚠️ {f['operario_csv']} (No enlazado)"
+ 
+            fecha_str = f["fecha"].strftime("%d/%m")
+            ejecutado = f["ejecutado"]
+            actividad_real = (f["actividad"] or "").strip().upper()
+ 
             meta_diaria = METAS_POR_ACTIVIDAD.get(actividad_real, 500)
-
-            # 🎯 REGLAS DE NEGOCIO ESPECÍFICAS
-            # Si es LECTURA y no llegó a 100, se considera lectura dispersa y la meta se ajusta a 100
             if actividad_real == "LECTURA" and ejecutado < 100:
-                meta_diaria = 100
-
-            # Calculamos el Ratio exacto
+                meta_diaria = 100   # lectura dispersa
+ 
             ratio = round(ejecutado / meta_diaria, 2) if meta_diaria > 0 else 0.0
-
-            # Construimos la matriz
-            if llave_agrupacion not in matriz:
-                matriz[llave_agrupacion] = {
-                    "id": r.id_empleado,
+ 
+            if llave not in matriz:
+                matriz[llave] = {
+                    "id": id_emp,
                     "nombre": nombre_mostrar,
-                    "sueldo_contrato": sueldo_basico,
+                    "sueldo_contrato": sueldos.get(id_emp, 0.0),
                     "puntaje_acumulado": 0.0,
                     "dias": {}
                 }
-            
-            # Si en un mismo día hizo 2 actividades (Ej: CATASTRO y CATASTRO-FICHA), sumamos sus ratios
-            if fecha_str in matriz[llave_agrupacion]["dias"] and matriz[llave_agrupacion]["dias"][fecha_str]["tipo"] == "produccion":
-                matriz[llave_agrupacion]["dias"][fecha_str]["ejecutado"] += ejecutado
-                matriz[llave_agrupacion]["dias"][fecha_str]["ratio"] += ratio
+ 
+            dia = matriz[llave]["dias"].get(fecha_str)
+            if dia and dia["tipo"] == "produccion":
+                dia["ejecutado"] += ejecutado
+                dia["ratio"] += ratio
             else:
-                matriz[llave_agrupacion]["dias"][fecha_str] = {
+                matriz[llave]["dias"][fecha_str] = {
                     "tipo": "produccion",
                     "ejecutado": ejecutado,
                     "ratio": ratio
                 }
-                
-            matriz[llave_agrupacion]["puntaje_acumulado"] += ratio
-
-        # 5. RELLENAR ASISTENCIAS Y GESTIONAR PUNTOS POR AUSENCIA
-        ASISTENCIAS_REMUNERADAS = ['A', 'DT', 'DM', 'FT', 'LG', 'V', 'LSG', 'F', 'R', 'SU', 'CE', 'FG', 'LD', 'DC', 'AP', 'LP', 'TC']
-
-        for llave, data_op in matriz.items():
+ 
+            matriz[llave]["puntaje_acumulado"] += ratio
+ 
+        # ==================================================================
+        # RELLENAR ASISTENCIAS
+        # ==================================================================
+        ASISTENCIAS_REMUNERADAS = ['A', 'DT', 'DM', 'FT', 'LG', 'V', 'LSG', 'F', 'R',
+                                   'SU', 'CE', 'FG', 'LD', 'DC', 'AP', 'LP', 'TC']
+ 
+        for data_op in matriz.values():
             emp_id = data_op["id"]
             for f in fechas_rango:
-                if f not in data_op["dias"]:
-                    dict_asist = None
-                    if emp_id:
-                        dict_asist = asistencia_dict.get(emp_id, {}).get(f)
-                    
-                    if dict_asist:
-                        # Extraemos los datos que guardamos arriba
-                        estado_real = dict_asist["estado"]
-                        origen_real = dict_asist["origen"]
-                        
-                        data_op["dias"][f] = {
-                            "tipo": "asistencia", 
-                            "estado": estado_real, 
-                            "origen": origen_real # Lo mandamos al JSON del frontend
-                        }
-                        
-                        if estado_real.upper() in ASISTENCIAS_REMUNERADAS:
-                            data_op["puntaje_acumulado"] += 1.0
-                    else:
-                        data_op["dias"][f] = {"tipo": "vacio"}
-
+                if f in data_op["dias"]:
+                    continue
+ 
+                dict_asist = asistencia_dict.get(emp_id, {}).get(f) if emp_id else None
+                if dict_asist:
+                    data_op["dias"][f] = {
+                        "tipo": "asistencia",
+                        "estado": dict_asist["estado"],
+                        "origen": dict_asist["origen"]
+                    }
+                    if dict_asist["estado"].upper() in ASISTENCIAS_REMUNERADAS:
+                        data_op["puntaje_acumulado"] += 1.0
+                else:
+                    data_op["dias"][f] = {"tipo": "vacio"}
+ 
         return jsonify({
             "status": "success",
             "fechas": fechas_rango,
             "operarios": list(matriz.values())
         })
-
+ 
     except Exception as e:
-        print(f"❌ [ERROR GRAVE] Hubo un fallo en la generación: {e}")
-        import traceback
-        traceback.print_exc() 
+        app.logger.exception(f"[MATRIZ] Error generando la matriz: {e}")
         return jsonify({"error": "Error interno"}), 500
     
 
@@ -10657,42 +10813,167 @@ def obtener_filtros_produccion():
 @app.route('/api/obtener_detalle_rango_operario', methods=['POST'])
 def obtener_detalle_rango_operario():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         id_empleado = data.get('id_empleado')
         operario_csv = data.get('operario_csv')
-        
+ 
         fecha_inicio = datetime.strptime(data.get('fecha_inicio'), "%Y-%m-%d").date()
         fecha_fin = datetime.strptime(data.get('fecha_fin'), "%Y-%m-%d").date()
-
+ 
+        trabajos = []
+        cobertura_matriz = set()   # (persona, día) que ya resuelve la matriz
+ 
+        # ==================================================================
+        # 1. LECTURAS (matriz_validacion)
+        # ==================================================================
+        q_lec = MatrizValidacion.query.filter(
+            MatrizValidacion.fecha_lectura >= fecha_inicio,
+            MatrizValidacion.fecha_lectura <= fecha_fin
+        )
+ 
+        if id_empleado:
+            q_lec = q_lec.filter(MatrizValidacion.id_empleado == id_empleado)
+        else:
+            q_lec = q_lec.filter(MatrizValidacion.operador == operario_csv)
+ 
+        lecturas = q_lec.order_by(MatrizValidacion.fecha_lectura,
+                                  MatrizValidacion.horalec).all()
+ 
+        # ------------------------------------------------------------------
+        # 1a. RESPALDO DE GEOLOCALIZACIÓN
+        #     Solo para lecturas antiguas que aún no tienen lat/long propias.
+        # ------------------------------------------------------------------
+        geo_por_suministro_fecha = {}   # (suministro, fecha) -> fila
+        geo_por_suministro = {}         # suministro -> fila (cualquier fecha)
+ 
+        suministros = {l.clicodfac for l in lecturas
+                       if l.clicodfac and (l.latitud is None or l.longitud is None)}
+        if suministros:
+            lista_sum = list(suministros)
+            # En bloques de 1000 para no armar un IN gigantesco
+            for i in range(0, len(lista_sum), 1000):
+                bloque = lista_sum[i:i + 1000]
+                filas_geo = db.session.query(
+                    Produccion.suministro,
+                    Produccion.fecha_fin,
+                    Produccion.latitud,
+                    Produccion.longitud,
+                    Produccion.este,
+                    Produccion.norte,
+                    Produccion.localidad,
+                    Produccion.urba,
+                    Produccion.calle,
+                    Produccion.nromuni
+                ).filter(
+                    Produccion.suministro.in_(bloque),
+                    Produccion.latitud.isnot(None),
+                    Produccion.longitud.isnot(None)
+                ).all()
+ 
+                for g in filas_geo:
+                    geo_por_suministro.setdefault(g.suministro, g)
+                    if g.fecha_fin:
+                        geo_por_suministro_fecha.setdefault((g.suministro, g.fecha_fin), g)
+ 
+        lecturas_sin_geo = 0
+ 
+        for l in lecturas:
+            hora_txt = ""
+            if l.horalec:
+                h = parse_hora(l.horalec)
+                hora_txt = h.strftime("%H:%M") if h else str(l.horalec).strip()
+ 
+            # 🗺️ Coordenadas propias de la lectura (las del CSV)
+            lat_txt = str(l.latitud) if l.latitud is not None else ""
+            lon_txt = str(l.longitud) if l.longitud is not None else ""
+            este_txt = str(l.este) if getattr(l, 'este', None) is not None else ""
+            norte_txt = str(l.norte) if getattr(l, 'norte', None) is not None else ""
+ 
+            # Respaldo desde produccion: mismo día y, si no, cualquier registro
+            g = None
+            if not lat_txt or not lon_txt:
+                g = (geo_por_suministro_fecha.get((l.clicodfac, l.fecha_lectura))
+                     or geo_por_suministro.get(l.clicodfac))
+                if g:
+                    lat_txt = str(g.latitud) if g.latitud else ""
+                    lon_txt = str(g.longitud) if g.longitud else ""
+                    este_txt = este_txt or (str(g.este) if g.este else "")
+                    norte_txt = norte_txt or (str(g.norte) if g.norte else "")
+ 
+            if not lat_txt or not lon_txt:
+                lecturas_sin_geo += 1
+ 
+            trabajos.append({
+                # ----- Columnas que el frontend ya dibuja -----
+                "SUMINISTRO": l.clicodfac or "",
+                "CODIGO INSPECCION PERDIDAS": l.medcodygo or "",   # código del medidor
+                "NOMBRE": (g.localidad if g and g.localidad else (f"CICLO {l.ciclo}" if l.ciclo else "")),
+                "URBA": (g.urba if g and g.urba else (f"CARGA {l.carga}" if l.carga else "")),
+                "CALLE2": (g.calle if g and g.calle else (l.obs1 or "")),
+                "NROMUNI": (g.nromuni if g and g.nromuni else (l.obs2 or "")),
+                "ACTIVIDAD": "LECTURA",
+                "FECHA INI EJECUCION": l.fecha_lectura.strftime("%d/%m/%Y") if l.fecha_lectura else "",
+                "FECHA EJECUCION": l.fecha_lectura.strftime("%d/%m/%Y") if l.fecha_lectura else "",
+                "HORA INI": hora_txt,
+                "HORA": hora_txt,
+ 
+                # 🗺️ Coordenadas: las del CSV de lecturas (o el respaldo)
+                "LATITUD": lat_txt,
+                "LONGITUD": lon_txt,
+                "ESTE": este_txt,
+                "NORTE": norte_txt,
+ 
+                # ----- Datos propios de la lectura -----
+                # Si quieres verlos en pantalla, agrega estas columnas en el JS.
+                "MEDIDOR": l.medcodygo or "",
+                "LECTURA": l.lectura or "",
+                "OBS1": l.obs1 or "",
+                "OBS2": l.obs2 or "",
+                "NUEVO_MEDIDOR": l.newmed or "",
+                "CICLO": l.ciclo or "",
+                "CARGA": l.carga or "",
+                "PERIODO": l.periodo or "",
+                "ESTADO_VALIDACION": l.estado or "",
+ 
+                # ----- Auxiliares para ordenar -----
+                "_fecha": l.fecha_lectura,
+                "_hora": parse_hora(l.horalec) if l.horalec else None
+            })
+ 
+            cobertura_matriz.add(
+                (_clave_persona(l.id_empleado, l.operador), l.fecha_lectura)
+            )
+ 
+        if lecturas_sin_geo:
+            app.logger.info(
+                f"[DETALLE OPERARIO] {lecturas_sin_geo} lecturas sin coordenadas: "
+                f"ni el CSV las traía ni existe ese suministro en 'produccion'."
+            )
+ 
+        # ==================================================================
+        # 2. PRODUCCIÓN (todas las demás actividades)
+        # ==================================================================
         if id_empleado:
             filtro_operario = Produccion.id_empleado == id_empleado
         else:
             filtro_operario = Produccion.operario_csv == operario_csv
-
+ 
         registros = Produccion.query.filter(
             filtro_operario,
             Produccion.fecha_fin >= fecha_inicio,
             Produccion.fecha_fin <= fecha_fin
         ).order_by(Produccion.fecha_fin, Produccion.hora_fin).all()
-
-        # 🔥 NUEVO: Extraemos la carga planeada para este empleado
-        cargas_asignadas = {}
-        if id_empleado:
-            cargas_bd = CargaDiaria.query.filter(
-                CargaDiaria.id_empleado == id_empleado,
-                CargaDiaria.fecha >= fecha_inicio,
-                CargaDiaria.fecha <= fecha_fin
-            ).all()
-            for c in cargas_bd:
-                # Lo guardamos con el mismo formato de fecha que usa el frontend
-                cargas_asignadas[c.fecha.strftime("%d/%m/%Y")] = c.cantidad
-
-        trabajos = []
+ 
         for r in registros:
+            # 🔑 Si ese día ya lo cubre la matriz, no repetimos las lecturas
+            es_lectura = (r.actividad or "").strip().upper().startswith("LECTURA")
+            if es_lectura and (_clave_persona(r.id_empleado, r.operario_csv), r.fecha_fin) in cobertura_matriz:
+                continue
+ 
             trabajos.append({
                 "SUMINISTRO": r.suministro or "",
                 "CODIGO INSPECCION PERDIDAS": r.cod_perd or "",
-                "NOMBRE": r.localidad or "", 
+                "NOMBRE": r.localidad or "",
                 "URBA": r.urba or "",
                 "CALLE2": r.calle or "",
                 "NROMUNI": r.nromuni or "",
@@ -10704,16 +10985,41 @@ def obtener_detalle_rango_operario():
                 "LATITUD": str(r.latitud) if r.latitud else "",
                 "LONGITUD": str(r.longitud) if r.longitud else "",
                 "ESTE": str(r.este) if r.este else "",
-                "NORTE": str(r.norte) if r.norte else ""
+                "NORTE": str(r.norte) if r.norte else "",
+ 
+                "_fecha": r.fecha_fin,
+                "_hora": r.hora_fin
             })
-
+ 
+        # ==================================================================
+        # 3. ORDENAR TODO JUNTO Y LIMPIAR LOS AUXILIARES
+        # ==================================================================
+        trabajos.sort(key=lambda t: (t["_fecha"] or date.min, t["_hora"] or time.min))
+        for t in trabajos:
+            t.pop("_fecha", None)
+            t.pop("_hora", None)
+ 
+        # ==================================================================
+        # 4. CARGA PLANEADA (igual que antes)
+        # ==================================================================
+        cargas_asignadas = {}
+        if id_empleado:
+            cargas_bd = CargaDiaria.query.filter(
+                CargaDiaria.id_empleado == id_empleado,
+                CargaDiaria.fecha >= fecha_inicio,
+                CargaDiaria.fecha <= fecha_fin
+            ).all()
+            for c in cargas_bd:
+                cargas_asignadas[c.fecha.strftime("%d/%m/%Y")] = c.cantidad
+ 
         return jsonify({
-            "status": "success", 
+            "status": "success",
             "trabajos": trabajos,
-            "cargas_asignadas": cargas_asignadas # 🔥 Enviamos el diccionario al JS
+            "cargas_asignadas": cargas_asignadas
         })
+ 
     except Exception as e:
-        print(f"Error cargando detalles del operario: {e}")
+        app.logger.exception(f"[DETALLE OPERARIO] Error: {e}")
         return jsonify({"error": "Error interno"}), 500
 
 
