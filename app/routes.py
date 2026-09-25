@@ -8894,6 +8894,9 @@ def subir_matriz_csv():
         columnas_requeridas = {
             'CLICODFAC': 'clicodfac',
             'MEDCODYGO': 'medcodygo',
+            'URBANIZAC': 'urbanizacion',
+            'CALLE': 'calle',
+            'CLIMUNRO': 'nromuni',
             'LECTURA': 'lectura',
             'FECLEC': 'feclec',
             'HORALEC': 'horalec',
@@ -9008,6 +9011,9 @@ def subir_matriz_csv():
                 ciclo=fila['ciclo'],
                 carga=fila['carga'],
                 periodo=fila['periodo'],
+                urbanizacion=fila.get('urbanizacion'),   # 🏠 NUEVO
+                calle=fila.get('calle'),                 # 🏠 NUEVO
+                nromuni=fila.get('nromuni'), 
                 latitud=latitud,                  # 🗺️ NUEVO
                 longitud=longitud,                # 🗺️ NUEVO
                 este=este,                        # 🗺️ NUEVO (si el CSV lo trae)
@@ -10898,14 +10904,16 @@ def obtener_detalle_rango_operario():
                                   MatrizValidacion.horalec).all()
  
         # ------------------------------------------------------------------
-        # 1a. RESPALDO DE GEOLOCALIZACIÓN
-        #     Solo para lecturas antiguas que aún no tienen lat/long propias.
+        # 1a. DIRECCIÓN (y coordenadas de respaldo) DESDE PRODUCCION
+        #     matriz_validacion no guarda dirección, así que se recupera del
+        #     histórico cruzando clicodfac = suministro. Si no existe, los
+        #     campos de dirección quedan VACÍOS (nunca se rellenan con otra
+        #     cosa: poner ahí el ciclo o las observaciones confunde).
         # ------------------------------------------------------------------
         geo_por_suministro_fecha = {}   # (suministro, fecha) -> fila
         geo_por_suministro = {}         # suministro -> fila (cualquier fecha)
  
-        suministros = {l.clicodfac for l in lecturas
-                       if l.clicodfac and (l.latitud is None or l.longitud is None)}
+        suministros = {l.clicodfac for l in lecturas if l.clicodfac}
         if suministros:
             lista_sum = list(suministros)
             # En bloques de 1000 para no armar un IN gigantesco
@@ -10923,9 +10931,7 @@ def obtener_detalle_rango_operario():
                     Produccion.calle,
                     Produccion.nromuni
                 ).filter(
-                    Produccion.suministro.in_(bloque),
-                    Produccion.latitud.isnot(None),
-                    Produccion.longitud.isnot(None)
+                    Produccion.suministro.in_(bloque)
                 ).all()
  
                 for g in filas_geo:
@@ -10947,16 +10953,16 @@ def obtener_detalle_rango_operario():
             este_txt = str(l.este) if getattr(l, 'este', None) is not None else ""
             norte_txt = str(l.norte) if getattr(l, 'norte', None) is not None else ""
  
-            # Respaldo desde produccion: mismo día y, si no, cualquier registro
-            g = None
-            if not lat_txt or not lon_txt:
-                g = (geo_por_suministro_fecha.get((l.clicodfac, l.fecha_lectura))
-                     or geo_por_suministro.get(l.clicodfac))
-                if g:
-                    lat_txt = str(g.latitud) if g.latitud else ""
-                    lon_txt = str(g.longitud) if g.longitud else ""
-                    este_txt = este_txt or (str(g.este) if g.este else "")
-                    norte_txt = norte_txt or (str(g.norte) if g.norte else "")
+            # Datos del mismo suministro en produccion: primero el mismo día
+            g = (geo_por_suministro_fecha.get((l.clicodfac, l.fecha_lectura))
+                 or geo_por_suministro.get(l.clicodfac))
+ 
+            # Solo se usa como RESPALDO de coordenadas si la lectura no trae
+            if g and (not lat_txt or not lon_txt):
+                lat_txt = str(g.latitud) if g.latitud else ""
+                lon_txt = str(g.longitud) if g.longitud else ""
+                este_txt = este_txt or (str(g.este) if g.este else "")
+                norte_txt = norte_txt or (str(g.norte) if g.norte else "")
  
             if not lat_txt or not lon_txt:
                 lecturas_sin_geo += 1
@@ -10965,10 +10971,13 @@ def obtener_detalle_rango_operario():
                 # ----- Columnas que el frontend ya dibuja -----
                 "SUMINISTRO": l.clicodfac or "",
                 "CODIGO INSPECCION PERDIDAS": l.medcodygo or "",   # código del medidor
-                "NOMBRE": (g.localidad if g and g.localidad else (f"CICLO {l.ciclo}" if l.ciclo else "")),
-                "URBA": (g.urba if g and g.urba else (f"CARGA {l.carga}" if l.carga else "")),
-                "CALLE2": (g.calle if g and g.calle else (l.obs1 or "")),
-                "NROMUNI": (g.nromuni if g and g.nromuni else (l.obs2 or "")),
+                # 🏠 Dirección: primero la del propio CSV de lecturas
+                # (URBANIZAC, CALLE, CLIMUNRO); si falta, la de produccion.
+                # Nunca se rellena con ciclo, carga ni observaciones.
+                "NOMBRE": (g.localidad if g else "") or "",
+                "URBA": getattr(l, 'urbanizacion', None) or (g.urba if g else "") or "",
+                "CALLE2": getattr(l, 'calle', None) or (g.calle if g else "") or "",
+                "NROMUNI": getattr(l, 'nromuni', None) or (g.nromuni if g else "") or "",
                 "ACTIVIDAD": "LECTURA",
                 "FECHA INI EJECUCION": l.fecha_lectura.strftime("%d/%m/%Y") if l.fecha_lectura else "",
                 "FECHA EJECUCION": l.fecha_lectura.strftime("%d/%m/%Y") if l.fecha_lectura else "",
@@ -11079,6 +11088,7 @@ def obtener_detalle_rango_operario():
     except Exception as e:
         app.logger.exception(f"[DETALLE OPERARIO] Error: {e}")
         return jsonify({"error": "Error interno"}), 500
+
 
 
 @app.route('/api/empleados_por_area', methods=['POST'])
