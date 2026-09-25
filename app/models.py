@@ -638,6 +638,10 @@ class MatrizValidacion(db.Model):
     nueva_obs = db.Column(db.String(100), nullable=True)
     nuevo_obs2 = db.Column(db.String(100), nullable=True)
     nuevo_med = db.Column(db.String(50), nullable=True)
+    urbanizacion = db.Column(db.String(150), nullable=True)
+    calle        = db.Column(db.String(200), nullable=True)
+    nromuni      = db.Column(db.String(50),  nullable=True)
+    
     latitud  = db.Column(db.Numeric(10, 8), nullable=True)
     longitud = db.Column(db.Numeric(11, 8), nullable=True)
     este     = db.Column(db.Numeric(12, 4), nullable=True)   
