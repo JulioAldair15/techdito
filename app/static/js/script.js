@@ -13337,26 +13337,48 @@ function dibujarMapaDeDia(fecha, indexFila) {
             }
             .separador-traslado.destacado .st-linea { animation: pulsoAlerta 1.1s ease-out 2; }
  
-            /* ---------- PANEL DE ALERTAS ---------- */
+            /* ---------- BARRA DE ALERTAS (cabecera) ---------- */
+            .alerta-barra {
+                display: flex; align-items: center; gap: 8px; min-width: 0;
+                background: #fef2f2; border: 1px solid #fecaca; border-radius: 999px;
+                padding: 3px 6px 3px 11px;
+            }
+            .alerta-resumen {
+                display: flex; align-items: baseline; gap: 6px; white-space: nowrap; flex-shrink: 0;
+                font-size: 0.72rem; color: #b91c1c;
+            }
+            .alerta-resumen .ar-conteo { font-weight: 700; }
+            .alerta-resumen .ar-sep    { color: #fca5a5; }
+            .alerta-resumen .ar-perdido { color: #7f1d1d; font-weight: 600; }
+            .alerta-resumen .ar-etiqueta { color: #9f6b6b; font-weight: 400; font-size: 0.66rem; }
+ 
+            .alerta-divisor { width: 1px; height: 16px; background: #fecaca; flex-shrink: 0; }
+ 
             .chip-alerta {
-                width: 19px; height: 19px; border-radius: 50%; border: none; cursor: pointer;
-                background: #ef4444; color: white; font-size: 0.58rem; font-weight: 700;
+                width: 18px; height: 18px; border-radius: 50%; border: none; cursor: pointer;
+                background: #ef4444; color: white; font-size: 0.56rem; font-weight: 700;
                 display: inline-flex; align-items: center; justify-content: center;
                 flex-shrink: 0; padding: 0; transition: transform 0.15s, background 0.15s;
             }
             .chip-alerta:hover  { transform: scale(1.2); background: #dc2626; }
-            .chip-alerta.activo { outline: 2px solid #991b1b; outline-offset: 1px; }
+            .chip-alerta.activo { background: #7f1d1d; transform: scale(1.15); }
  
-            #chips-alertas { display: flex; gap: 4px; overflow-x: auto; padding: 2px; scrollbar-width: thin; }
-            #chips-alertas::-webkit-scrollbar { height: 3px; }
-            #chips-alertas::-webkit-scrollbar-thumb { background: #fca5a5; border-radius: 10px; }
+            #chips-alertas { display: flex; gap: 4px; overflow-x: auto; padding: 2px 0; scrollbar-width: none; }
+            #chips-alertas::-webkit-scrollbar { display: none; }
  
             .nav-alerta-btn {
-                background: white; border: 1px solid #fecaca; color: #b91c1c; cursor: pointer;
-                width: 21px; height: 21px; border-radius: 5px; font-size: 0.7rem; line-height: 1;
-                flex-shrink: 0; padding: 0;
+                background: transparent; border: none; color: #b91c1c; cursor: pointer;
+                width: 18px; height: 18px; border-radius: 50%; font-size: 0.65rem; line-height: 1;
+                flex-shrink: 0; padding: 0; display: flex; align-items: center; justify-content: center;
+                transition: background 0.15s;
             }
             .nav-alerta-btn:hover { background: #fee2e2; }
+ 
+            .sin-alertas {
+                display: flex; align-items: center; gap: 5px; white-space: nowrap;
+                font-size: 0.72rem; color: #047857; background: #ecfdf5;
+                border: 1px solid #a7f3d0; border-radius: 999px; padding: 3px 11px;
+            }
  
             .mini-tarjeta.resaltada-alerta { box-shadow: 0 0 0 2px #ef4444 !important; }
         </style>
@@ -13365,11 +13387,8 @@ function dibujarMapaDeDia(fecha, indexFila) {
             <div style="font-weight:600; font-size:0.9rem; color:#334155; white-space:nowrap; flex-shrink:0;">
                 <i class="fas fa-route" style="color:var(--c-blue); margin-right:4px;"></i> Ruta del ${fecha}
             </div>
-            <div id="resumen-ruta" style="display:flex; align-items:center; gap:8px; min-width:0; flex:1; justify-content:flex-end; flex-wrap:nowrap;">
-                <div id="panel-alertas" style="display:flex; align-items:center; gap:6px; min-width:0;"></div>
-                <span style="font-size:0.75rem; color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 8px; border-radius:12px; white-space:nowrap; flex-shrink:0;">
-                    ${trabajos.length} puntos
-                </span>
+            <div id="resumen-ruta" style="display:flex; align-items:center; min-width:0; flex:1; justify-content:flex-end; flex-wrap:nowrap;">
+                <div id="panel-alertas" style="display:flex; align-items:center; min-width:0;"></div>
             </div>
         </div>
         <div id="mapa-operario" style="flex-grow:1; width:100%; z-index:1; background:#f8fafc;"></div>
@@ -13967,19 +13986,29 @@ function dibujarMapaDeDia(fecha, indexFila) {
             if (panelAlertas) {
                 if (alertas.length === 0) {
                     panelAlertas.innerHTML = `
-                        <span style="font-size:0.72rem; color:#059669; background:#ecfdf5; border:1px solid #a7f3d0;
-                                     padding:2px 8px; border-radius:12px; white-space:nowrap;">
-                            <i class="fas fa-check"></i> Sin sobretiempos
+                        <span class="sin-alertas">
+                            <i class="fas fa-circle-check"></i> Sin sobretiempos
                         </span>`;
                 } else {
+                    // Tiempo perdido = minutos por encima del límite permitido
+                    const minutosPerdidos = alertas.reduce((acc, a) => acc + (a.minutos - a.umbral), 0);
+                    const esperaTotal = alertas.reduce((acc, a) => acc + a.minutos, 0);
+ 
                     panelAlertas.innerHTML = `
-                        <span style="font-size:0.72rem; color:#b91c1c; background:#fee2e2; border:1px solid #fecaca;
-                                     padding:2px 8px; border-radius:12px; white-space:nowrap; font-weight:600; flex-shrink:0;">
-                            <i class="fas fa-triangle-exclamation"></i> ${alertas.length} sobretiempo${alertas.length > 1 ? 's' : ''}
-                        </span>
-                        <button class="nav-alerta-btn" id="alerta-anterior" title="Alerta anterior">❮</button>
-                        <div id="chips-alertas"></div>
-                        <button class="nav-alerta-btn" id="alerta-siguiente" title="Alerta siguiente">❯</button>`;
+                        <div class="alerta-barra">
+                            <div class="alerta-resumen"
+                                 title="Suma de los minutos que superan el límite permitido (10 min entre lecturas, 30 min en otras actividades).&#10;Espera acumulada en esas paradas: ${formatoLargo(esperaTotal)}">
+                                <i class="fas fa-triangle-exclamation" style="font-size:0.7rem;"></i>
+                                <span class="ar-conteo">${alertas.length} sobretiempo${alertas.length > 1 ? 's' : ''}</span>
+                                <span class="ar-sep">·</span>
+                                <span class="ar-perdido">${formatoLargo(minutosPerdidos)}</span>
+                                <span class="ar-etiqueta">perdidos</span>
+                            </div>
+                            <div class="alerta-divisor"></div>
+                            <button class="nav-alerta-btn" id="alerta-anterior" title="Sobretiempo anterior">❮</button>
+                            <div id="chips-alertas"></div>
+                            <button class="nav-alerta-btn" id="alerta-siguiente" title="Sobretiempo siguiente">❯</button>
+                        </div>`;
  
                     // Referencias dentro del propio panel (evita ids repetidos)
                     const chipsCont = panelAlertas.querySelector("#chips-alertas");
