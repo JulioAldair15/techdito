@@ -13280,26 +13280,21 @@ function cerrarPanelOperario() {
 
 
 function dibujarMapaDeDia(fecha, indexFila) {
-    console.log(`\n==================== [DEBUG SCRIPT.JS - MAPA] ====================`);
-    console.log(`🗺️ [1] Dibujando ruta para el día: "${fecha}" (Fila Index: ${indexFila})`);
-
+    console.log(`🗺️ [MAPA] Dibujando ruta para el día: ${fecha}`);
+ 
     document.querySelectorAll('.row-dia').forEach(el => el.classList.remove('activo'));
     const filaDOM = document.getElementById(`row-dia-${indexFila}`);
     if (filaDOM) filaDOM.classList.add('activo');
-
+ 
     const trabajos = window.datosDetalleOperario.filter(t => (t["FECHA EJECUCION"] || t["FECHA INI EJECUCION"]) === fecha);
-    console.log(`📊 [2] Total de trabajos encontrados para la fecha: ${trabajos.length}`);
-
     const contenedor = document.getElementById('panel-mapa-view');
-    if (!contenedor) {
-        console.error("❌ [ERROR]: No se encontró el contenedor '#panel-mapa-view' en el DOM.");
-        return;
-    }
-
+ 
+    if (!contenedor) return;
+ 
     contenedor.innerHTML = `
         <style>
             #cinta-scroll-tarjetas {
-                display: flex !important; overflow-x: auto !important; gap: 8px !important;
+                display: flex !important; overflow-x: auto !important; gap: 4px !important;
                 padding: 6px 12px 6px 12px !important; align-items: center !important;
                 background: white !important; border-top: 1px solid #cbd5e1 !important;
                 scrollbar-width: thin !important; scrollbar-color: #cbd5e1 transparent !important;
@@ -13307,59 +13302,142 @@ function dibujarMapaDeDia(fecha, indexFila) {
             #cinta-scroll-tarjetas::-webkit-scrollbar { height: 5px !important; }
             #cinta-scroll-tarjetas::-webkit-scrollbar-track { background: transparent !important; }
             #cinta-scroll-tarjetas::-webkit-scrollbar-thumb { background: #94a3b8 !important; border-radius: 10px !important; }
-
+ 
             .mini-tarjeta {
                 background: white; border: 1px solid #e2e8f0; border-radius: 6px;
                 min-width: 195px; max-width: 215px; padding: 6px 10px; flex-shrink: 0; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
             }
             .mini-tarjeta:hover { border-color: #cbd5e1; box-shadow: 0 3px 6px rgba(0,0,0,0.06); }
             .mini-tarjeta.activa { border-color: #3b82f6; background-color: #eff6ff; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(59,130,246,0.15); }
-
+ 
             .mini-tarjeta.ficha-levantada { background-color: #fff7ed !important; border: 1px solid #fed7aa !important; }
             .mini-tarjeta.ficha-levantada:hover { border-color: #f97316 !important; }
             .mini-tarjeta.ficha-levantada.activa { border-color: #ea580c !important; background-color: #ffedd5 !important; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(234, 88, 12, 0.2) !important; }
+ 
+            /* ---------- SEPARADOR COMPACTO ENTRE TARJETAS ---------- */
+            .separador-traslado {
+                display: flex; align-items: center; justify-content: center;
+                flex-shrink: 0; padding: 0; margin: 0 1px;
+            }
+            .separador-traslado .st-linea {
+                display: flex; align-items: center; gap: 2px;
+                padding: 1px 5px; border-radius: 9px; white-space: nowrap;
+                font-size: 0.58rem; font-weight: 700; line-height: 1.2;
+            }
+            .separador-traslado .st-linea i { font-size: 0.52rem; }
+            .st-ok    .st-linea { background: transparent; color: #94a3b8; border: none; font-weight: 500; }
+            .st-aviso .st-linea { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+            .st-alto  .st-linea { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+            .st-alto  .st-linea i { color: #dc2626; }
+ 
+            @keyframes pulsoAlerta {
+                0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(220,38,38,0.55); }
+                60%  { transform: scale(1.25); box-shadow: 0 0 0 9px rgba(220,38,38,0); }
+                100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(220,38,38,0); }
+            }
+            .separador-traslado.destacado .st-linea { animation: pulsoAlerta 1.1s ease-out 2; }
+ 
+            /* ---------- PANEL DE ALERTAS ---------- */
+            .chip-alerta {
+                width: 19px; height: 19px; border-radius: 50%; border: none; cursor: pointer;
+                background: #ef4444; color: white; font-size: 0.58rem; font-weight: 700;
+                display: inline-flex; align-items: center; justify-content: center;
+                flex-shrink: 0; padding: 0; transition: transform 0.15s, background 0.15s;
+            }
+            .chip-alerta:hover  { transform: scale(1.2); background: #dc2626; }
+            .chip-alerta.activo { outline: 2px solid #991b1b; outline-offset: 1px; }
+ 
+            #chips-alertas { display: flex; gap: 4px; overflow-x: auto; padding: 2px; scrollbar-width: thin; }
+            #chips-alertas::-webkit-scrollbar { height: 3px; }
+            #chips-alertas::-webkit-scrollbar-thumb { background: #fca5a5; border-radius: 10px; }
+ 
+            .nav-alerta-btn {
+                background: white; border: 1px solid #fecaca; color: #b91c1c; cursor: pointer;
+                width: 21px; height: 21px; border-radius: 5px; font-size: 0.7rem; line-height: 1;
+                flex-shrink: 0; padding: 0;
+            }
+            .nav-alerta-btn:hover { background: #fee2e2; }
+ 
+            .mini-tarjeta.resaltada-alerta { box-shadow: 0 0 0 2px #ef4444 !important; }
         </style>
-
-        <div style="padding: 10px 15px; background: white; border-bottom: 1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; z-index:10; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-            <div style="font-weight:600; font-size:0.9rem; color:#334155;"><i class="fas fa-route" style="color:var(--c-blue); margin-right:4px;"></i> Ruta del ${fecha}</div>
-            <div style="font-size:0.75rem; color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 8px; border-radius:12px;">${trabajos.length} coordenadas</div>
+ 
+        <div style="padding: 10px 15px; background: white; border-bottom: 1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; gap:12px; z-index:10; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <div style="font-weight:600; font-size:0.9rem; color:#334155; white-space:nowrap; flex-shrink:0;">
+                <i class="fas fa-route" style="color:var(--c-blue); margin-right:4px;"></i> Ruta del ${fecha}
+            </div>
+            <div id="resumen-ruta" style="display:flex; align-items:center; gap:8px; min-width:0; flex:1; justify-content:flex-end; flex-wrap:nowrap;">
+                <div id="panel-alertas" style="display:flex; align-items:center; gap:6px; min-width:0;"></div>
+                <span style="font-size:0.75rem; color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 8px; border-radius:12px; white-space:nowrap; flex-shrink:0;">
+                    ${trabajos.length} puntos
+                </span>
+            </div>
         </div>
         <div id="mapa-operario" style="flex-grow:1; width:100%; z-index:1; background:#f8fafc;"></div>
         <div id="cinta-scroll-tarjetas" style="z-index:10;"></div>
     `;
-
+ 
     if (window.mapaOperarioInstancia) { window.mapaOperarioInstancia.remove(); }
-
+ 
     setTimeout(() => {
         try {
             const mapa = L.map('mapa-operario');
             window.mapaOperarioInstancia = mapa;
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
-            mapa.invalidateSize(); 
-
+            mapa.invalidateSize();
+ 
             const projUTM = "+proj=utm +zone=17 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs";
             const projLatLon = "+proj=longlat +datum=WGS84 +no_defs";
             const puntos = [];
             const marcadores = [];
             const filaTarjetas = document.getElementById("cinta-scroll-tarjetas");
-
+ 
             const resaltarMarcador = (marcadorSeleccionado) => {
-                marcadores.forEach(m => m.setStyle(m.estiloOriginal));
+                marcadores.forEach(m => { m.setStyle(m.estiloOriginal); });
                 marcadorSeleccionado.setStyle({
-                    radius: 10,
-                    fillColor: '#3b82f6',
-                    color: '#1d4ed8',
-                    weight: 3,
-                    fillOpacity: 1
+                    radius: 10, fillColor: '#3b82f6', color: '#1d4ed8', weight: 3, fillOpacity: 1
                 });
                 marcadorSeleccionado.bringToFront();
                 marcadorSeleccionado.openPopup();
             };
-
+ 
+            // ==============================================================
+            // ⏱️ CONFIGURACIÓN DE SOBRETIEMPOS
+            // ==============================================================
+            const UMBRAL_LECTURA_MIN = 10;   // minutos permitidos entre lecturas
+            const UMBRAL_GENERAL_MIN = 30;   // minutos permitidos en el resto
+ 
+            const aMinutos = (txt) => {
+                const s = (txt || "").toString().trim();
+                if (!s.includes(":")) return null;
+                const [h, m] = s.split(":").map(Number);
+                if (isNaN(h) || isNaN(m)) return null;
+                return h * 60 + m;
+            };
+ 
+            const esLectura = (trabajo) =>
+                (trabajo?.["ACTIVIDAD"] || "").toString().trim().toUpperCase().startsWith("LECTURA");
+ 
+            const umbralEntre = (a, b) =>
+                (esLectura(a) || esLectura(b)) ? UMBRAL_LECTURA_MIN : UMBRAL_GENERAL_MIN;
+ 
+            // Formato ultracompacto para no alargar la cinta: 4m / 1h5m
+            const compacto = (min) => {
+                if (min < 60) return `${min}m`;
+                const h = Math.floor(min / 60), m = min % 60;
+                return m > 0 ? `${h}h${m}m` : `${h}h`;
+            };
+            const formatoLargo = (min) => {
+                if (min < 60) return `${min} min`;
+                const h = Math.floor(min / 60), m = min % 60;
+                return m > 0 ? `${h}h ${m}m` : `${h}h`;
+            };
+ 
+            const tarjetasCreadas = [];   // { trabajo, el, lat, lon, marcador }
+ 
             trabajos.forEach((f, i) => {
                 let lat = parseFloat(String(f["LATITUD"] || "").replace(",", "."));
                 let lon = parseFloat(String(f["LONGITUD"] || "").replace(",", "."));
-
+ 
                 if (isNaN(lat) || isNaN(lon)) {
                     let este = parseFloat(String(f["ESTE"] || "").replace(",", "."));
                     let norte = parseFloat(String(f["NORTE"] || "").replace(",", "."));
@@ -13368,49 +13446,51 @@ function dibujarMapaDeDia(fecha, indexFila) {
                         lat = cLat; lon = cLon;
                     }
                 }
-
+ 
                 if (!isNaN(lat) && !isNaN(lon)) {
                     puntos.push([lat, lon]);
                     const esInicio = i === 0, esFin = i === trabajos.length - 1;
                     const fillColor = (esInicio || esFin) ? '#7ad9ff' : '#49ff00';
                     const borderColor = (esInicio || esFin) ? '#49a1c3' : '#6eae6e';
                     const label = esInicio ? "Inicio" : (esFin ? "Fin" : "");
-
+ 
                     const marcador = L.circleMarker([lat, lon], {
                         radius: 5, color: borderColor, weight: 2, fillColor: fillColor, fillOpacity: 1
                     }).addTo(mapa).bindPopup(`<strong>${label || 'Suministro'}</strong><br>${f["SUMINISTRO"] || ""}`);
-
+ 
                     marcador.estiloOriginal = { radius: 5, color: borderColor, weight: 2, fillColor: fillColor, fillOpacity: 1 };
                     marcadores.push(marcador);
-
+ 
                     const actividadNombre = (f["ACTIVIDAD"] || f["ACTIVIDAD REAL"] || f["DESCRIPCION"] || "").toString().trim().toUpperCase();
                     const esFichaLevantada = actividadNombre.includes("FICHA LEVANTADA");
-
+ 
                     let duracionTexto = "-";
                     const hIniStr = (f["HORA INI"] || "").toString().trim();
                     const hFinStr = (f["HORA"] || "").toString().trim();
-
+ 
                     if (hIniStr.includes(":") && hFinStr.includes(":")) {
                         const [h1, m1] = hIniStr.split(":").map(Number);
                         const [h2, m2] = hFinStr.split(":").map(Number);
-
+ 
                         if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
                             let totalMinutos = (h2 * 60 + m2) - (h1 * 60 + m1);
                             if (totalMinutos < 0) totalMinutos += 1440;
+ 
                             const hrs = Math.floor(totalMinutos / 60);
                             const mins = totalMinutos % 60;
+ 
                             duracionTexto = hrs > 0 ? `${hrs}h ${mins}m` : `${mins} min`;
                         }
                     }
-
+ 
                     const tarjeta = document.createElement("div");
                     tarjeta.className = `mini-tarjeta ${esFichaLevantada ? 'ficha-levantada' : ''}`;
                     tarjeta.id = `tarjeta-${lat.toFixed(6)}-${lon.toFixed(6)}`;
-
-                    const tagFicha = esFichaLevantada 
-                        ? `<span style="font-size:0.55rem; background:#c2410c; color:white; padding:1px 4px; border-radius:3px; font-weight:bold; margin-left:4px;">FICHA</span>` 
+ 
+                    const tagFicha = esFichaLevantada
+                        ? `<span style="font-size:0.55rem; background:#c2410c; color:white; padding:1px 4px; border-radius:3px; font-weight:bold; margin-left:4px;">FICHA</span>`
                         : '';
-
+ 
                     tarjeta.innerHTML = `
                         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px dashed #e2e8f0; padding-bottom:4px; margin-bottom:4px;">
                             <strong style="font-size:0.8rem; color:#1e293b; display:flex; align-items:center;">
@@ -13419,106 +13499,107 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             <button class="btn-abrir-fotos" style="background:#f1f5f9; color:#3b82f6; border:1px solid #e2e8f0; border-radius:4px; width:22px; height:22px; cursor:pointer; display:flex; justify-content:center; align-items:center; font-size:10px;"><i class="fas fa-camera"></i></button>
                         </div>
                         <div style="font-size:0.65rem; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;"><i class="fas fa-map-marker-alt"></i> ${f["URBA"] || ""} ${f["CALLE2"] || ""}</div>
-                        
+ 
                         <div style="display:flex; justify-content:space-between; align-items:center; padding-top:4px; border-top:1px solid #f1f5f9;">
                             <div style="white-space:nowrap; font-size:0.65rem; color:#1e293b; display:flex; align-items:center;">
                                 <i class="far fa-clock" style="color:#94a3b8; font-size:0.6rem; margin-right:4px;"></i>
-                                <span style="font-weight:normal; margin-right:2px;">INI:</span> 
+                                <span style="font-weight:normal; margin-right:2px;">INI:</span>
                                 <b>${hIniStr || "-"}</b>
+ 
                                 <span style="margin: 0 4px;">-</span>
-                                <span style="font-weight:normal; margin-right:2px;">FIN:</span> 
+ 
+                                <span style="font-weight:normal; margin-right:2px;">FIN:</span>
                                 <b>${hFinStr || "-"}</b>
                             </div>
+ 
                             <div style="background:${esFichaLevantada ? '#ffedd5' : '#f1f5f9'}; padding:1px 5px; border-radius:4px; border:1px solid ${esFichaLevantada ? '#fed7aa' : '#e2e8f0'}; white-space:nowrap;">
                                 <b style="color:${esFichaLevantada ? '#c2410c' : '#2563eb'}; font-size:0.62rem; display:flex; align-items:center;">
-                                    <i class="fas fa-hourglass-half" style="margin-right:3px; color:#64748b; font-weight:normal;"></i> 
+                                    <i class="fas fa-hourglass-half" style="margin-right:3px; color:#64748b; font-weight:normal;"></i>
                                     ${duracionTexto}
                                 </b>
                             </div>
                         </div>
                     `;
-
+ 
                     marcador.on("click", () => {
                         document.querySelectorAll(".mini-tarjeta").forEach(t => t.classList.remove("activa"));
                         tarjeta.classList.add("activa");
                         tarjeta.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
                         resaltarMarcador(marcador);
                     });
-
+ 
                     tarjeta.addEventListener("click", (e) => {
                         if (e.target.closest('.btn-abrir-fotos')) return;
+ 
                         document.querySelectorAll(".mini-tarjeta").forEach(t => t.classList.remove("activa"));
                         tarjeta.classList.add("activa");
+ 
                         mapa.flyTo([lat, lon], Math.max(mapa.getZoom(), 16), { duration: 0.8 });
                         resaltarMarcador(marcador);
                     });
-
+ 
                     // =========================================================
                     // 📸 LÓGICA DE FOTOS FILTRADAS POR FECHA DE EJECUCIÓN
                     // =========================================================
                     const btnFotos = tarjeta.querySelector('.btn-abrir-fotos');
                     btnFotos.addEventListener("click", async (e) => {
                         e.stopPropagation();
-                    
+ 
                         console.log(`\n---------------- [DEBUG CLICK BOTÓN FOTOS] ----------------`);
                         console.log(`📄 Fila Completa de Trabajo:`, f);
-                    
+ 
                         const rawSuministro = f["SUMINISTRO"];
                         const rawInspeccion = f["CODIGO INSPECCION PERDIDAS"];
                         const actividadActual = String(f["ACTIVIDAD"] || "").trim().toUpperCase();
                         const rawFechaEjecucion = f["FECHA EJECUCION"] || f["FECHA INI EJECUCION"] || "";
-                    
+ 
                         const sanitizarYValidar = (valor) => {
                             if (valor === null || valor === undefined) return null;
                             const str = String(valor).trim();
-                            const soloDigitos = str.replace(/\D/g, ''); 
+                            const soloDigitos = str.replace(/\D/g, '');
                             return (soloDigitos !== "" && !/^0+$/.test(soloDigitos)) ? str : null;
                         };
-                    
-                        // Helper para extraer { dia, mes, anio } de cualquier string de fecha
+ 
                         const obtenerPartesFecha = (strFecha) => {
                             if (!strFecha) return null;
                             const limpia = String(strFecha).trim();
-                            // DD/MM/YYYY o DD-MM-YYYY
                             let m = limpia.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
                             if (m) {
                                 return { dia: m[1].padStart(2, '0'), mes: m[2].padStart(2, '0'), anio: m[3] };
                             }
-                            // YYYY-MM-DD o YYYY/MM/DD
                             m = limpia.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
                             if (m) {
                                 return { dia: m[3].padStart(2, '0'), mes: m[2].padStart(2, '0'), anio: m[1] };
                             }
                             return null;
                         };
-                    
+ 
                         const targetFechaPartes = obtenerPartesFecha(rawFechaEjecucion);
                         console.log(`📅 Fecha de ejecución objetivo:`, targetFechaPartes || rawFechaEjecucion);
-                    
+ 
                         const suministroValido = sanitizarYValidar(rawSuministro);
                         const inspeccionValida = sanitizarYValidar(rawInspeccion);
-                    
+ 
                         if (!suministroValido && !inspeccionValida) {
                             alert("Este registro no cuenta con un Suministro o Código de Inspección válido.");
                             return;
                         }
-                    
-                        // Modal UI
+ 
                         const ventana = document.createElement("div");
                         ventana.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:99999; background:white; border-radius:10px; padding:20px; width:90%; max-width:1050px; height:90vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.5);";
-                        
+ 
                         const cerrarBtn = document.createElement("button");
                         cerrarBtn.innerHTML = "×";
                         cerrarBtn.style.cssText = "position:absolute; top:10px; right:15px; font-size:28px; background:transparent; border:none; cursor:pointer; color:#333;";
-                        
+ 
                         const overlay = document.createElement("div");
                         overlay.style.cssText = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:99998;";
-                    
+ 
                         cerrarBtn.addEventListener("click", () => { ventana.remove(); overlay.remove(); });
-                        
+ 
                         const direccion = `${f["URBA"] || ""} ${f["CALLE2"] || ""} ${f["NROMUNI"] || ""}`.trim();
                         const tituloCodigo = suministroValido || inspeccionValida;
-                    
+ 
                         ventana.innerHTML = `
                             <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 10px; flex-shrink: 0;">
                                 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -13533,68 +13614,60 @@ function dibujarMapaDeDia(fecha, indexFila) {
                             <div id="contenedor-carrusel" style="flex:1; display:flex; justify-content:center; align-items:center; overflow:hidden; background:#f8fafc; border-radius:8px;"></div>
                         `;
                         ventana.appendChild(cerrarBtn);
-                        document.body.appendChild(overlay); 
+                        document.body.appendChild(overlay);
                         document.body.appendChild(ventana);
-                    
+ 
                         const pestaniasContainer = ventana.querySelector("#fc-pestanias-container");
                         const contenedorCarrusel = ventana.querySelector("#contenedor-carrusel");
                         contenedorCarrusel.innerHTML = `<div style="text-align:center;"><div class="loader2"></div><p>Filtrando imágenes para la fecha ${rawFechaEjecucion}...</p></div>`;
-                    
-                        // Función para construir la URL exacta
+ 
                         const construirUrlImagen = (nombre, carpeta, categoria) => {
                             let cat = (categoria && String(categoria).trim()) ? String(categoria).trim().toLowerCase() : "ordenes";
                             let carpetaLimpia = (carpeta || "").toString().replace(/\\/g, "/").trim();
-                            carpetaLimpia = carpetaLimpia.replace(/^\/+|\/+$/g, ""); 
-                    
+                            carpetaLimpia = carpetaLimpia.replace(/^\/+|\/+$/g, "");
+ 
                             const segmentos = carpetaLimpia ? carpetaLimpia.split("/").map(s => encodeURIComponent(s)) : [];
                             const nombreUrl = encodeURIComponent((nombre || "").toString().trim());
-                    
+ 
                             const rutaCarpeta = segmentos.length > 0 ? segmentos.join("/") + "/" : "";
                             return `http://200.233.44.171/app_oraclesedalib/public/storage/images/${cat}/${rutaCarpeta}${nombreUrl}`;
                         };
-                    
-                        // ✅ FILTRO MÁGICO DE PRECISIÓN POR FECHA Y/O CÓDIGO DE INSPECCIÓN
+ 
                         const coincideConFechaTarget = (item, sub, nombre) => {
                             if (!targetFechaPartes && !inspeccionValida) return true;
-                    
+ 
                             const carpetaStr = String(sub?.carpeta || item?.carpeta || "");
                             const nombreStr = String(nombre || "");
                             const textoCombinado = `${carpetaStr}/${nombreStr}`;
-                    
-                            // 1. VERIFICACIÓN POR CÓDIGO DE INSPECCIÓN / ORDEN (Si existe)
+ 
                             if (inspeccionValida) {
-                                // Revisar si está dentro de los metadatos de las respuestas del backend
                                 const camposInspeccion = [
                                     item?.inspeccion, item?.codigo_inspeccion, item?.id_inspeccion, item?.orden, item?.num_orden,
                                     sub?.inspeccion, sub?.codigo_inspeccion, sub?.id_inspeccion, sub?.orden, sub?.num_orden
                                 ].map(v => v ? String(v).trim() : null).filter(Boolean);
-                    
+ 
                                 if (camposInspeccion.some(val => val === inspeccionValida || val.includes(inspeccionValida))) {
                                     return true;
                                 }
-                    
-                                // Revisar si el código de inspección aparece en la carpeta o en el nombre de la foto
+ 
                                 if (textoCombinado.includes(inspeccionValida)) {
                                     return true;
                                 }
                             }
-                    
-                            // 2. VERIFICACIÓN POR FECHA OBJETIVO (Si existe)
+ 
                             if (targetFechaPartes) {
                                 const { dia, mes, anio } = targetFechaPartes;
-                                const yyyymm = `${anio}${mes}`;
                                 const yyyymmdd = `${anio}${mes}${dia}`;
                                 const ddmmyyyy = `${dia}${mes}${anio}`;
                                 const slashDD = `${dia}/${mes}/${anio}`;
                                 const dashDD = `${dia}-${mes}-${anio}`;
                                 const dashYY = `${anio}-${mes}-${dia}`;
-                    
-                                // A. Revisar fechas explícitas de los objetos JSON
+ 
                                 const posiblesFechas = [
                                     item?.fecha, item?.fecha_ejecucion, item?.fecha_registro, item?.fec_ejec, item?.fec_reg, item?.created_at,
                                     sub?.fecha, sub?.fecha_ejecucion, sub?.fecha_registro, sub?.fec_ejec, sub?.fec_reg
                                 ].filter(Boolean);
-                    
+ 
                                 for (const fVal of posiblesFechas) {
                                     const p = obtenerPartesFecha(fVal);
                                     if (p) {
@@ -13606,17 +13679,15 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                         }
                                     }
                                 }
-                    
-                                // B. Revisar si la ruta o nombre de la foto trae la fecha exacta
-                                if (textoCombinado.includes(yyyymmdd) || 
-                                    textoCombinado.includes(ddmmyyyy) || 
-                                    textoCombinado.includes(slashDD) || 
-                                    textoCombinado.includes(dashDD) || 
+ 
+                                if (textoCombinado.includes(yyyymmdd) ||
+                                    textoCombinado.includes(ddmmyyyy) ||
+                                    textoCombinado.includes(slashDD) ||
+                                    textoCombinado.includes(dashDD) ||
                                     textoCombinado.includes(dashYY)) {
                                     return true;
                                 }
-                    
-                                // C. Si la carpeta inicia o contiene YYYYMM (ej: 202609)
+ 
                                 const matchCarpetaAnioMes = carpetaStr.match(/(\d{4})(\d{2})/);
                                 if (matchCarpetaAnioMes) {
                                     const cAnio = matchCarpetaAnioMes[1];
@@ -13626,12 +13697,10 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                     }
                                 }
                             }
-                    
-                            // ❌ SI HUBO CRITERIOS Y NINGUNO COINCIDIÓ, DESCARTE SEGURO
+ 
                             return false;
                         };
-                    
-                        // Consulta y Filtro al Backend
+ 
                         const consultarBackend = async (codigo) => {
                             if (!codigo) return [];
                             try {
@@ -13641,23 +13710,22 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({ codigo })
                                 });
-                    
+ 
                                 if (!res.ok) return [];
                                 const data = await res.json();
                                 console.log(`📦 [DATOS RECIBIDOS SIN FILTRAR] para "${codigo}":`, data);
-                    
+ 
                                 const grupos = [];
                                 let totalFotosDescartadas = 0;
-                    
+ 
                                 if (data && Array.isArray(data.resultados)) {
                                     data.resultados.forEach((item) => {
                                         const leyendaUpper = String(item.leyenda || "").toUpperCase();
-                                        const esLectura = leyendaUpper.includes("LECTURA") || item.categoria === "lecturas";
-                                        const catGrupo = esLectura ? "lecturas" : (item.categoria || "ordenes");
-                                        
+                                        const esLecturaFoto = leyendaUpper.includes("LECTURA") || item.categoria === "lecturas";
+                                        const catGrupo = esLecturaFoto ? "lecturas" : (item.categoria || "ordenes");
+ 
                                         const fotosGrupo = [];
-                    
-                                        // Fotos directas del grupo
+ 
                                         if (Array.isArray(item.imagenes)) {
                                             item.imagenes.forEach(nombre => {
                                                 if (coincideConFechaTarget(item, null, nombre)) {
@@ -13667,18 +13735,17 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                                 }
                                             });
                                         }
-                    
-                                        // Fotos de subgrupos
+ 
                                         if (Array.isArray(item.subgrupos)) {
                                             item.subgrupos.forEach(sub => {
                                                 if (Array.isArray(sub.imagenes)) {
                                                     sub.imagenes.forEach(nombre => {
                                                         if (coincideConFechaTarget(item, sub, nombre)) {
-                                                            fotosGrupo.push({ 
-                                                                nombre, 
-                                                                carpeta: sub.carpeta, 
-                                                                categoria: esLectura ? "lecturas" : (sub.categoria || catGrupo), 
-                                                                leyenda: sub.leyenda || item.leyenda 
+                                                            fotosGrupo.push({
+                                                                nombre,
+                                                                carpeta: sub.carpeta,
+                                                                categoria: esLecturaFoto ? "lecturas" : (sub.categoria || catGrupo),
+                                                                leyenda: sub.leyenda || item.leyenda
                                                             });
                                                         } else {
                                                             totalFotosDescartadas++;
@@ -13687,7 +13754,7 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                                 }
                                             });
                                         }
-                    
+ 
                                         if (fotosGrupo.length > 0) {
                                             grupos.push({
                                                 leyenda: item.leyenda || "VARIOS",
@@ -13697,50 +13764,49 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                         }
                                     });
                                 }
-                    
+ 
                                 console.log(`🧹 [FILTRADO POR FECHA] Fotos conservadas en fecha ${rawFechaEjecucion}: ${grupos.reduce((acc, g) => acc + g.fotos.length, 0)} | Fotos descartadas de otras fechas: ${totalFotosDescartadas}`);
-                    
+ 
                                 return grupos;
                             } catch (err) {
                                 console.error(`❌ Error consultando código ${codigo}:`, err);
                                 return [];
                             }
                         };
-                    
+ 
                         let gruposEncontrados = await consultarBackend(suministroValido);
-                    
+ 
                         if (gruposEncontrados.length === 0 && inspeccionValida && inspeccionValida !== suministroValido) {
                             console.log(`⚠️ Sin fotos por Suministro. Intentando con Inspección: "${inspeccionValida}"`);
                             gruposEncontrados = await consultarBackend(inspeccionValida);
                         }
-                    
-                        if (gruposEncontrados.length === 0) { 
+ 
+                        if (gruposEncontrados.length === 0) {
                             contenedorCarrusel.innerHTML = `
                                 <div style="text-align:center; padding:30px; color:#64748b;">
                                     <i class="fas fa-calendar-times" style="font-size:40px; margin-bottom:10px; color:#94a3b8;"></i>
                                     <p style="margin:0; font-size:1.1rem; color:#334155;">No se encontraron fotos registradas para la fecha: <strong>${rawFechaEjecucion}</strong></p>
                                 </div>
-                            `; 
-                            return; 
+                            `;
+                            return;
                         }
-                    
-                        // Renderizado de Pestañas
+ 
                         let grupoActivoIndex = 0;
-                    
+ 
                         const matchIndex = gruposEncontrados.findIndex(g => {
                             const ley = String(g.leyenda).toUpperCase();
                             return ley.includes(actividadActual) || actividadActual.includes(ley);
                         });
-                    
+ 
                         if (matchIndex !== -1) {
                             grupoActivoIndex = matchIndex;
                         }
-                    
+ 
                         const renderizarCarruselGrupo = (indexGrupo) => {
                             grupoActivoIndex = indexGrupo;
                             const grupo = gruposEncontrados[indexGrupo];
                             const fotos = grupo.fotos;
-                    
+ 
                             pestaniasContainer.querySelectorAll(".fc-tab-btn").forEach((btn, i) => {
                                 if (i === indexGrupo) {
                                     btn.style.background = "#1e40af";
@@ -13752,32 +13818,32 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                     btn.style.fontWeight = "normal";
                                 }
                             });
-                    
+ 
                             let indexImg = 0;
                             const mostrarFotoActual = () => {
                                 const itemImg = fotos[indexImg];
                                 const urlFinal = construirUrlImagen(itemImg.nombre, itemImg.carpeta, itemImg.categoria);
                                 console.log(`🔗 [CARGANDO FOTO DE ${rawFechaEjecucion} ${indexImg + 1}/${fotos.length}]: ${urlFinal}`);
-                    
+ 
                                 contenedorCarrusel.innerHTML = `
                                     <div style="position:relative; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center;">
                                         <div style="position:absolute; top:10px; left:15px; background:rgba(0,0,0,0.7); color:white; padding:5px 12px; border-radius:5px; font-size:0.85rem; z-index:3;">
                                             ${indexImg + 1} / ${fotos.length}
                                         </div>
-                    
+ 
                                         ${fotos.length > 1 ? `<button id="btn-izq" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:20px; cursor:pointer; z-index:3;">❮</button>` : ''}
-                                        
+ 
                                         <div id="wrapper-imagen" style="width:100%; height:100%; display:flex; justify-content:center; align-items:center;">
                                             <img id="img-carrusel-actual" src="${urlFinal}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
                                         </div>
-                                        
+ 
                                         ${fotos.length > 1 ? `<button id="btn-der" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:20px; cursor:pointer; z-index:3;">❯</button>` : ''}
                                     </div>
                                 `;
-                    
+ 
                                 const imgElement = document.getElementById("img-carrusel-actual");
                                 const wrapper = document.getElementById("wrapper-imagen");
-                    
+ 
                                 imgElement.onerror = () => {
                                     console.error(`❌ [ERROR 404]: ${urlFinal}`);
                                     wrapper.innerHTML = `
@@ -13788,71 +13854,220 @@ function dibujarMapaDeDia(fecha, indexFila) {
                                         </div>
                                     `;
                                 };
-                    
+ 
                                 if (fotos.length > 1) {
                                     document.getElementById("btn-izq").onclick = () => { indexImg = (indexImg - 1 + fotos.length) % fotos.length; mostrarFotoActual(); };
                                     document.getElementById("btn-der").onclick = () => { indexImg = (indexImg + 1) % fotos.length; mostrarFotoActual(); };
                                 }
                             };
-                    
+ 
                             mostrarFotoActual();
                         };
-                    
+ 
                         pestaniasContainer.innerHTML = "";
                         gruposEncontrados.forEach((grupo, idx) => {
                             const btnTab = document.createElement("button");
                             btnTab.className = "fc-tab-btn";
                             btnTab.style.cssText = "padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem; white-space:nowrap; transition:all 0.2s;";
                             btnTab.innerHTML = `${grupo.leyenda} <span style="background:rgba(0,0,0,0.15); padding:2px 6px; border-radius:10px; font-size:0.75rem;">${grupo.fotos.length}</span>`;
-                            
+ 
                             btnTab.onclick = () => renderizarCarruselGrupo(idx);
                             pestaniasContainer.appendChild(btnTab);
                         });
-                    
+ 
                         renderizarCarruselGrupo(grupoActivoIndex);
                     });
-
+ 
                     filaTarjetas.appendChild(tarjeta);
-
-                    if (i < trabajos.length - 1) {
-                        const flecha = document.createElement("div");
-                        flecha.innerHTML = `<i class="fas fa-angle-right"></i>`;
-                        flecha.style.cssText = "color:#cbd5e1; font-size:0.8rem; flex-shrink:0;";
-                        filaTarjetas.appendChild(flecha);
-                    }
+                    tarjetasCreadas.push({ trabajo: f, el: tarjeta, lat, lon, marcador });
                 }
             });
-
+ 
+            // ==============================================================
+            // ⏱️ SEPARADORES CON EL TIEMPO DE TRASLADO
+            // ==============================================================
+            const alertas = [];
+            let maxTraslado = 0;
+            let conHoras = 0;
+ 
+            for (let k = 0; k < tarjetasCreadas.length - 1; k++) {
+                const actual = tarjetasCreadas[k];
+                const siguiente = tarjetasCreadas[k + 1];
+ 
+                const finActual = aMinutos(actual.trabajo["HORA"]);
+                const iniSiguiente = aMinutos(siguiente.trabajo["HORA INI"]);
+ 
+                const sep = document.createElement("div");
+                sep.className = "separador-traslado";
+ 
+                if (finActual === null || iniSiguiente === null) {
+                    sep.classList.add("st-ok");
+                    sep.innerHTML = `<div class="st-linea"><i class="fas fa-angle-right"></i></div>`;
+                } else {
+                    conHoras++;
+                    const diferencia = iniSiguiente - finActual;
+                    const umbral = umbralEntre(actual.trabajo, siguiente.trabajo);
+ 
+                    if (diferencia < 0) {
+                        sep.classList.add("st-ok");
+                        sep.title = "Los horarios se superponen";
+                        sep.innerHTML = `<div class="st-linea"><i class="fas fa-angle-right"></i></div>`;
+                    } else {
+                        if (diferencia > maxTraslado) maxTraslado = diferencia;
+ 
+                        let nivel = "st-ok", icono = "fa-angle-right";
+                        if (diferencia > umbral) {
+                            nivel = "st-alto";
+                            icono = "fa-triangle-exclamation";
+                        } else if (diferencia > umbral * 0.7) {
+                            nivel = "st-aviso";
+                            icono = "fa-clock";
+                        }
+ 
+                        sep.classList.add(nivel);
+                        sep.title = `${actual.trabajo["HORA"]} → ${siguiente.trabajo["HORA INI"]}`
+                                  + ` · ${formatoLargo(diferencia)} (límite ${umbral} min)`;
+                        sep.innerHTML = `<div class="st-linea"><i class="fas ${icono}"></i>${compacto(diferencia)}</div>`;
+ 
+                        if (diferencia > umbral) {
+                            alertas.push({ indiceDestino: k + 1, minutos: diferencia, umbral, sepEl: sep });
+                        }
+                    }
+                }
+ 
+                actual.el.insertAdjacentElement("afterend", sep);
+            }
+ 
+            console.log(`⏱️ [TRASLADOS] tarjetas: ${tarjetasCreadas.length} | con horas válidas: ${conHoras} `
+                      + `| traslado máximo: ${maxTraslado} min | sobretiempos: ${alertas.length}`);
+            if (alertas.length === 0 && conHoras === 0) {
+                console.warn('⚠️ [TRASLADOS] Ninguna tarjeta tiene "HORA INI" y "HORA" válidas: no se puede calcular el tiempo entre registros.');
+            }
+ 
+            // ==============================================================
+            // 🔴 PANEL DE ALERTAS EN LA CABECERA
+            // ==============================================================
+            // Se busca DENTRO del contenedor, no en todo el documento: si el id
+            // existiera en otra vista oculta, getElementById devolvía ese y el
+            // panel quedaba vacío sin avisar.
+            let panelAlertas = contenedor.querySelector("#panel-alertas");
+ 
+            // Respaldo: si por lo que sea no está, se crea al vuelo en la cabecera
+            if (!panelAlertas) {
+                console.warn('⚠️ [ALERTAS] No se encontró #panel-alertas; se crea automáticamente.');
+                const resumen = contenedor.querySelector("#resumen-ruta") || contenedor.firstElementChild;
+                if (resumen) {
+                    panelAlertas = document.createElement("div");
+                    panelAlertas.id = "panel-alertas";
+                    panelAlertas.style.cssText = "display:flex; align-items:center; gap:6px; min-width:0;";
+                    resumen.prepend(panelAlertas);
+                }
+            }
+ 
+            if (panelAlertas) {
+                if (alertas.length === 0) {
+                    panelAlertas.innerHTML = `
+                        <span style="font-size:0.72rem; color:#059669; background:#ecfdf5; border:1px solid #a7f3d0;
+                                     padding:2px 8px; border-radius:12px; white-space:nowrap;">
+                            <i class="fas fa-check"></i> Sin sobretiempos
+                        </span>`;
+                } else {
+                    panelAlertas.innerHTML = `
+                        <span style="font-size:0.72rem; color:#b91c1c; background:#fee2e2; border:1px solid #fecaca;
+                                     padding:2px 8px; border-radius:12px; white-space:nowrap; font-weight:600; flex-shrink:0;">
+                            <i class="fas fa-triangle-exclamation"></i> ${alertas.length} sobretiempo${alertas.length > 1 ? 's' : ''}
+                        </span>
+                        <button class="nav-alerta-btn" id="alerta-anterior" title="Alerta anterior">❮</button>
+                        <div id="chips-alertas"></div>
+                        <button class="nav-alerta-btn" id="alerta-siguiente" title="Alerta siguiente">❯</button>`;
+ 
+                    // Referencias dentro del propio panel (evita ids repetidos)
+                    const chipsCont = panelAlertas.querySelector("#chips-alertas");
+                    const btnAnterior = panelAlertas.querySelector("#alerta-anterior");
+                    const btnSiguiente = panelAlertas.querySelector("#alerta-siguiente");
+                    let alertaActual = -1;
+ 
+                    const irAAlerta = (idx) => {
+                        if (idx < 0 || idx >= alertas.length) return;
+                        alertaActual = idx;
+ 
+                        const alerta = alertas[idx];
+                        const destino = tarjetasCreadas[alerta.indiceDestino];
+ 
+                        chipsCont.querySelectorAll(".chip-alerta")
+                                 .forEach((c, i) => c.classList.toggle("activo", i === idx));
+                        const chipActivo = chipsCont.children[idx];
+                        if (chipActivo) chipActivo.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+ 
+                        document.querySelectorAll(".mini-tarjeta").forEach(t => {
+                            t.classList.remove("activa");
+                            t.classList.remove("resaltada-alerta");
+                        });
+                        destino.el.classList.add("activa", "resaltada-alerta");
+                        destino.el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+ 
+                        alerta.sepEl.classList.remove("destacado");
+                        void alerta.sepEl.offsetWidth;
+                        alerta.sepEl.classList.add("destacado");
+ 
+                        mapa.flyTo([destino.lat, destino.lon], Math.max(mapa.getZoom(), 16), { duration: 0.8 });
+                        resaltarMarcador(destino.marcador);
+                    };
+ 
+                    alertas.forEach((alerta, idx) => {
+                        const chip = document.createElement("button");
+                        chip.className = "chip-alerta";
+                        chip.textContent = idx + 1;
+                        chip.title = `${formatoLargo(alerta.minutos)} de espera (límite ${alerta.umbral} min)`
+                                   + ` · antes de ${tarjetasCreadas[alerta.indiceDestino].trabajo["SUMINISTRO"] || "-"}`;
+                        chip.onclick = () => irAAlerta(idx);
+                        chipsCont.appendChild(chip);
+                    });
+ 
+                    btnAnterior.onclick = () =>
+                        irAAlerta(alertaActual <= 0 ? alertas.length - 1 : alertaActual - 1);
+                    btnSiguiente.onclick = () =>
+                        irAAlerta(alertaActual >= alertas.length - 1 ? 0 : alertaActual + 1);
+ 
+                    console.log(`🔴 [ALERTAS] Panel dibujado con ${alertas.length} círculos.`);
+                }
+            }
+ 
+            // ==============================================================
+            // DIBUJAR LÍNEAS DE RUTA EN EL MAPA (mismo umbral que las tarjetas)
+            // ==============================================================
             if (puntos.length > 1) {
                 for (let i = 0; i < puntos.length - 1; i++) {
-                    const hFin = trabajos[i]?.["HORA"], hIniSig = trabajos[i + 1]?.["HORA INI"];
-                    let colorLinea = '#4678a6'; 
-                    if (hFin && hIniSig && hFin.trim() !== "" && hIniSig.trim() !== "" && hFin.includes(":") && hIniSig.includes(":")) {
-                        try {
-                            const [h1, m1] = hFin.split(":").map(Number);
-                            const [h2, m2] = hIniSig.split(":").map(Number);
-                            if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
-                                if (((h2*60+m2) - (h1*60+m1)) > 60) colorLinea = '#e74c3c'; 
-                            }
-                        } catch(e) {}
+                    const finActual = aMinutos(tarjetasCreadas[i]?.trabajo["HORA"]);
+                    const iniSig = aMinutos(tarjetasCreadas[i + 1]?.trabajo["HORA INI"]);
+                    const umbral = umbralEntre(tarjetasCreadas[i]?.trabajo, tarjetasCreadas[i + 1]?.trabajo);
+ 
+                    let colorLinea = '#4678a6';
+                    if (finActual !== null && iniSig !== null && (iniSig - finActual) > umbral) {
+                        colorLinea = '#e74c3c';
                     }
-                    L.polyline([puntos[i], puntos[i + 1]], { color: colorLinea, weight: colorLinea==='#e74c3c'?3:2 }).addTo(mapa);
+ 
+                    L.polyline([puntos[i], puntos[i + 1]], {
+                        color: colorLinea, weight: colorLinea === '#e74c3c' ? 3 : 2
+                    }).addTo(mapa);
                 }
-
+ 
                 const rutaTotal = L.polyline(puntos, { color: "#00000000" }).addTo(mapa);
-                if(L.polylineDecorator) {
+                if (L.polylineDecorator) {
                     L.polylineDecorator(rutaTotal, { patterns: [{ offset: '2%', repeat: '8%', symbol: L.Symbol.arrowHead({ pixelSize: 7, pathOptions: { color: '#c0392b', weight: 2 } }) }] }).addTo(mapa);
                 }
                 mapa.fitBounds(rutaTotal.getBounds(), { padding: [20, 20] });
             } else if (puntos.length === 1) {
                 mapa.setView(puntos[0], 17);
             }
-
+ 
         } catch (errorMapa) {
             console.error("❌ [ERROR RENDERIZANDO MAPA]:", errorMapa);
         }
     }, 300);
 }
+
+
 /* ==========================================
    LLENADO DINÁMICO DE FILTROS (PRODUCCIÓN)
 ========================================== */
