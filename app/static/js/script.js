@@ -1298,138 +1298,40 @@ function actualizarContexto(area) {
 })();
 
 
-//ADMINISTRATIVO
-let empleadosData = []; // Variable global para almacenar los datos
-let daysInMonth = 0; // Número de días en el mes actual
-let year = new Date().getFullYear(); // Año actual
+// ==========================================================================
+// ADMINISTRATIVO — Consulta de asistencias, pasajes, viáticos y consolidados
+// ==========================================================================
+//
+// CORRECCIONES INCLUIDAS
+//   1. Los botones de vista ya no dejan la tabla vacía: si los datos cargados
+//      no corresponden al modo pedido, se recargan del endpoint correcto.
+//   2. Si las fechas se ingresan invertidas, se intercambian en UN solo lugar
+//      y todos (tabla y Excel) usan el mismo rango normalizado.
+//   3. La auditoría se registra DESPUÉS de validar (antes se guardaban
+//      búsquedas vacías) y ya no deja promesas sin capturar.
+//   4. El Excel exporta el mismo nombre que se ve en pantalla (nombre_visual).
+//   5. Fechas siempre en hora local: se elimina toISOString(), que corría un
+//      día en zonas horarias positivas.
+//   6. Domingos detectados siempre con getDay() (antes se mezclaba getUTCDay).
+//   7. Aviso si el rango supera 62 días (evita tablas de 365 columnas).
+//   8. Si la sesión expiró, mensaje claro en vez de "Unexpected token '<'".
+//   9. Se quitó el doble dibujado de la cabecera y el código muerto.
+//  10. Al ordenar, la columna "#" se renumera.
+//  11. El botón de la vista activa queda marcado.
+//  12. dragElement ya no pisa los handlers globales del documento.
+//  13. Los datos de la BD se insertan con textContent (sin riesgo de HTML).
+//
+// NUEVO
+//   · Al hacer clic en una fila queda seleccionada. El resaltado NO pinta las
+//     celdas de cada día, para no tapar los colores de área del consolidado.
+// ==========================================================================
 
-document.querySelector('.btn-buscar').addEventListener('click', async () => {
-    const areaSeleccionada = document.getElementById('areas-administrativo').value;
-    let fechaInicio = document.getElementById('fechainicio').value;
-    let fechaFin = document.getElementById('fechafin').value;
+let empleadosData = [];        // datos actualmente cargados
+let origenDatos = null;        // 'area' | 'consolidado' | 'consolidado_pasajes'
+let modoActual = null;         // vista que se está mostrando
+let rangoActual = null;        // { inicio: Date, fin: Date, fechas: [...] }
 
-    console.log('Fecha usada para auditoría:', fechaInicio, fechaFin);
-
-    // 📌 1. Registrar auditoría en el backend
-    fetch('/auditar-busqueda-fecha', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            fecha_inicio: fechaInicio,
-            fecha_fin: fechaFin,
-            area: areaSeleccionada
-        })
-    });
-
-    if (!areaSeleccionada || !fechaInicio || !fechaFin) {
-        alert("Por favor, selecciona un área y un intervalo de fechas.");
-        return;
-    }
-
-    // Convertir fechas a objetos Date con "T00:00:00" para evitar problemas de zona horaria
-    let startDate = new Date(fechaInicio + "T00:00:00");
-    let endDate = new Date(fechaFin + "T00:00:00");
-
-    if (startDate > endDate) {
-        [startDate, endDate] = [endDate, startDate];
-    }
-
-    const tabla = document.getElementById('tabla-asistencia-administrativo');
-    const tbody = tabla.querySelector('tbody');
-    const thead = tabla.querySelector('thead tr');
-
-    // Limpiar la tabla
-    tbody.innerHTML = '';
-    thead.innerHTML = `
-        <th>N°</th>
-        <th>DNI</th>
-        <th>Nombres y Apellidos</th>
-        <th>Puesto de Trabajo</th>
-    `;
-
-    // Generar cabecera con las fechas exactas seleccionadas
-    let tempDate = new Date(startDate);
-    while (tempDate <= endDate) {
-        const th = document.createElement('th');
-        th.textContent = tempDate.getDate().toString().padStart(2, '0');
-        if (tempDate.getDay() === 0) th.classList.add('sunday', 'sunday-column'); // Marcar domingos
-        thead.appendChild(th);
-        tempDate.setDate(tempDate.getDate() + 1);
-    }
-
-    try {
-        const response = await fetch('/api/getAsistencia', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                area: areaSeleccionada,
-                fechaInicio: startDate.toISOString().split('T')[0], 
-                fechaFin: endDate.toISOString().split('T')[0]
-            }),
-        });
-
-        if (!response.ok) throw new Error(`Error en la API: ${response.statusText}`);
-        
-        // ✅ ESTA ES LA LÍNEA QUE FALTABA ✅
-        empleadosData = await response.json();
-
-        if (!Array.isArray(empleadosData) || empleadosData.length === 0) {
-            alert("No se encontraron registros para el intervalo de fechas seleccionado.");
-            return;
-        }
-
-        // =======================================================
-        // NUEVO: Formatear y ordenar antes de mostrar (Por Área)
-        // =======================================================
-        empleadosData.forEach(emp => {
-            emp.nombre_visual = formatearNombreVisual(emp.nombres);
-        });
-        empleadosData.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
-        // =======================================================
-
-        actualizarTabla('asistencias');
-
-    } catch (error) {
-        console.error('Error obteniendo datos:', error);
-        alert("Hubo un error obteniendo los datos. Revisa la consola para más información.");
-    }
-});
-
-async function cargarConsolidado(tipo) {
-    const fechaInicio = document.getElementById('fechainicio').value;
-    const fechaFin = document.getElementById('fechafin').value;
-
-    try {
-        const response = await fetch('/api/getConsolidado', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                fechaInicio,
-                fechaFin,
-                tipo // "asistencias" o "pasajes"
-            }),
-        });
-
-        if (!response.ok) throw new Error(`Error en la API: ${response.statusText}`);
-        empleadosData = await response.json();
-
-        // =======================================================
-        // NUEVO: Formatear y ordenar antes de mostrar (Consolidado)
-        // =======================================================
-        empleadosData.forEach(emp => {
-            emp.nombre_visual = formatearNombreVisual(emp.nombres);
-        });
-        empleadosData.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
-        // =======================================================
-
-        actualizarTabla(tipo === 'asistencias' ? 'consolidado' : 'consolidado_pasajes');
-        
-    } catch (error) {
-        console.error('Error obteniendo consolidado:', error);
-        alert("Hubo un error obteniendo el consolidado.");
-    }
-}
-
+const LIMITE_DIAS_AVISO = 62;
 
 const coloresAreas = {
     "TOMA DE ESTADO": "#DFFFD6",
@@ -1441,92 +1343,275 @@ const coloresAreas = {
     "NORTE": "#D6FFF6"
 };
 
+// --------------------------------------------------------------------------
+// UTILIDADES DE FECHA (siempre en hora local, nunca UTC)
+// --------------------------------------------------------------------------
+function aISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
+function esDomingoISO(fechaStr) {
+    return new Date(fechaStr + "T00:00:00").getDay() === 0;
+}
+
+/**
+ * Lee los inputs, ordena las fechas si vienen invertidas y arma la lista de
+ * días. Devuelve null (y avisa) si falta algo.
+ */
+function obtenerRango({ avisar = true } = {}) {
+    const vIni = document.getElementById('fechainicio').value;
+    const vFin = document.getElementById('fechafin').value;
+
+    if (!vIni || !vFin) {
+        if (avisar) alert("Por favor, selecciona un intervalo de fechas.");
+        return null;
+    }
+
+    let inicio = new Date(vIni + "T00:00:00");
+    let fin = new Date(vFin + "T00:00:00");
+    if (inicio > fin) [inicio, fin] = [fin, inicio];   // 🔧 intercambio único
+
+    const fechas = [];
+    for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+        fechas.push(aISO(d));
+    }
+
+    return { inicio, fin, fechas };
+}
+
+// --------------------------------------------------------------------------
+// PETICIONES
+// --------------------------------------------------------------------------
+function auditar(accion) {
+    const cuerpo = {
+        fecha_inicio: document.getElementById('fechainicio').value,
+        fecha_fin: document.getElementById('fechafin').value,
+        area: document.getElementById('areas-administrativo').value,
+    };
+    if (accion) cuerpo.accion = accion;
+
+    fetch('/auditar-busqueda-fecha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo)
+    }).catch((err) => console.warn('No se pudo registrar la auditoría:', err));
+}
+
+/** fetch + JSON con mensajes claros (sesión expirada, HTML inesperado...). */
+async function pedirJSON(url, cuerpo) {
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo),
+    });
+
+    if (resp.status === 401 || resp.status === 403) {
+        throw new Error('Su sesión expiró o no tiene permisos. Vuelva a iniciar sesión.');
+    }
+
+    const texto = await resp.text();
+    if (!resp.ok) {
+        throw new Error(`Error del servidor (${resp.status}). ${texto.slice(0, 120)}`);
+    }
+
+    try {
+        return JSON.parse(texto);
+    } catch {
+        throw new Error('El servidor no devolvió datos válidos. Es posible que la sesión haya expirado.');
+    }
+}
+
+function formatearYOrdenar(lista) {
+    lista.forEach((emp) => {
+        emp.nombre_visual = (typeof formatearNombreVisual === 'function')
+            ? formatearNombreVisual(emp.nombres)
+            : (emp.nombres || '');
+    });
+    lista.sort((a, b) => a.nombre_visual.localeCompare(b.nombre_visual));
+    return lista;
+}
+
+// --------------------------------------------------------------------------
+// BÚSQUEDA POR ÁREA
+// --------------------------------------------------------------------------
+document.querySelector('.btn-buscar').addEventListener('click', async () => {
+    const areaSeleccionada = document.getElementById('areas-administrativo').value;
+
+    const rango = obtenerRango({ avisar: false });
+    if (!areaSeleccionada || !rango) {
+        alert("Por favor, selecciona un área y un intervalo de fechas.");
+        return;
+    }
+
+    if (rango.fechas.length > LIMITE_DIAS_AVISO) {
+        const seguir = confirm(`El rango tiene ${rango.fechas.length} días y la tabla será muy ancha.\n¿Desea continuar?`);
+        if (!seguir) return;
+    }
+
+    auditar();   // 🔧 después de validar
+
+    const btn = document.querySelector('.btn-buscar');
+    btn.disabled = true;
+
+    try {
+        const datos = await pedirJSON('/api/getAsistencia', {
+            area: areaSeleccionada,
+            fechaInicio: aISO(rango.inicio),
+            fechaFin: aISO(rango.fin),
+        });
+
+        if (!Array.isArray(datos) || datos.length === 0) {
+            alert("No se encontraron registros para el intervalo de fechas seleccionado.");
+            return;
+        }
+
+        empleadosData = formatearYOrdenar(datos);
+        origenDatos = 'area';
+        rangoActual = rango;
+
+        actualizarTabla('asistencias');
+
+    } catch (error) {
+        console.error('Error obteniendo datos:', error);
+        alert(error.message || "Hubo un error obteniendo los datos.");
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+// --------------------------------------------------------------------------
+// CONSOLIDADOS
+// --------------------------------------------------------------------------
+async function cargarConsolidado(tipo) {
+    const rango = obtenerRango();
+    if (!rango) return;
+
+    try {
+        const datos = await pedirJSON('/api/getConsolidado', {
+            fechaInicio: aISO(rango.inicio),
+            fechaFin: aISO(rango.fin),
+            tipo,                       // "asistencias" o "pasajes"
+        });
+
+        if (!Array.isArray(datos) || datos.length === 0) {
+            alert("No se encontraron registros para el intervalo seleccionado.");
+            return;
+        }
+
+        empleadosData = formatearYOrdenar(datos);
+        rangoActual = rango;
+        origenDatos = tipo === 'asistencias' ? 'consolidado' : 'consolidado_pasajes';
+
+        actualizarTabla(origenDatos);
+
+    } catch (error) {
+        console.error('Error obteniendo consolidado:', error);
+        alert(error.message || "Hubo un error obteniendo el consolidado.");
+    }
+}
+
+// --------------------------------------------------------------------------
+// TABLA
+// --------------------------------------------------------------------------
 function actualizarTabla(modo) {
     const tabla = document.getElementById('tabla-asistencia-administrativo');
     const thead = tabla.querySelector('thead');
     const tbody = tabla.querySelector('tbody');
 
+    const rango = rangoActual || obtenerRango();
+    if (!rango) return;
+
+    modoActual = modo;
+    marcarBotonActivo(modo);
+
     thead.innerHTML = '';
     tbody.innerHTML = '';
 
-    const fechaInicio = new Date(document.getElementById('fechainicio').value + "T00:00:00");
-    const fechaFin = new Date(document.getElementById('fechafin').value + "T00:00:00");
+    const esConsolidado = (modo === 'consolidado' || modo === 'consolidado_pasajes');
 
-    let fechas = [];
-    for (let d = new Date(fechaInicio); d <= fechaFin; d.setDate(d.getDate() + 1)) {
-        fechas.push(new Date(d).toISOString().split('T')[0]); // YYYY-MM-DD
-    }
-
+    // ---------- Cabecera ----------
     const trHead = document.createElement('tr');
-    trHead.innerHTML = `
-        <th>#</th>
-        <th>DNI</th>
-        <th>Nombres</th>
-        <th>Cargo</th>
-        ${(modo === 'consolidado' || modo === 'consolidado_pasajes') ? '<th>Área Global</th><th>Área</th>' : ''}
-    `;
+    const cabecerasFijas = ['#', 'DNI', 'Nombres', 'Cargo'];
+    if (esConsolidado) cabecerasFijas.push('Área Global', 'Área');
 
-    fechas.forEach(fecha => {
-        const fechaObj = new Date(fecha + "T00:00:00");
-        const dia = fechaObj.getDate();
-        const mes = fechaObj.toLocaleString('es-ES', { month: 'short' }).toUpperCase();
-
+    cabecerasFijas.forEach((texto) => {
         const th = document.createElement('th');
-        th.innerHTML = `${dia}<br>${mes}`;
-        if (fechaObj.getDay() === 0) th.classList.add('sunday-column');
+        th.textContent = texto;
+        trHead.appendChild(th);
+    });
+
+    rango.fechas.forEach((fecha) => {
+        const fechaObj = new Date(fecha + "T00:00:00");
+        const mes = fechaObj.toLocaleString('es-ES', { month: 'short' }).toUpperCase();
+        const th = document.createElement('th');
+        th.innerHTML = `${fechaObj.getDate()}<br>${mes}`;
+        if (fechaObj.getDay() === 0) th.classList.add('sunday-column');   // 🔧 getDay
         trHead.appendChild(th);
     });
 
     if (modo === 'pasajes' || modo === 'viaticos' || modo === 'consolidado_pasajes') {
         const thTotal = document.createElement('th');
-        thTotal.innerHTML = 'TOTAL';
+        thTotal.textContent = 'TOTAL';
         trHead.appendChild(thTotal);
     }
 
     thead.appendChild(trHead);
 
+    // ---------- Filas ----------
     empleadosData.forEach((empleado, index) => {
         const tr = document.createElement('tr');
+        tr.dataset.indice = index;
 
-        tr.innerHTML = `
-            <td>${index + 1}</td>
-            <td>${empleado.dni}</td>
-            <td>${empleado.nombre_visual}</td> <!-- AQUÍ USAMOS nombre_visual -->
-            <td>${empleado.cargo}</td>
-            ${(modo === 'consolidado' || modo === 'consolidado_pasajes') ? `<td>${empleado.area_global || ''}</td><td>${empleado.area || ''}</td>` : ''}
-        `;
+        const celdaTexto = (valor) => {
+            const td = document.createElement('td');
+            td.textContent = valor ?? '';        // 🔧 sin innerHTML
+            return td;
+        };
+
+        tr.appendChild(celdaTexto(index + 1));
+        tr.appendChild(celdaTexto(empleado.dni));
+        tr.appendChild(celdaTexto(empleado.nombre_visual));
+        tr.appendChild(celdaTexto(empleado.cargo));
+        if (esConsolidado) {
+            tr.appendChild(celdaTexto(empleado.area_global || ''));
+            tr.appendChild(celdaTexto(empleado.area || ''));
+        }
 
         let totalPasajes = 0;
         let totalViaticos = 0;
 
-        fechas.forEach(fecha => {
+        rango.fechas.forEach((fecha) => {
             const td = document.createElement('td');
-            let valor = '';
+            td.classList.add('celda-dia');       // 👈 marca las celdas de día
 
             if (modo === 'asistencias') {
-                valor = empleado.asistencia?.[fecha] || '';
+                td.textContent = empleado.asistencia?.[fecha] || '';
+
             } else if (modo === 'viaticos') {
                 const viatico = empleado.viaticos?.[fecha] || 0;
                 const ruta = empleado.rutas?.[fecha] || '';
-                valor = `<b>V:</b> s/${viatico}<br><b>R:</b> ${ruta}`;
+                td.innerHTML = `<b>V:</b> s/${Number(viatico) || 0}<br><b>R:</b> `;
+                td.appendChild(document.createTextNode(ruta));
                 totalViaticos += parseFloat(viatico) || 0;
+
             } else if (modo === 'pasajes') {
                 const pasaje = empleado.pasajes?.[fecha] || 0;
-                valor = pasaje;
+                td.textContent = pasaje;
                 totalPasajes += parseFloat(pasaje) || 0;
+
             } else if (modo === 'consolidado') {
-                const datoDia = empleado[fecha]; // {estado, area_dia}
+                const datoDia = empleado[fecha];
                 if (datoDia && datoDia.estado) {
-                    valor = datoDia.estado;
+                    td.textContent = datoDia.estado;
                     td.style.backgroundColor = coloresAreas[datoDia.area_dia?.toUpperCase()] || "#FFFFFF";
                 } else {
                     td.style.backgroundColor = "#FFFFFF";
                 }
+
             } else if (modo === 'consolidado_pasajes') {
-                const datoDia = empleado[fecha]; // {pasajes, area_dia}
+                const datoDia = empleado[fecha];
                 if (datoDia && datoDia.pasajes) {
-                    valor = datoDia.pasajes;
+                    td.textContent = datoDia.pasajes;
                     totalPasajes += parseFloat(datoDia.pasajes) || 0;
                     td.style.backgroundColor = coloresAreas[datoDia.area_dia?.toUpperCase()] || "#FFFFFF";
                 } else {
@@ -1534,10 +1619,7 @@ function actualizarTabla(modo) {
                 }
             }
 
-            td.innerHTML = valor;
-
-            // 🔹 Si es domingo, color rojo siempre prevalece
-            if (new Date(fecha + "T00:00:00").getUTCDay() === 0) {
+            if (esDomingoISO(fecha)) {            // 🔧 getDay, no getUTCDay
                 td.style.backgroundColor = "#FFD6D6";
                 td.classList.add('sunday-column');
             }
@@ -1546,50 +1628,135 @@ function actualizarTabla(modo) {
         });
 
         if (modo === 'pasajes' || modo === 'consolidado_pasajes') {
-            const tdTotalPasajes = document.createElement('td');
-            tdTotalPasajes.textContent = totalPasajes.toFixed(2);
-            tr.appendChild(tdTotalPasajes);
+            tr.appendChild(celdaTexto(totalPasajes.toFixed(2)));
+        }
+        if (modo === 'viaticos') {
+            tr.appendChild(celdaTexto(totalViaticos.toFixed(2)));
         }
 
-        if (modo === 'viaticos') {
-            const tdTotalViaticos = document.createElement('td');
-            tdTotalViaticos.textContent = totalViaticos.toFixed(2);
-            tr.appendChild(tdTotalViaticos);
-        }
         tbody.appendChild(tr);
     });
 }
 
-// Funcionalidad para ordenar la tabla con diseño minimalista
+// --------------------------------------------------------------------------
+// SELECCIÓN DE FILA
+//   Resalta la fila sin tocar el fondo de las celdas de día, para que los
+//   colores de área del consolidado sigan viéndose.
+// --------------------------------------------------------------------------
+function inyectarEstilosTabla() {
+    if (document.getElementById('admin-tabla-css')) return;
+    const css = document.createElement('style');
+    css.id = 'admin-tabla-css';
+    css.textContent = `
+        /* ---------- FILA SELECCIONADA ----------
+           Líneas finas en gris pizarra (el azul marino del sistema), nunca
+           un color de fondo sobre .celda-dia, para no tapar el color del área. */
+        #tabla-asistencia-administrativo tbody tr.fila-activa > td {
+            box-shadow: inset 0 1px 0 0 rgba(30, 41, 59, .32),
+                        inset 0 -1px 0 0 rgba(30, 41, 59, .32);
+        }
+        /* Barra indicadora al inicio de la fila */
+        #tabla-asistencia-administrativo tbody tr.fila-activa > td:first-child {
+            box-shadow: inset 4px 0 0 0 #1e293b,
+                        inset 0 1px 0 0 rgba(30, 41, 59, .32),
+                        inset 0 -1px 0 0 rgba(30, 41, 59, .32);
+        }
+        /* Las celdas fijas (N°, DNI, nombre, cargo, área) sí se tintan */
+        #tabla-asistencia-administrativo tbody tr.fila-activa > td:not(.celda-dia) {
+            background-color: #eef2f7 !important;
+            color: #0f172a;
+            font-weight: 600;
+        }
+
+        #tabla-asistencia-administrativo tbody tr { cursor: pointer; }
+        #tabla-asistencia-administrativo tbody tr:hover > td:not(.celda-dia) {
+            background-color: #f8fafc;
+        }
+
+        /* ---------- BOTÓN DE LA VISTA ACTIVA ----------
+           Mismo lenguaje que el botón principal: relleno sólido, texto blanco. */
+        .btn-vista-activa {
+            background-color: #1e293b !important;
+            border-color: #1e293b !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+        }
+        /* Los consolidados conservan su familia ámbar */
+        .btn-vista-activa.btn-vista-activa--ambar {
+            background-color: #b45309 !important;
+            border-color: #b45309 !important;
+            color: #ffffff !important;
+        }
+    `;
+    document.head.appendChild(css);
+}
+
+function marcarBotonActivo(modo) {
+    const mapa = {
+        asistencias: 'btn-asistencias',
+        pasajes: 'btn-pasajes',
+        viaticos: 'btn-viaticos',
+        consolidado: 'btn-consolidado',
+        consolidado_pasajes: 'btn-consolidado-pasajes',
+    };
+    Object.values(mapa).forEach((id) => {
+        const b = document.getElementById(id);
+        if (b) b.classList.remove('btn-vista-activa', 'btn-vista-activa--ambar');
+    });
+
+    const activo = document.getElementById(mapa[modo]);
+    if (activo) {
+        activo.classList.add('btn-vista-activa');
+        // Los consolidados ya usan ámbar en tu diseño: se mantiene esa familia
+        if (modo === 'consolidado' || modo === 'consolidado_pasajes') {
+            activo.classList.add('btn-vista-activa--ambar');
+        }
+    }
+}
+
+function renumerarFilas(tbody) {
+    Array.from(tbody.querySelectorAll('tr')).forEach((tr, i) => {
+        if (tr.children[0]) tr.children[0].textContent = i + 1;
+    });
+}
+
+// --------------------------------------------------------------------------
+// ORDENAMIENTO + SELECCIÓN
+// --------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
+    inyectarEstilosTabla();
+
     const tabla = document.getElementById('tabla-asistencia-administrativo');
+    if (!tabla) return;
+
     const thead = tabla.querySelector('thead');
+    const tbody = tabla.querySelector('tbody');
     let columnaActual = -1;
     let ordenAscendente = true;
 
-    // 1. Observador: Agrega la clase 'th-sortable' automáticamente a las cabeceras
-    // Esto es necesario porque tu código reescribe el THEAD dinámicamente
-    const observer = new MutationObserver(() => {
-        thead.querySelectorAll('th').forEach(th => {
-            if (!th.classList.contains('th-sortable')) {
-                th.classList.add('th-sortable');
-            }
-        });
+    // Marca las cabeceras como ordenables (el thead se reescribe dinámicamente)
+    new MutationObserver(() => {
+        thead.querySelectorAll('th').forEach((th) => th.classList.add('th-sortable'));
+    }).observe(thead, { childList: true, subtree: true });
+
+    // ----- Clic en una fila: seleccionarla -----
+    tbody.addEventListener('click', (e) => {
+        const fila = e.target.closest('tr');
+        if (!fila || !tbody.contains(fila)) return;
+
+        const yaEstaba = fila.classList.contains('fila-activa');
+        tbody.querySelectorAll('tr.fila-activa').forEach((tr) => tr.classList.remove('fila-activa'));
+        if (!yaEstaba) fila.classList.add('fila-activa');   // segundo clic = deseleccionar
     });
-    observer.observe(thead, { childList: true, subtree: true });
 
-    // 2. Lógica de ordenamiento al hacer clic
-    tabla.addEventListener('click', (e) => {
+    // ----- Clic en una cabecera: ordenar -----
+    thead.addEventListener('click', (e) => {
         const th = e.target.closest('th');
-        if (!th || !th.closest('thead')) return;
-
-        const tbody = tabla.querySelector('tbody');
-        const thRow = th.parentElement;
-        const indexColumna = Array.from(thRow.children).indexOf(th);
-
+        if (!th) return;
         if (!tbody.querySelectorAll('tr').length) return;
 
-        // Determinar dirección de ordenamiento
+        const indexColumna = Array.from(th.parentElement.children).indexOf(th);
+
         if (columnaActual === indexColumna) {
             ordenAscendente = !ordenAscendente;
         } else {
@@ -1597,39 +1764,40 @@ document.addEventListener('DOMContentLoaded', () => {
             columnaActual = indexColumna;
         }
 
-        // Limpiar las clases activas de todas las cabeceras
-        thead.querySelectorAll('th').forEach(cabecera => {
-            cabecera.classList.remove('asc', 'desc');
-        });
-
-        // Agregar la clase de dirección a la cabecera actual
+        thead.querySelectorAll('th').forEach((c) => c.classList.remove('asc', 'desc'));
         th.classList.add(ordenAscendente ? 'asc' : 'desc');
 
-        // Función para obtener el valor
-        const obtenerValor = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
+        const valorDe = (tr) => (tr.children[indexColumna]?.innerText || '').trim();
 
-        // Función de comparación
-        const compararFila = (idx, asc) => (a, b) => {
-            const valA = obtenerValor(asc ? a : b, idx).trim();
-            const valB = obtenerValor(asc ? b : a, idx).trim();
-
+        const filasOrdenadas = Array.from(tbody.querySelectorAll('tr')).sort((a, b) => {
+            const valA = valorDe(ordenAscendente ? a : b);
+            const valB = valorDe(ordenAscendente ? b : a);
             if (valA !== '' && valB !== '' && !isNaN(valA) && !isNaN(valB)) {
                 return parseFloat(valA) - parseFloat(valB);
             }
             return valA.localeCompare(valB);
-        };
+        });
 
-        // Ordenar e inyectar
-        const filasOrdenadas = Array.from(tbody.querySelectorAll('tr'))
-            .sort(compararFila(indexColumna, ordenAscendente));
-
-        filasOrdenadas.forEach(tr => tbody.appendChild(tr));
+        filasOrdenadas.forEach((tr) => tbody.appendChild(tr));
+        renumerarFilas(tbody);        // 🔧 la columna "#" vuelve a ser 1,2,3...
     });
 });
 
-document.getElementById('btn-asistencias').addEventListener('click', () => actualizarTabla('asistencias'));
-document.getElementById('btn-pasajes').addEventListener('click', () => actualizarTabla('pasajes'));
-document.getElementById('btn-viaticos').addEventListener('click', () => actualizarTabla('viaticos'));
+// --------------------------------------------------------------------------
+// BOTONES DE VISTA
+//   Si los datos cargados no sirven para el modo pedido, se recargan.
+// --------------------------------------------------------------------------
+function cambiarVistaArea(modo) {
+    if (origenDatos !== 'area' || !empleadosData.length) {
+        alert('Primero pulse "Buscar" para cargar los datos del área y el rango de fechas.');
+        return;
+    }
+    actualizarTabla(modo);
+}
+
+document.getElementById('btn-asistencias').addEventListener('click', () => cambiarVistaArea('asistencias'));
+document.getElementById('btn-pasajes').addEventListener('click', () => cambiarVistaArea('pasajes'));
+document.getElementById('btn-viaticos').addEventListener('click', () => cambiarVistaArea('viaticos'));
 
 document.getElementById('btn-consolidado').addEventListener('click', () => {
     cargarConsolidado('asistencias');
@@ -1641,10 +1809,14 @@ document.getElementById('btn-consolidado-pasajes').addEventListener('click', () 
     mostrarLeyenda();
 });
 
-
+// --------------------------------------------------------------------------
+// LEYENDA DE COLORES (ventana arrastrable)
+// --------------------------------------------------------------------------
 function mostrarLeyenda() {
     const ventana = document.getElementById("ventanaConsolidado");
     const contenido = document.getElementById("contenidoLeyenda");
+    if (!ventana || !contenido) return;
+
     contenido.innerHTML = "";
 
     Object.entries(coloresAreas).forEach(([nombre, color]) => {
@@ -1666,27 +1838,18 @@ function mostrarLeyenda() {
     ventana.style.display = "block";
 }
 
-// Cerrar ventana
-document.getElementById("cerrarVentana").addEventListener("click", () => {
-    document.getElementById("ventanaConsolidado").style.display = "none";
-});
-
-// Hacer que se pueda arrastrar
-dragElement(document.getElementById("ventanaConsolidado"), document.getElementById("barraTitulo"));
+const btnCerrarVentana = document.getElementById("cerrarVentana");
+if (btnCerrarVentana) {
+    btnCerrarVentana.addEventListener("click", () => {
+        document.getElementById("ventanaConsolidado").style.display = "none";
+    });
+}
 
 function dragElement(elmnt, barra) {
+    if (!elmnt || !barra) return;
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-    barra.onmousedown = dragMouseDown;
 
-    function dragMouseDown(e) {
-        e.preventDefault();
-        pos3 = e.clientX;
-        pos4 = e.clientY;
-        document.onmouseup = closeDragElement;
-        document.onmousemove = elementDrag;
-    }
-
-    function elementDrag(e) {
+    const elementDrag = (e) => {
         e.preventDefault();
         pos1 = pos3 - e.clientX;
         pos2 = pos4 - e.clientY;
@@ -1694,89 +1857,77 @@ function dragElement(elmnt, barra) {
         pos4 = e.clientY;
         elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
         elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-    }
+    };
 
-    function closeDragElement() {
-        document.onmouseup = null;
-        document.onmousemove = null;
-    }
+    const closeDragElement = () => {          // 🔧 no pisa handlers globales
+        document.removeEventListener('mousemove', elementDrag);
+        document.removeEventListener('mouseup', closeDragElement);
+    };
+
+    barra.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        document.addEventListener('mousemove', elementDrag);
+        document.addEventListener('mouseup', closeDragElement);
+    });
 }
 
+dragElement(document.getElementById("ventanaConsolidado"), document.getElementById("barraTitulo"));
 
-
-//DESCARGAR EXCEL
+// --------------------------------------------------------------------------
+// DESCARGAR EXCEL (vista actual del área)
+// --------------------------------------------------------------------------
 document.querySelector('.btn-admin').addEventListener('click', () => {
+    const rango = obtenerRango();
+    if (!rango) return;
 
-    fetch('/auditar-busqueda-fecha', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            fecha_inicio: document.getElementById('fechainicio').value,
-            fecha_fin: document.getElementById('fechafin').value,
-            area: document.getElementById('areas-administrativo').value,
-            accion: 'descargar_actual'
-        })
-    });
-
-    if (empleadosData.length === 0) {
+    if (!empleadosData.length) {
         alert("No hay datos para exportar.");
         return;
     }
 
-    // Obtener valores seleccionados
-    const areaSeleccionada = document.getElementById('areas-administrativo').value || "GENERAL";
-    let fechaInicio = document.getElementById('fechainicio').value;
-    let fechaFin = document.getElementById('fechafin').value;
-
-    if (!fechaInicio || !fechaFin) {
-        alert("Por favor, selecciona un intervalo de fechas.");
+    if (origenDatos !== 'area') {
+        alert('Esta descarga usa los datos del área. Pulse "Buscar" antes de exportar.');
         return;
     }
 
-    // Formatear fechas
-    let startDate = fechaInicio.split("-").reverse().join("-");
-    let endDate = fechaFin.split("-").reverse().join("-");
+    auditar('descargar_actual');
 
-    // Formatear nombre del archivo
-    let nombreArchivo = `PLANILLA - ${areaSeleccionada.toUpperCase()} _ ${startDate} - ${endDate}.xlsx`;
+    const areaSeleccionada = document.getElementById('areas-administrativo').value || "GENERAL";
+    const startDate = aISO(rango.inicio).split("-").reverse().join("-");
+    const endDate = aISO(rango.fin).split("-").reverse().join("-");
+    const nombreArchivo = `PLANILLA - ${areaSeleccionada.toUpperCase()} _ ${startDate} - ${endDate}.xlsx`;
 
-    // Crear un nuevo libro de Excel
-    let wb = XLSX.utils.book_new();
+    const wb = XLSX.utils.book_new();
 
     function crearHoja(modo) {
-        let encabezados = ["#", "DNI", "Nombres", "Cargo"];
-        let fechas = [];
-
-        let fechaInicioObj = new Date(fechaInicio + "T00:00:00");
-        let fechaFinObj = new Date(fechaFin + "T00:00:00");
-
-        for (let d = new Date(fechaInicioObj); d <= fechaFinObj; d.setDate(d.getDate() + 1)) {
-            fechas.push(d.toISOString().split('T')[0]);
-            encabezados.push(d.getDate().toString().padStart(2, '0'));
-        }
-
+        const encabezados = ["#", "DNI", "Nombres", "Cargo"];
+        rango.fechas.forEach((f) => {
+            encabezados.push(f.split('-')[2]);      // día
+        });
         if (modo !== "asistencias") encabezados.push("TOTAL");
 
-        let datos = [encabezados];
+        const datos = [encabezados];
 
         empleadosData.forEach((empleado, index) => {
-            let fila = [
+            const fila = [
                 index + 1,
                 empleado.dni,
-                empleado.nombres,
-                empleado.cargo
+                empleado.nombre_visual,            // 🔧 igual que en pantalla
+                empleado.cargo,
             ];
 
             let total = 0;
 
-            fechas.forEach(fecha => {
+            rango.fechas.forEach((fecha) => {
                 let valor = "";
                 if (modo === "pasajes") {
                     valor = empleado.pasajes?.[fecha] || 0;
                     total += parseFloat(valor) || 0;
                 } else if (modo === "viaticos") {
-                    let viatico = empleado.viaticos?.[fecha] || 0;
-                    let ruta = empleado.rutas?.[fecha] || "";
+                    const viatico = empleado.viaticos?.[fecha] || 0;
+                    const ruta = empleado.rutas?.[fecha] || "";
                     valor = `V: S/${viatico} - R: ${ruta}`;
                     total += parseFloat(viatico) || 0;
                 } else if (modo === "asistencias") {
@@ -1793,47 +1944,27 @@ document.querySelector('.btn-admin').addEventListener('click', () => {
         return XLSX.utils.aoa_to_sheet(datos);
     }
 
-    wb.SheetNames.push("Asistencias");
-    wb.Sheets["Asistencias"] = crearHoja("asistencias");
+    XLSX.utils.book_append_sheet(wb, crearHoja("asistencias"), "Asistencias");
+    XLSX.utils.book_append_sheet(wb, crearHoja("pasajes"), "Pasajes");
+    XLSX.utils.book_append_sheet(wb, crearHoja("viaticos"), "Viáticos y Rutas");
 
-    wb.SheetNames.push("Pasajes");
-    wb.Sheets["Pasajes"] = crearHoja("pasajes");
-
-    wb.SheetNames.push("Viáticos y Rutas");
-    wb.Sheets["Viáticos y Rutas"] = crearHoja("viaticos");
-
-    // Descargar el archivo
     XLSX.writeFile(wb, nombreArchivo);
 });
 
-
-//EXCEL COMPLETO
+// --------------------------------------------------------------------------
+// DESCARGAR EXCEL COMPLETO (lo genera el backend)
+// --------------------------------------------------------------------------
 document.querySelector('.btn-completo').addEventListener('click', async () => {
+    const rango = obtenerRango();
+    if (!rango) return;
 
-    fetch('/auditar-busqueda-fecha', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            fecha_inicio: document.getElementById('fechainicio').value,
-            fecha_fin: document.getElementById('fechafin').value,
-            area: document.getElementById('areas-administrativo').value,
-            accion: 'descargar_completo'
-        })
-    });
+    auditar('descargar_completo');
 
-    let fechaInicio = document.getElementById('fechainicio').value;
-    let fechaFin = document.getElementById('fechafin').value;
-    let spinner = document.getElementById('spinner');
+    const spinner = document.getElementById('spinner');
+    if (spinner) spinner.style.display = "block";
 
-    if (!fechaInicio || !fechaFin) {
-        alert("Por favor, selecciona un intervalo de fechas.");
-        return;
-    }
-
-    console.log("Fecha de inicio:", fechaInicio);
-    console.log("Fecha de fin:", fechaFin);
-
-    spinner.style.display = "block"; // Muestra el spinner
+    const fechaInicio = aISO(rango.inicio);
+    const fechaFin = aISO(rango.fin);
 
     try {
         const response = await fetch('/api/getAsistenciaCompleta', {
@@ -1842,28 +1973,29 @@ document.querySelector('.btn-completo').addEventListener('click', async () => {
             body: JSON.stringify({ fechaInicio, fechaFin }),
         });
 
+        if (response.status === 401 || response.status === 403) {
+            throw new Error('Su sesión expiró o no tiene permisos. Vuelva a iniciar sesión.');
+        }
         if (!response.ok) {
             throw new Error(`Error en la API: ${response.statusText}`);
         }
 
-        // Recibe el archivo Excel como blob
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
 
-        // Crea un enlace temporal para descargar el archivo
         const a = document.createElement('a');
         a.href = url;
         a.download = `Reporte_Completo_Asistencia_${fechaInicio.replace(/-/g, '')}_${fechaFin.replace(/-/g, '')}.xlsx`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);          // libera memoria
 
-        console.log("📁 Archivo Excel descargado correctamente.");
     } catch (error) {
-        console.error('❌ Error obteniendo el reporte:', error);
-        alert("Hubo un error generando el reporte. Revisa la consola para más información.");
+        console.error('Error obteniendo el reporte:', error);
+        alert(error.message || "Hubo un error generando el reporte.");
     } finally {
-        spinner.style.display = "none"; // Oculta el spinner al terminar
+        if (spinner) spinner.style.display = "none";
     }
 });
 
