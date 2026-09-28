@@ -471,7 +471,7 @@ function volverAlCalendario(seccionActual) {
     if (asistencias) {
         asistencias.style.display = 'block';
         asistencias.classList.add('active');
-        
+
         if (typeof window.actualizarCalendario === 'function') {
             window.actualizarCalendario();
         }
@@ -719,6 +719,7 @@ document.addEventListener('click', function(event) {
             const data = await resp.json().catch(() => ({}));
             if (token !== cargaActual[area]) return;          // llegó una carga más reciente
             r.tbody.innerHTML = '';
+            if (UI[area]) UI[area].tipoHoja = data.tipo || null;
  
             if (!resp.ok) { alert(data.mensaje || data.error || 'No se pudieron cargar los empleados.'); return; }
  
@@ -740,6 +741,7 @@ document.addEventListener('click', function(event) {
             const frag = document.createDocumentFragment();
             empleados.forEach((e, i) => frag.appendChild(crearFila(area, e, i + 1, false, dia)));
             r.tbody.appendChild(frag);
+            actualizarContexto(area);
         } catch (err) {
             if (token !== cargaActual[area]) return;
             r.tbody.innerHTML = '';
@@ -1086,6 +1088,128 @@ document.addEventListener('click', function(event) {
         `;
         document.head.appendChild(css);
     }
+
+    const FERIADOS_PERU = {
+    1: [1], 5: [1], 6: [29], 7: [23, 28, 29], 8: [6, 30],
+    10: [8], 11: [1], 12: [8, 9, 25],
+};
+ 
+function esFeriado(fechaStr) {
+    const [, m, d] = fechaStr.split('-').map(Number);
+    return (FERIADOS_PERU[m] || []).includes(d);
+}
+ 
+function fechaLarga(fechaStr) {
+    const f = new Date(fechaStr + 'T00:00:00');
+    return f.toLocaleDateString('es-PE', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+}
+ 
+function moneda(n) {
+    return 'S/ ' + (Number(n) || 0).toFixed(2);
+}
+ 
+/** Crea (una sola vez) el contenedor de la barra, arriba de la tabla. */
+function contenedorContexto(area) {
+    const r = refs(area);
+    if (!r.sec) return null;
+ 
+    let barra = r.sec.querySelector('.asis-contexto');
+    if (!barra) {
+        barra = document.createElement('div');
+        barra.className = 'asis-contexto';
+        const tabla = r.sec.querySelector('.smart-table-scroll-container');
+        const banner = r.sec.querySelector('.asis-periodo-banner');
+        // Va debajo del banner de periodo y encima de la tabla
+        if (banner) banner.insertAdjacentElement('afterend', barra);
+        else if (tabla) tabla.parentNode.insertBefore(barra, tabla);
+        else r.sec.prepend(barra);
+    }
+    return barra;
+}
+ 
+/** Repinta la barra con la fecha y los contadores actuales. */
+function actualizarContexto(area) {
+    const r = refs(area);
+    const barra = contenedorContexto(area);
+    if (!barra || !r.tbody) return;
+ 
+    const fechaStr = r.fecha ? r.fecha.value : '';
+ 
+    // ---------- Sin fecha seleccionada ----------
+    if (!fechaStr) {
+        barra.innerHTML = `
+            <div class="asis-contexto-fecha">
+                <i class="far fa-calendar acf-icono"></i>
+                <span class="acf-sin-fecha">Seleccione un día en el calendario</span>
+            </div>`;
+        return;
+    }
+ 
+    // ---------- Etiquetas del día ----------
+    const hoyStr = fechaISO(new Date());
+    const dia = diaSemana(fechaStr);
+    const etiquetas = [];
+    if (fechaStr === hoyStr) etiquetas.push('<span class="asis-chip chip-hoy"><i class="fas fa-star"></i> Hoy</span>');
+    if (dia === 0) etiquetas.push('<span class="asis-chip chip-domingo"><i class="fas fa-bed"></i> Domingo</span>');
+    if (esFeriado(fechaStr)) etiquetas.push('<span class="asis-chip chip-feriado"><i class="fas fa-flag"></i> Feriado</span>');
+ 
+    // ---------- Contadores en vivo ----------
+    const filas = Array.from(r.tbody.querySelectorAll('tr[data-id-empleado]'));
+    let conEstado = 0, pasajes = 0, viaticos = 0, conPR = 0;
+ 
+    filas.forEach((f) => {
+        const estado = (f.querySelector('select[name="estado"]')?.value || '').trim();
+        if (estado) conEstado++;
+ 
+        const sel = f.querySelector('.pasajes-select');
+        const inp = f.querySelector('.pasajes-input');
+        if (sel && sel.value === 'PR') conPR++;
+        else if (inp && inp.value.trim() !== '') pasajes += parseFloat(inp.value) || 0;
+ 
+        viaticos += parseFloat(f.querySelector('input[name="viaticos"]')?.value) || 0;
+    });
+ 
+    const pendientes = filas.length - conEstado;
+ 
+    // ---------- Estado de la hoja (lo informa el backend) ----------
+    const tipoHoja = (UI[area] && UI[area].tipoHoja) || null;
+    let chipHoja = '';
+    if (tipoHoja === 'modificacion') {
+        chipHoja = `<span class="asis-chip chip-guardada" title="Este día ya tiene asistencia guardada: al guardar se actualizarán los registros existentes">
+                        <i class="fas fa-circle-check"></i> Ya registrada
+                    </span>`;
+    } else if (tipoHoja === 'nueva_asistencia') {
+        chipHoja = `<span class="asis-chip chip-nueva" title="Aún no hay asistencia guardada para este día">
+                        <i class="far fa-file"></i> Sin registrar
+                    </span>`;
+    }
+ 
+    const chipPendientes = pendientes > 0
+        ? `<span class="asis-chip chip-pendiente" title="Empleados sin estado asignado">
+               <i class="fas fa-circle-exclamation"></i> <b>${pendientes}</b> sin marcar
+           </span>`
+        : (filas.length
+            ? `<span class="asis-chip chip-guardada"><i class="fas fa-check"></i> Todos marcados</span>`
+            : '');
+ 
+    barra.innerHTML = `
+        <div class="asis-contexto-fecha">
+            <i class="far fa-calendar-check acf-icono"></i>
+            <span class="acf-texto">${fechaLarga(fechaStr)}</span>
+            ${etiquetas.join('')}
+        </div>
+        <div class="asis-contexto-datos">
+            ${chipHoja}
+            <span class="asis-chip"><i class="fas fa-users"></i> <b>${filas.length}</b> empleados</span>
+            ${chipPendientes}
+            <span class="asis-chip chip-dinero" title="${conPR} con pase de ruta (PR)">
+                <i class="fas fa-bus"></i> ${moneda(pasajes)}${conPR ? ` · ${conPR} PR` : ''}
+            </span>
+            <span class="asis-chip chip-dinero"><i class="fas fa-utensils"></i> ${moneda(viaticos)}</span>
+        </div>`;
+}
  
     // ------------------------------------------------------------------------
     // INICIALIZACIÓN
@@ -1103,7 +1227,11 @@ document.addEventListener('click', function(event) {
         }
  
         r.fecha.addEventListener('change', () => {
-            cargarEmpleados(area).then(() => actualizarBloqueoSeccion(area));
+            actualizarContexto(area);                              // 👈 pinta la fecha de inmediato
+            cargarEmpleados(area).then(() => {
+                actualizarBloqueoSeccion(area);
+                actualizarContexto(area);                          // 👈 ya con los datos cargados
+            });
             if (r.fecha.value) {
                 enSegundoPlano(postJSON('/registrar-modulo', {
                     modulo: r.cfg.modulo, detalle: `Fecha seleccionada: ${r.fecha.value}`,
@@ -1113,6 +1241,16 @@ document.addEventListener('click', function(event) {
  
         if (r.btnAgregar) r.btnAgregar.addEventListener('click', (e) => { e.preventDefault(); agregarExtra(area); });
         if (r.btnGuardar) r.btnGuardar.addEventListener('click', (e) => { e.preventDefault(); guardarAsistencia(area); });
+    
+        if (r.tbody) {
+            let t;
+            const refrescar = () => { clearTimeout(t); t = setTimeout(() => actualizarContexto(area), 120); };
+            r.tbody.addEventListener('change', refrescar);
+            r.tbody.addEventListener('input', refrescar);
+            r.tbody.addEventListener('click', refrescar);   // eliminar fila
+        }
+ 
+        actualizarContexto(area);
     }
  
     async function llenarSelectores() {
