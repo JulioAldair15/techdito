@@ -1242,7 +1242,35 @@ table.smart-table-modern select option:hover {
     border-radius: 10px;
 }
 
-
+.asis-contexto {
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+        gap: 10px; margin: 0 0 12px; padding: 12px 16px; border-radius: 10px;
+        background: #f8fafc; border: 1px solid #e2e8f0;
+    }
+    .asis-contexto-fecha {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
+    }
+    .asis-contexto-fecha .acf-texto {
+        font-size: 15px; font-weight: 700; color: #0f172a; text-transform: capitalize;
+    }
+    .asis-contexto-fecha .acf-icono { color: #64748b; font-size: 14px; }
+    .asis-contexto-fecha .acf-sin-fecha { font-size: 14px; font-weight: 600; color: #94a3b8; }
+ 
+    .asis-contexto-datos { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+ 
+    .asis-chip {
+        display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+        font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+        border: 1px solid #e2e8f0; background: #fff; color: #475569;
+    }
+    .asis-chip b { font-weight: 700; }
+    .asis-chip.chip-hoy      { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+    .asis-chip.chip-domingo  { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .asis-chip.chip-feriado  { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+    .asis-chip.chip-guardada { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .asis-chip.chip-nueva    { background: #f8fafc; border-color: #cbd5e1; color: #475569; }
+    .asis-chip.chip-pendiente{ background: #fffbeb; border-color: #fde68a; color: #b45309; }
+    .asis-chip.chip-dinero   { background: #fff; border-color: #e2e8f0; color: #334155; }
 
 
 
