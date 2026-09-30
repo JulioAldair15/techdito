@@ -2728,7 +2728,7 @@
                     
                     <!-- 🔥 LÓGICA MAESTRA: Identificamos quién está estrictamente limitado 🔥 -->
                     <!-- Quitamos a supervisor1 de aquí para que tenga acceso total -->
-                    {% set supervisores_limitados = ['sup_catastro', 'sup_distribucion', 'sup_inspecciones', 'sup_lecturas', 'sup_medicion', 'sup_persuasivas'] %}
+                    {% set supervisores_limitados = ['sup_catastro', 'sup_distribucion', 'sup_inspecciones', 'sup_lecturas', 'sup_medicion', 'sup_norte', 'sup_persuasivas'] %}
                     {% set es_solo_cargas = user_name and (user_name | trim | lower) in supervisores_limitados %}
 
                     <div class="prod-header-wrapper">
@@ -2769,6 +2769,30 @@
 
                     <!-- VISTA COMPLETA PARA ADMINISTRADORES / SUPERVISOR1 (MATRIZ Y FILTROS) -->
                     {% if not es_solo_cargas %}
+                   <div style="display:flex; align-items:center; gap:12px; margin:0 0 16px; flex-wrap:wrap;">
+ 
+                        <div style="display:inline-flex; border-radius:6px; overflow:hidden; box-shadow:0 1px 2px rgba(15,23,42,.06);"
+                             role="group" aria-label="Tipo de producción">
+ 
+                            <button type="button" class="btn-modo-prod btn-modo-activo" data-modo="campo"
+                                    aria-pressed="true" onclick="cambiarModoProduccion('campo')"
+                                    style="background:#1e293b; border:1px solid #1e293b; color:#fff; height:38px; padding:0 16px; font-size:0.82rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:7px; border-radius:6px 0 0 6px;">
+                                <i class="fas fa-person-digging"></i> Campo
+                            </button>
+ 
+                            <button type="button" class="btn-modo-prod" data-modo="digitacion"
+                                    aria-pressed="false" onclick="cambiarModoProduccion('digitacion')"
+                                    style="background:#fff; border:1px solid #cbd5e1; color:#475569; height:38px; padding:0 16px; font-size:0.82rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:7px; border-radius:0 6px 6px 0; margin-left:-1px;">
+                                <i class="fas fa-keyboard"></i> Digitación
+                            </button>
+                        </div>
+ 
+                        <span style="font-size:0.75rem; color:#64748b; line-height:1.4;">
+                            <b style="color:#334155; font-weight:600;">Campo</b>: trabajo ejecutado en ruta ·
+                            <b style="color:#334155; font-weight:600;">Digitación</b>: fichas ingresadas al sistema
+                        </span>
+                    </div>
+
                     <div class="prod-filter-bar" style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
                         <div style="flex: 1; min-width: 130px;">
                             <label style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;">Fecha Inicio</label>
@@ -2802,7 +2826,7 @@
                         </div>
 
                         <div style="flex-shrink: 0; min-width: 140px;">
-                            <button type="button" class="prod-btn prod-btn-search" onclick="generarTablaProduccion()" style="width: 100%;">
+                            <button type="button" class="prod-btn prod-btn-search" onclick="generarProduccionSegunModo()" style="width: 100%;">
                                 <i class="fas fa-search"></i> <span>Generar Tabla</span>
                             </button>
                         </div>
