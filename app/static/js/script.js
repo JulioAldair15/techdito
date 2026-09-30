@@ -12955,62 +12955,141 @@ document.addEventListener('click', function(e) {
 /* ==========================================
    LÓGICA DE PRODUCCIÓN
 ========================================== */
-// Variable global para almacenar los datos filtrados y enviarlos al backend
 window.datosLimpiosParaSubir = [];
-
+window.destinoSubida = '/cargar_produccion_csv';
+window.origenSubida = null;
+ 
+const TAM_LOTE_CSV = 3000;
+ 
+ 
 function abrirModalSubida() {
     document.getElementById('archivo-produccion-modal').value = "";
-    
+ 
     const filenameSpan = document.getElementById('prod-modal-filename');
     filenameSpan.innerText = "Ningún archivo seleccionado";
-    filenameSpan.classList.remove('active'); 
-    
+    filenameSpan.classList.remove('active');
+ 
     document.getElementById('prod-modal-filas-info').innerText = "";
     document.getElementById('thead-preview-csv').innerHTML = "";
     document.getElementById('tbody-preview-csv').innerHTML = "";
-    
+ 
     document.getElementById('btn-confirmar-modal').disabled = true;
     document.getElementById('prod-modal-csv').style.display = 'flex';
+ 
+    window.datosLimpiosParaSubir = [];
+    window.destinoSubida = '/cargar_produccion_csv';
+    window.origenSubida = null;
 }
-
+ 
+ 
 function manejarSubidaArchivo(input) {
     const file = input.files[0];
     if (!file) return;
-
+ 
     const extension = file.name.split('.').pop().toLowerCase();
     if (extension !== 'csv') {
         alert("Por favor, seleccione un archivo .csv");
         abrirModalSubida();
         return;
     }
-
+ 
     const filenameSpan = document.getElementById('prod-modal-filename');
     filenameSpan.innerText = file.name;
-    filenameSpan.classList.add('active'); 
-
+    filenameSpan.classList.add('active');
+ 
     const reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = function (e) {
         procesarPrevisualizacionCSV(e.target.result);
-        document.getElementById('btn-confirmar-modal').disabled = false;
+        document.getElementById('btn-confirmar-modal').disabled =
+            window.datosLimpiosParaSubir.length === 0;
     };
     reader.readAsText(file, 'UTF-8');
 }
-
-// LA MAGIA ACTUALIZADA: Escaneo y Traducción de Múltiples Formatos
+ 
+ 
+/* --------------------------------------------------------------------------
+   Separa una línea respetando el texto entre comillas.
+   "AV. LIMA, 123";"RODRIGUEZ, JULIO"  ->  ['AV. LIMA, 123', 'RODRIGUEZ, JULIO']
+   -------------------------------------------------------------------------- */
+function partirLineaCSV(linea, separador) {
+    const celdas = [];
+    let actual = "";
+    let dentroComillas = false;
+ 
+    for (let i = 0; i < linea.length; i++) {
+        const caracter = linea[i];
+ 
+        if (caracter === '"') {
+            // Dos comillas seguidas dentro del texto = una comilla literal
+            if (dentroComillas && linea[i + 1] === '"') {
+                actual += '"';
+                i++;
+            } else {
+                dentroComillas = !dentroComillas;
+            }
+        } else if (caracter === separador && !dentroComillas) {
+            celdas.push(actual);
+            actual = "";
+        } else {
+            actual += caracter;
+        }
+    }
+    celdas.push(actual);
+ 
+    return celdas.map(c => c.trim());
+}
+ 
+ 
+/** Deja el encabezado comparable: sin comillas, sin espacios dobles, en mayúsculas. */
+function normalizarEncabezado(texto) {
+    return String(texto || "")
+        .replace(/["']/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toUpperCase();
+}
+ 
+ 
+/** Elige el separador contando cuál aparece más veces fuera de comillas. */
+function detectarSeparador(linea) {
+    let comas = 0, puntoComas = 0, dentroComillas = false;
+ 
+    for (const c of linea) {
+        if (c === '"') dentroComillas = !dentroComillas;
+        else if (!dentroComillas && c === ',') comas++;
+        else if (!dentroComillas && c === ';') puntoComas++;
+    }
+    return puntoComas > comas ? ';' : ',';
+}
+ 
+ 
 function procesarPrevisualizacionCSV(csvString) {
-    const lineas = csvString.split(/\r\n|\n/).filter(line => line.trim() !== '');
+    const lineas = csvString.split(/\r\n|\n/).filter(l => l.trim() !== '');
     if (lineas.length === 0) return;
-
-    // 1. DICCIONARIOS DE EQUIVALENCIAS (Encabezado CSV -> Columna Base de Datos)
+ 
+    // ----------------------------------------------------------------------
+    // 1. DICCIONARIOS DE EQUIVALENCIAS
+    // ----------------------------------------------------------------------
     const formatoOriginal = {
         "SUMINISTRO": "suministro", "CICLO": "ciclo", "LOCALIDAD": "localidad",
         "URBA": "urba", "CALLE2": "calle", "NROMUNI": "nromuni",
-        "OPERARIO": "operario_csv", "FECHA INI EJECUCION": "fecha_inicio", "HORA INI": "hora_ini",
-        "FECHA EJECUCION": "fecha_fin", "HORA": "hora_fin", "ACTIVIDAD": "actividad",
-        "ESTE": "este", "NORTE": "norte", "LATITUD": "latitud", "LONGITUD": "longitud",
-        "CODIGO INSPECCION PERDIDAS": "cod_perd"
+        "OPERARIO": "operario_csv", "FECHA INI EJECUCION": "fecha_inicio",
+        "HORA INI": "hora_ini", "FECHA EJECUCION": "fecha_fin", "HORA": "hora_fin",
+        "ACTIVIDAD": "actividad", "ESTE": "este", "NORTE": "norte",
+        "LATITUD": "latitud", "LONGITUD": "longitud",
+        "CODIGO INSPECCION PERDIDAS": "cod_perd",
+ 
+        "FECHA INI DIG": "fecha_ini_dig",
+        "FECHA INICIO DIG": "fecha_ini_dig",
+        "FECHA INI DIGITACION": "fecha_ini_dig",
+        "FECHA INI DIGITACIÓN": "fecha_ini_dig",
+        "FECHA FIN DIG": "fecha_fin_dig",
+        "FECHA FIN DIGITACION": "fecha_fin_dig",
+        "FECHA FIN DIGITACIÓN": "fecha_fin_dig",
+        "NOMBRE ANALISTA": "analista",
+        "ANALISTA": "analista"
     };
-
+ 
     const formatoLecturas = {
         "CLICODFAC": "suministro", "CICLO": "ciclo", "URBANIZAC": "urba",
         "CALLE": "calle", "CLIMUNRO": "nromuni", "NOMBRE OPERADOR": "operario_csv",
@@ -13018,141 +13097,327 @@ function procesarPrevisualizacionCSV(csvString) {
         "TIPO LECTURA TP": "actividad", "LECTURAID": "cod_perd",
         "LATITUD": "latitud", "LONGITUD": "longitud"
     };
-
+ 
+    const formatoCatastroDig = {
+        "DIGITADOR": "analista",
+        "NOMBRE DIGITADOR": "analista",
+        "ANALISTA": "analista",
+ 
+        "FECHA": "fecha_dig",
+        "FECHA DIGITACION": "fecha_dig",
+        "FECHA DIGITACIÓN": "fecha_dig",
+        "FECHA DIG": "fecha_dig",
+ 
+        "CODIGO CLIENTE": "suministro",
+        "CÓDIGO CLIENTE": "suministro",
+        "CODIGO_CLIENTE": "suministro",
+        "CLICODFAC": "suministro",
+ 
+        "COD CAT NUEVO CLIENTE": "cod_catastral",
+        "CÓD CAT NUEVO CLIENTE": "cod_catastral",
+        "COD CAT NUEVO": "cod_catastral",
+        "CODIGO CATASTRAL NUEVO CLIENTE": "cod_catastral",
+        "COD CATASTRAL": "cod_catastral"
+    };
+ 
     let indiceCabecera = -1;
-    let mapeoColumnas = {}; // Guardará: { indice_columna_csv: "nombre_db" }
+    let mapeoColumnas = {};
     let formatoDetectado = null;
     let diccionarioActivo = null;
     let separador = ',';
-
+    let destino = '/cargar_produccion_csv';
+    let origen = null;
+ 
+    // ----------------------------------------------------------------------
     // 2. DETECCIÓN AUTOMÁTICA DEL FORMATO
+    // ----------------------------------------------------------------------
+    let encabezadosLeidos = [];
+ 
     for (let i = 0; i < Math.min(lineas.length, 20); i++) {
-        let sep = lineas[i].includes(';') ? ';' : ',';
-        let celdas = lineas[i].split(sep).map(c => c.replace(/["']/g, "").trim().toUpperCase());
-        
+        const sep = detectarSeparador(lineas[i]);
+        const celdas = partirLineaCSV(lineas[i], sep).map(normalizarEncabezado);
+ 
         if (celdas.includes("SUMINISTRO") && celdas.includes("OPERARIO")) {
-            indiceCabecera = i;
-            separador = sep;
             formatoDetectado = "ORIGINAL (Inspecciones/Catastro)";
             diccionarioActivo = formatoOriginal;
-        } 
+        }
         else if (celdas.includes("CLICODFAC") && celdas.includes("NOMBRE OPERADOR")) {
-            indiceCabecera = i;
-            separador = sep;
             formatoDetectado = "NUEVO (Lecturas)";
             diccionarioActivo = formatoLecturas;
         }
-
+        else if (celdas.includes("DIGITADOR") &&
+                 celdas.some(c => c.includes("CODIGO CLIENTE") ||
+                                  c.includes("CÓDIGO CLIENTE") ||
+                                  c.includes("COD CAT"))) {
+            formatoDetectado = "DIGITACIÓN DE CATASTRO";
+            diccionarioActivo = formatoCatastroDig;
+            destino = '/cargar_digitacion_catastro';
+            origen = 'CATASTRO';
+        }
+ 
         if (formatoDetectado) {
-            // Guardamos en qué posición (index) está cada columna válida
+            indiceCabecera = i;
+            separador = sep;
+            encabezadosLeidos = celdas;
+ 
             celdas.forEach((nombreColumna, index) => {
-                if (diccionarioActivo[nombreColumna]) {
+                if (diccionarioActivo[nombreColumna] && mapeoColumnas[index] === undefined) {
                     mapeoColumnas[index] = diccionarioActivo[nombreColumna];
                 }
             });
             break;
         }
     }
-
+ 
     if (indiceCabecera === -1) {
-        alert("Error: El archivo no coincide con ninguno de los 2 formatos permitidos.");
+        alert("Error: El archivo no coincide con ninguno de los formatos permitidos.\n\n"
+            + "Se esperan las columnas:\n"
+            + "  • SUMINISTRO y OPERARIO  (producción de campo)\n"
+            + "  • CLICODFAC y NOMBRE OPERADOR  (lecturas)\n"
+            + "  • DIGITADOR y CODIGO CLIENTE  (digitación de catastro)");
         abrirModalSubida();
         return;
     }
-
+ 
+    // Aviso en consola cuando dos columnas comparten destino: es lo que
+    // provocaba que una vacía borrara a la que sí traía el dato.
+    const destinos = Object.values(mapeoColumnas);
+    const repetidos = destinos.filter((d, i) => destinos.indexOf(d) !== i);
+    if (repetidos.length) {
+        console.warn('⚠️ [CSV] Hay columnas que apuntan al mismo campo:',
+                     [...new Set(repetidos)],
+                     '· Se conservará el primer valor que venga con contenido.');
+    }
+ 
+    window.destinoSubida = destino;
+    window.origenSubida = origen;
+ 
     const thead = document.getElementById('thead-preview-csv');
     const tbody = document.getElementById('tbody-preview-csv');
-    thead.innerHTML = ""; tbody.innerHTML = "";
+    thead.innerHTML = "";
+    tbody.innerHTML = "";
     window.datosLimpiosParaSubir = [];
-
-    // 3. DIBUJAR CABECERAS ESTANDARIZADAS
-    let trHead = document.createElement('tr');
-    const columnasEncontradas = Object.values(mapeoColumnas); // Ej: ["suministro", "operario_csv"...]
-    
+ 
+    // ----------------------------------------------------------------------
+    // 3. CABECERAS DE LA PREVISUALIZACIÓN (sin repetir destinos)
+    // ----------------------------------------------------------------------
+    const columnasEncontradas = [...new Set(Object.values(mapeoColumnas))];
+    const trHead = document.createElement('tr');
+ 
     columnasEncontradas.forEach(col => {
-        let th = document.createElement('th');
-        th.innerText = col.toUpperCase(); // Mostramos el nombre limpio en HTML
+        const th = document.createElement('th');
+        th.innerText = col.toUpperCase();
+        if (['fecha_ini_dig', 'fecha_fin_dig', 'analista', 'fecha_dig', 'cod_catastral'].includes(col)) {
+            th.style.background = '#ecfdf5';
+            th.style.color = '#047857';
+        }
         trHead.appendChild(th);
     });
     thead.appendChild(trHead);
-
-    // 4. EXTRAER Y TRADUCIR DATOS
+ 
+    // ----------------------------------------------------------------------
+    // 4. EXTRAER LOS DATOS
+    // ----------------------------------------------------------------------
     const lineasDatos = lineas.slice(indiceCabecera + 1);
-    const maxPreview = Math.min(lineasDatos.length, 200);
-
+    const MAX_PREVIEW = 200;
+    let dibujadas = 0;
+    let conDatosDigitacion = 0;
+    let descartadasSinDigitar = 0;
+ 
     for (let i = 0; i < lineasDatos.length; i++) {
-        const columnas = lineasDatos[i].split(separador).map(c => c.replace(/["']/g, "").trim());
+        const columnas = partirLineaCSV(lineasDatos[i], separador)
+            .map(c => c.replace(/^["']|["']$/g, "").trim());
+ 
         if (columnas.join('') === '') continue;
-
-        let filaDataObjeto = {};
-        
-        // Convertimos la fila cruda a nuestro objeto estándar
+ 
+        const primeraNormalizada = normalizarEncabezado(columnas[0]);
+        if (['SUMINISTRO', 'CLICODFAC', 'DIGITADOR'].includes(primeraNormalizada)) continue;
+ 
+        // ------------------------------------------------------------------
+        // 🔑 LA CORRECCIÓN: un valor vacío no sobrescribe uno con contenido
+        // ------------------------------------------------------------------
+        const filaDataObjeto = {};
         Object.keys(mapeoColumnas).forEach(idx => {
-            const nombreKeyDB = mapeoColumnas[idx];
-            filaDataObjeto[nombreKeyDB] = columnas[idx] || "";
+            const campo = mapeoColumnas[idx];
+            const valor = (columnas[idx] || "").trim();
+ 
+            if (valor !== "" || filaDataObjeto[campo] === undefined) {
+                filaDataObjeto[campo] = valor;
+            }
         });
-
-        // 🔥 REGLA DE SALVATAJE PARA LA MATRIZ: 
-        // El formato Lecturas no tiene fecha_fin, la clonamos de fecha_inicio
+ 
+        // El formato de Lecturas no trae fecha/hora de fin: se clonan
         if (formatoDetectado.includes("NUEVO")) {
             filaDataObjeto["fecha_fin"] = filaDataObjeto["fecha_inicio"];
             filaDataObjeto["hora_fin"] = filaDataObjeto["hora_ini"];
         }
-
+ 
+        // Si no vino el código de cliente, se usa el catastral
+        if (!filaDataObjeto["suministro"] && filaDataObjeto["cod_catastral"]) {
+            filaDataObjeto["suministro"] = filaDataObjeto["cod_catastral"];
+        }
+ 
+        if (origen === 'CATASTRO') {
+            const tieneFecha = !!filaDataObjeto["fecha_dig"];
+            const tieneDigitador = !!filaDataObjeto["analista"];
+ 
+            if (!tieneFecha || !tieneDigitador) {
+                descartadasSinDigitar++;
+                continue;                      // no se envía
+            }
+        }
+ 
+        if (filaDataObjeto["analista"] || filaDataObjeto["fecha_ini_dig"] || filaDataObjeto["fecha_dig"]) {
+            conDatosDigitacion++;
+        }
+ 
         window.datosLimpiosParaSubir.push(filaDataObjeto);
-
-        // Dibujar previsualización
-        if (i < maxPreview) {
-            let trBody = document.createElement('tr');
+ 
+        if (dibujadas < MAX_PREVIEW) {
+            const trBody = document.createElement('tr');
             columnasEncontradas.forEach(col => {
-                let td = document.createElement('td');
+                const td = document.createElement('td');
                 td.innerText = filaDataObjeto[col] || "";
                 trBody.appendChild(td);
             });
             tbody.appendChild(trBody);
+            dibujadas++;
         }
     }
 
-    document.getElementById('prod-modal-filas-info').innerText = 
-        `Formato: ${formatoDetectado} | Mostrando ${maxPreview} de ${window.datosLimpiosParaSubir.length} filas`;
+    // ----------------------------------------------------------------------
+    // 5. DIAGNÓSTICO EN CONSOLA
+    // ----------------------------------------------------------------------
+    console.log('📄 [CSV] Formato:', formatoDetectado,
+                '| Separador:', separador === ';' ? 'punto y coma' : 'coma');
+    console.log('📄 [CSV] Encabezados leídos:', encabezadosLeidos);
+    console.log('📄 [CSV] Mapeo columna → campo:', mapeoColumnas);
+    console.log('📄 [CSV] Primera fila que se enviará:', window.datosLimpiosParaSubir[0]);
+    if (descartadasSinDigitar > 0) {
+        console.log(`📄 [CSV] ${descartadasSinDigitar} filas sin digitar: no se envían.`);
+    }
+ 
+    // ----------------------------------------------------------------------
+    // 6. RESUMEN BAJO LA TABLA
+    // ----------------------------------------------------------------------
+    const total = window.datosLimpiosParaSubir.length;
+    const info = document.getElementById('prod-modal-filas-info');
+ 
+    const destinoTexto = origen === 'CATASTRO'
+        ? 'Se cargará en <b>Digitación de Catastro</b>. No modifica la producción de campo.'
+        : 'Se cargará en <b>Producción</b>.';
+ 
+    let extra = '';
+    if (origen === 'CATASTRO') {
+        const ejemplo = window.datosLimpiosParaSubir[0]?.fecha_dig || '';
+        extra = ejemplo ? ` · Primera fecha: <b>${ejemplo}</b>` : '';
+        if (descartadasSinDigitar > 0) {
+            extra += ` · <b>${descartadasSinDigitar}</b> predios aún sin digitar (no se suben)`;
+        }
+    } else if (columnasEncontradas.includes('analista')) {
+        extra = ` · Digitación: ${conDatosDigitacion} filas con analista`;
+    } else if (formatoDetectado.includes("ORIGINAL")) {
+        extra = ` · ⚠️ Sin columnas de digitación`;
+    }
+ 
+    info.innerHTML = `Formato: <b>${formatoDetectado}</b> | Se subirán <b>${total}</b> filas${extra}`
+                   + `<div style="margin-top:4px; color:#475569;">${destinoTexto}</div>`;
 }
-
+ 
+ 
 function cerrarModalCsv() {
     document.getElementById('prod-modal-csv').style.display = 'none';
 }
-
-function confirmarSubidaCsv() {
+ 
+ 
+/* --------------------------------------------------------------------------
+   SUBIDA POR LOTES
+   Cada lote viaja en su propia petición. El servidor decide fila por fila
+   si toca insertarla o completar el registro que ya existe.
+   -------------------------------------------------------------------------- */
+async function confirmarSubidaCsv() {
     const btn = document.getElementById('btn-confirmar-modal');
     const btnTextOriginal = btn.innerHTML;
-    btn.innerHTML = `Subiendo...`;
+    const filas = window.datosLimpiosParaSubir;
+    const destino = window.destinoSubida || '/cargar_produccion_csv';
+ 
+    if (!filas || filas.length === 0) {
+        alert("No hay filas para subir.");
+        return;
+    }
+ 
     btn.disabled = true;
-
-    // AQUÍ APUNTAMOS A LA RUTA QUE ACABAMOS DE CREAR EN ROUTES.PY
-    fetch('/cargar_produccion_csv', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(window.datosLimpiosParaSubir)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === "error") {
-            throw new Error(data.error);
+ 
+    const totales = {
+        insertados: 0, actualizados: 0, sin_cambios: 0,
+        ambiguas: 0, descartadas: 0
+    };
+    const totalLotes = Math.ceil(filas.length / TAM_LOTE_CSV);
+    let ordenFecha = null;
+ 
+    try {
+        for (let numeroLote = 0; numeroLote < totalLotes; numeroLote++) {
+            const desde = numeroLote * TAM_LOTE_CSV;
+            const lote = filas.slice(desde, desde + TAM_LOTE_CSV);
+            const avance = Math.round(((numeroLote + 1) / totalLotes) * 100);
+ 
+            btn.innerHTML = `Subiendo ${avance}% (${numeroLote + 1}/${totalLotes})`;
+ 
+            const cuerpo = { filas: lote, sobrescribir: false };
+            if (window.origenSubida) cuerpo.origen = window.origenSubida;
+ 
+            const respuesta = await fetch(destino, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cuerpo)
+            });
+ 
+            const data = await respuesta.json().catch(() => ({}));
+ 
+            if (!respuesta.ok || data.status === "error") {
+                throw new Error(data.error || `El servidor respondió ${respuesta.status}`);
+            }
+ 
+            Object.keys(totales).forEach(k => { totales[k] += (data[k] || 0); });
+            if (data.orden_fecha) ordenFecha = data.orden_fecha;
         }
-        alert(data.mensaje); // Mostrará: "Se procesaron y guardaron X registros..."
-        btn.innerHTML = btnTextOriginal;
+ 
+        let resumen = `✅ Carga finalizada\n\n`
+                    + `Registros nuevos: ${totales.insertados}\n`;
+ 
+        if (totales.actualizados) {
+            resumen += `Completados con datos de digitación: ${totales.actualizados}\n`;
+        }
+        resumen += `Ya estaban cargados: ${totales.sin_cambios}`;
+ 
+        if (ordenFecha) {
+            resumen += `\n\nLas fechas se leyeron en formato `
+                     + `${ordenFecha === 'MDY' ? 'mm/dd/yyyy' : 'dd/mm/yyyy'}.`;
+        }
+        if (totales.ambiguas > 0) {
+            resumen += `\n\n⚠️ ${totales.ambiguas} filas no se pudieron identificar.`;
+        }
+        if (totales.descartadas > 0) {
+            resumen += `\n${totales.descartadas} filas se descartaron por venir incompletas.`;
+        }
+ 
+        alert(resumen);
         cerrarModalCsv();
-        
-        // OPCIONAL: Si tienes una función para recargar tu tabla principal, llámala aquí.
-        // generarTablaProduccion(); 
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert("Hubo un error al guardar la información. Contacte al administrador.");
+ 
+        const inicio = document.getElementById('filtro-prod-inicio');
+        if (inicio && inicio.value && typeof generarProduccionSegunModo === 'function') {
+            generarProduccionSegunModo();
+        }
+ 
+    } catch (error) {
+        console.error('Error subiendo el CSV:', error);
+        alert(`Hubo un error al guardar la información.\n\n${error.message}\n\n`
+            + `Lo procesado hasta ahora sí quedó guardado. `
+            + `Puedes volver a subir el mismo archivo, no se duplicará.`);
+    } finally {
         btn.innerHTML = btnTextOriginal;
         btn.disabled = false;
-    });
+    }
 }
 
 /* ==========================================
@@ -13273,8 +13538,12 @@ function dibujarMatriz(fechas, operarios) {
     `;
 
     operarios.forEach((op, index) => {
-        let filaHtml = `<tr id="fila-operario-${index}" class="fila-operario-matriz">
-        <td class="col-sticky-left font-bold prod-celda-click" title="Ver detalle de ${op.nombre}" onclick="abrirPanelOperario(${index})">
+        // Reemplaza esto:
+    // let filaHtml = `<tr>
+    
+    // Por esto:
+    let filaHtml = `<tr id="fila-operario-${index}" class="fila-operario-matriz">
+            <td class="col-sticky-left font-bold prod-celda-click" title="Ver detalle de ${op.nombre}" onclick="abrirPanelOperario(${index})">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${op.nombre}</span>
                     <i class="fas fa-chevron-right prod-icon-click"></i>
@@ -13363,7 +13632,7 @@ function cargarAreasSelect() {
 }
 
 // ==========================================
-// LÓGICA DEL PANEL DIVIDIDO Y MAPAS (BLINDADA CONTRA ERRORES)
+// LÓGICA DEL PANEL DIVIDIDO Y MAPAS 
 // ==========================================
 window.datosDetalleOperario = []; 
 window.mapaOperarioInstancia = null;
@@ -13547,6 +13816,7 @@ function cerrarPanelOperario() {
 
     document.querySelectorAll('.fila-operario-matriz').forEach(fila => fila.classList.remove('fila-activa-matriz'));
 }
+
 
 
 function dibujarMapaDeDia(fecha, indexFila) {
@@ -14745,6 +15015,683 @@ function guardarCargasDiarias() {
         btnGuardar.disabled = false;
         btnGuardar.innerHTML = `Guardar Cargas`;
     });
+}
+
+
+window.modoProduccion = 'campo';          // 'campo' | 'digitacion'
+window.digitacionData = null;             // respuesta de /api/matriz_digitacion
+window.digitacionDetalle = [];            // fichas del analista abierto
+ 
+/* Escala secuencial de un solo tono para el volumen diario.
+   Texto oscuro sobre los pasos claros y blanco solo en el más oscuro,
+   para que el número siempre se lea. */
+const ESCALA_DIG = [
+    { fondo: '#eff6ff', texto: '#1e3a8a' },
+    { fondo: '#dbeafe', texto: '#1e3a8a' },
+    { fondo: '#bfdbfe', texto: '#1e40af' },
+    { fondo: '#93c5fd', texto: '#172554' },
+    { fondo: '#1d4ed8', texto: '#ffffff' }
+];
+ 
+ 
+/* ==========================================================================
+   CAMBIO DE MODO
+   ========================================================================== */
+function cambiarModoProduccion(modo) {
+    window.modoProduccion = modo;
+ 
+    document.querySelectorAll('.btn-modo-prod').forEach(btn => {
+        const activo = btn.dataset.modo === modo;
+        btn.classList.toggle('btn-modo-activo', activo);
+        btn.setAttribute('aria-pressed', activo ? 'true' : 'false');
+ 
+        // Respaldo por si el CSS externo no está cargando
+        btn.style.background  = activo ? '#1e293b' : '#ffffff';
+        btn.style.borderColor = activo ? '#1e293b' : '#cbd5e1';
+        btn.style.color       = activo ? '#ffffff' : '#475569';
+    });
+ 
+    const esDig = modo === 'digitacion';
+ 
+    const grupoActividad = document.getElementById('filtro-prod-actividad')?.closest('div');
+    if (grupoActividad) grupoActividad.style.display = esDig ? 'none' : '';
+ 
+    const selectPersona = document.getElementById('filtro-prod-operario');
+    const labelPersona = selectPersona?.closest('div')?.querySelector('label');
+    if (labelPersona) labelPersona.innerText = esDig ? 'Analista' : 'Operario';
+    if (selectPersona) {
+        selectPersona.innerHTML = esDig
+            ? '<option value="TODOS">-- Todos los analistas --</option>'
+            : '<option value="TODOS">-- Todos los operarios --</option>';
+    }
+ 
+    cerrarPanelOperario();
+    if (typeof cerrarPanelAnalista === 'function') cerrarPanelAnalista();
+ 
+    const thead = document.querySelector('#tabla-produccion thead tr');
+    const tbody = document.getElementById('body-tabla-produccion');
+    if (thead) thead.innerHTML = `<th class="col-sticky-left" style="min-width:140px;">${esDig ? 'Analista' : 'Colaborador'}</th>
+        <th class="text-center" style="width:100%; color:#94a3b8; font-weight:normal;">Esperando generación...</th>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="2" class="text-center" style="padding:40px; color:#64748b;">
+        <i class="fas ${esDig ? 'fa-keyboard' : 'fa-calendar-alt'}" style="font-size:2.5rem; margin-bottom:12px; color:#cbd5e1; display:block;"></i>
+        Seleccione un rango de fechas y pulse <b>Generar Tabla</b>.</td></tr>`;
+ 
+    const fIni = document.getElementById('filtro-prod-inicio')?.value;
+    const fFin = document.getElementById('filtro-prod-fin')?.value;
+    if (fIni && fFin) {
+        if (esDig) cargarFiltrosDigitacion();
+        else if (typeof cargarFiltrosDinamicos === 'function') cargarFiltrosDinamicos();
+    }
+}
+ 
+ 
+/** El botón "Generar Tabla" llama a esta, que reparte según el modo. */
+function generarProduccionSegunModo() {
+    if (window.modoProduccion === 'digitacion') generarTablaDigitacion();
+    else generarTablaProduccion();
+}
+ 
+ 
+function cargarFiltrosDigitacion() {
+    const fIni = document.getElementById('filtro-prod-inicio').value;
+    const fFin = document.getElementById('filtro-prod-fin').value;
+    const select = document.getElementById('filtro-prod-operario');
+    if (!fIni || !fFin || !select) return;
+ 
+    fetch('/api/filtros_digitacion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha_inicio: fIni, fecha_fin: fFin })
+    })
+    .then(r => r.json())
+    .then(data => {
+        select.innerHTML = '<option value="TODOS">-- Todos los analistas --</option>';
+        (data.analistas || []).forEach(nombre => {
+            const op = document.createElement('option');
+            op.value = nombre;
+            op.textContent = nombre;
+            select.appendChild(op);
+        });
+    })
+    .catch(err => console.error('Error cargando analistas:', err));
+}
+ 
+ 
+/* ==========================================================================
+   GENERAR LA MATRIZ
+   ========================================================================== */
+ 
+function generarTablaDigitacion() {
+    const fIni = document.getElementById('filtro-prod-inicio').value;
+    const fFin = document.getElementById('filtro-prod-fin').value;
+    const area = document.getElementById('filtro-prod-area').value;
+    const analista = document.getElementById('filtro-prod-operario').value;
+ 
+    if (!fIni || !fFin) {
+        alert('Por favor, seleccione un rango de fechas.');
+        return;
+    }
+ 
+    const btn = document.querySelector('.prod-btn-search');
+    const btnOriginal = `<i class="fas fa-search"></i> <span>Generar Tabla</span>`;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Generando...`;
+ 
+    fetch('/api/matriz_digitacion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha_inicio: fIni, fecha_fin: fFin, area: area, analista: analista })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) throw new Error(data.error);
+        window.digitacionData = data;
+        dibujarMatrizDigitacion(data.fechas, data.analistas, data.resumen);
+        cerrarPanelAnalista();
+        btn.innerHTML = btnOriginal;
+    })
+    .catch(err => {
+        console.error(err);
+        alert('Error al generar la matriz de digitación.\n\n' + err.message);
+        btn.innerHTML = btnOriginal;
+    });
+}
+ 
+ 
+function dibujarMatrizDigitacion(fechas, analistas, resumen) {
+    const thead = document.querySelector('#tabla-produccion thead tr');
+    const tbody = document.getElementById('body-tabla-produccion');
+ 
+    if (!analistas || analistas.length === 0) {
+        thead.innerHTML = `<th class="col-sticky-left">Analista</th>`;
+        tbody.innerHTML = `<tr><td class="text-center" style="padding:40px; color:#64748b;">
+            <i class="fas fa-inbox" style="font-size:2.5rem; color:#cbd5e1; display:block; margin-bottom:12px;"></i>
+            No hay digitación registrada en este rango.</td></tr>`;
+        return;
+    }
+ 
+    // ----------------------------------------------------------------------
+    // Escala: el corte más alto es el mejor día del rango
+    // ----------------------------------------------------------------------
+    let maximoDia = 0;
+    analistas.forEach(a => Object.values(a.dias).forEach(d => {
+        if (d.fichas > maximoDia) maximoDia = d.fichas;
+    }));
+    const paso = Math.max(maximoDia / ESCALA_DIG.length, 1);
+ 
+    const nivelDe = (fichas) =>
+        Math.min(Math.floor((fichas - 0.0001) / paso), ESCALA_DIG.length - 1);
+ 
+    // ----------------------------------------------------------------------
+    // Cabecera
+    // ----------------------------------------------------------------------
+    const feriados = {
+        "01/01": "Año Nuevo", "01/05": "Día del Trabajo", "07/06": "Día de la Bandera",
+        "29/06": "San Pedro y San Pablo", "23/07": "Día de la FAP",
+        "28/07": "Fiestas Patrias", "29/07": "Fiestas Patrias",
+        "06/08": "Batalla de Junín", "30/08": "Santa Rosa de Lima",
+        "08/10": "Combate de Angamos", "01/11": "Todos los Santos",
+        "08/12": "Inmaculada Concepción", "09/12": "Batalla de Ayacucho", "25/12": "Navidad"
+    };
+ 
+    const fIniValor = document.getElementById('filtro-prod-inicio').value;
+    let anio = fIniValor ? parseInt(fIniValor.split('-')[0]) : new Date().getFullYear();
+    let mesPrevio = fIniValor ? parseInt(fIniValor.split('-')[1]) : 1;
+ 
+    const domingos = {};
+    let partesHead = [`<th class="col-sticky-left" title="Analista que digitó">Analista</th>`];
+ 
+    fechas.forEach(fecha => {
+        const [diaStr, mesStr] = fecha.split('/');
+        const mes = parseInt(mesStr);
+        if (mes < mesPrevio) anio++;
+        mesPrevio = mes;
+ 
+        const esDomingo = new Date(anio, mes - 1, parseInt(diaStr)).getDay() === 0;
+        const feriado = feriados[fecha];
+        domingos[fecha] = esDomingo;
+ 
+        const clase = esDomingo ? 'col-domingo' : (feriado ? 'col-feriado' : '');
+        partesHead.push(`<th class="text-center col-dia ${clase}" title="${feriado ? fecha + ' - ' + feriado : fecha}">${diaStr}</th>`);
+    });
+ 
+    partesHead.push(`
+        <th class="text-center dig-col-total" title="Fichas digitadas en el rango">Fichas</th>
+        <th class="text-center dig-col-total" title="Promedio por día trabajado">Prom.</th>
+        <th class="text-center dig-col-total" title="Fichas por hora efectiva (jornada menos pausas)">F/h</th>
+        <th class="col-sticky-right text-center dig-col-muerto" title="Tiempo muerto acumulado: pausas de más de ${resumen.umbral_pausa} min entre fichas">Muerto</th>`);
+    thead.innerHTML = partesHead.join('');
+ 
+    // ----------------------------------------------------------------------
+    // Filas (se arma todo en memoria y se asigna una sola vez)
+    // ----------------------------------------------------------------------
+    const filas = [];
+ 
+    analistas.forEach((a, index) => {
+        const etiquetaSinEnlazar = a.enlazado ? '' :
+            `<span class="dig-chip-aviso" title="Este nombre no coincide con ningún empleado: no se puede cruzar con asistencia">sin enlazar</span>`;
+ 
+        let fila = `<tr id="fila-analista-${index}" class="fila-operario-matriz">
+            <td class="col-sticky-left font-bold prod-celda-click" title="Ver detalle de ${escaparAtributo(a.nombre)}" onclick="abrirPanelAnalista(${index})">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${a.nombre}${etiquetaSinEnlazar}</span>
+                    <i class="fas fa-chevron-right prod-icon-click"></i>
+                </div>
+            </td>`;
+ 
+        let minutosEfectivos = 0;
+ 
+        fechas.forEach(fecha => {
+            const d = a.dias[fecha];
+            const clase = domingos[fecha] ? 'col-domingo' : '';
+ 
+            if (!d) {
+                fila += `<td class="col-dia text-center ${clase}"><span class="bg-vacio">-</span></td>`;
+                return;
+            }
+ 
+            minutosEfectivos += d.minutos_efectivos || 0;
+ 
+            const nivel = ESCALA_DIG[nivelDe(d.fichas)];
+            const tieneMuerto = d.pausas > 0;
+ 
+            const detalle = `${fecha} · ${d.fichas} fichas`
+                + `\nJornada: ${d.primera} a ${d.ultima}`
+                + (d.fichas_hora ? `\nRitmo: ${d.fichas_hora} fichas/hora` : '')
+                + (tieneMuerto ? `\n⚠ ${d.pausas} pausa(s), ${formatoMinutosDig(d.minutos_perdidos)} sin actividad` : '');
+ 
+            fila += `<td class="col-dia ${clase}">
+                <div class="dig-celda ${tieneMuerto ? 'dig-celda-muerto' : ''}"
+                     style="background:${nivel.fondo}; color:${nivel.texto};"
+                     title="${escaparAtributo(detalle)}">${d.fichas}</div>
+            </td>`;
+        });
+ 
+        const fichasHora = minutosEfectivos >= 30
+            ? (a.total / (minutosEfectivos / 60)).toFixed(1) : '-';
+ 
+        // El tiempo muerto es un estado, no una serie: ámbar reservado + icono
+        const muertoAlto = a.minutos_perdidos >= 120;
+        const claseMuerto = a.minutos_perdidos === 0 ? 'dig-muerto-cero'
+                          : (muertoAlto ? 'dig-muerto-alto' : 'dig-muerto-medio');
+ 
+        fila += `
+            <td class="text-center dig-col-total" style="font-weight:700; color:#1e293b;">${a.total}</td>
+            <td class="text-center dig-col-total">${a.promedio_diario}</td>
+            <td class="text-center dig-col-total">${fichasHora}</td>
+            <td class="col-sticky-right text-center ${claseMuerto}"
+                title="${a.pausas} pausa(s) de más de ${resumen.umbral_pausa} minutos">
+                ${a.minutos_perdidos > 0
+                    ? `<i class="fas fa-hourglass-half" style="font-size:0.6rem; margin-right:3px;"></i>${formatoMinutosDig(a.minutos_perdidos)}`
+                    : '—'}
+            </td>
+        </tr>`;
+ 
+        filas.push(fila);
+    });
+ 
+    tbody.innerHTML = filas.join('');
+ 
+    // ----------------------------------------------------------------------
+    // Pie con los totales del rango
+    // ----------------------------------------------------------------------
+    const tfoot = document.getElementById('foot-tabla-produccion');
+    if (tfoot) {
+        tfoot.innerHTML = `<tr>
+            <td class="col-sticky-left" style="font-weight:700; color:#1e293b;">
+                ${resumen.total_fichas} fichas · ${resumen.analistas} analistas
+            </td>
+            <td colspan="${fechas.length + 4}" style="color:#475569; font-size:0.78rem; padding:6px 10px;">
+                Promedio ${resumen.promedio_diario} fichas por día
+                ${resumen.sin_enlazar > 0
+                    ? ` · <span style="color:#b45309;">${resumen.sin_enlazar} analista(s) sin enlazar a un empleado</span>`
+                    : ''}
+            </td>
+        </tr>`;
+    }
+}
+ 
+ 
+/* ==========================================================================
+   PANEL DEL ANALISTA
+   ========================================================================== */
+function abrirPanelAnalista(index) {
+    const layout = document.getElementById('prod-split-layout');
+    const panel = document.getElementById('prod-side-panel');
+    const a = window.digitacionData?.analistas?.[index];
+    if (!a) return;
+ 
+    document.querySelectorAll('.fila-operario-matriz').forEach(f => f.classList.remove('fila-activa-matriz'));
+    document.getElementById(`fila-analista-${index}`)?.classList.add('fila-activa-matriz');
+ 
+    layout.classList.add('panel-open');
+    panel.innerHTML = `
+        <div class="panel-header" style="padding:15px 20px;">
+            <div class="panel-header-info">
+                <h3 style="font-size:1.1rem; font-weight:700;">
+                    <i class="fas fa-keyboard" style="color:#1d4ed8; margin-right:6px;"></i>${a.nombre}
+                </h3>
+            </div>
+            <button class="panel-close-btn" onclick="cerrarPanelAnalista()">×</button>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#64748b;">
+            <div class="loader2" style="margin-bottom:15px;"></div>
+            <p style="font-size:0.85rem;">Cargando la jornada...</p>
+        </div>`;
+ 
+    const fIni = document.getElementById('filtro-prod-inicio').value;
+    const fFin = document.getElementById('filtro-prod-fin').value;
+ 
+    fetch('/api/detalle_digitacion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            id_analista: a.id,
+            analista: a.nombre,
+            fecha_inicio: fIni,
+            fecha_fin: fFin
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) throw new Error(data.error);
+        window.digitacionDetalle = data.fichas || [];
+        window.digitacionUmbral = data.umbral_pausa || 15;
+ 
+        if (window.digitacionDetalle.length === 0) {
+            panel.innerHTML = `
+                <div class="panel-header" style="padding:15px 20px;">
+                    <div class="panel-header-info"><h3><i class="fas fa-keyboard"></i> ${a.nombre}</h3></div>
+                    <button class="panel-close-btn" onclick="cerrarPanelAnalista()">×</button>
+                </div>
+                <div style="padding:40px; text-align:center; color:#64748b;">
+                    <i class="fas fa-folder-open fa-2x"></i><p>Sin fichas digitadas en el rango.</p>
+                </div>`;
+            return;
+        }
+ 
+        // ------------------------------------------------------------------
+        // Agrupar por día
+        // ------------------------------------------------------------------
+        const porDia = {};
+        window.digitacionDetalle.forEach(f => {
+            (porDia[f.dia] = porDia[f.dia] || []).push(f);
+        });
+ 
+        const dias = Object.keys(porDia).sort((x, y) => {
+            const a1 = x.split('/'), b1 = y.split('/');
+            return new Date(a1[2], a1[1] - 1, a1[0]) - new Date(b1[2], b1[1] - 1, b1[0]);
+        });
+ 
+        window.digitacionPorDia = porDia;
+ 
+        // ------------------------------------------------------------------
+        // Perfil por hora: se calcula UNA vez por día y se guarda.
+        // El gráfico luego solo lee de aquí al cambiar de día.
+        // ------------------------------------------------------------------
+        const perfilPorDia = {};
+        const acumuladoRango = {};
+        let horaMin = 23, horaMax = 0, maximoBarra = 0;
+ 
+        dias.forEach(dia => {
+            const conteo = {};
+            porDia[dia].forEach(f => {
+                if (f.minuto_fin == null) return;
+                const h = Math.floor(f.minuto_fin / 60);
+                conteo[h] = (conteo[h] || 0) + 1;
+                acumuladoRango[h] = (acumuladoRango[h] || 0) + 1;
+                if (h < horaMin) horaMin = h;
+                if (h > horaMax) horaMax = h;
+            });
+            perfilPorDia[dia] = conteo;
+ 
+            Object.values(conteo).forEach(v => { if (v > maximoBarra) maximoBarra = v; });
+        });
+ 
+        // Promedio del rango por hora (sobre los días en que hubo actividad)
+        const promedioRango = {};
+        Object.keys(acumuladoRango).forEach(h => {
+            promedioRango[h] = acumuladoRango[h] / dias.length;
+        });
+ 
+        window.digPerfil = {
+            porDia: perfilPorDia,
+            promedio: promedioRango,
+            horaMin: horaMin <= horaMax ? horaMin : 6,
+            horaMax: horaMin <= horaMax ? horaMax : 18,
+            maximo: Math.max(maximoBarra, 1),
+            dias: dias.length
+        };
+ 
+        // ------------------------------------------------------------------
+        // Lista de días
+        // ------------------------------------------------------------------
+        const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+        let listaDias = '';
+ 
+        dias.forEach((dia, i) => {
+            const fichas = porDia[dia];
+            const partes = dia.split('/');
+            const numeroDia = partes[0];
+            const textoMes = meses[parseInt(partes[1], 10) - 1] || '';
+ 
+            const pausas = fichas.filter(f => f.pausa_previa != null && f.pausa_previa > window.digitacionUmbral);
+            const perdidos = pausas.reduce((s, f) => s + f.pausa_previa, 0);
+            const primera = fichas[0].hora_ini || fichas[0].hora_fin;
+            const ultima = fichas[fichas.length - 1].hora_fin;
+            const rezagos = fichas.map(f => f.dias_rezago).filter(v => v != null);
+            const rezagoMedio = rezagos.length
+                ? (rezagos.reduce((s, v) => s + v, 0) / rezagos.length).toFixed(1) : null;
+ 
+            listaDias += `
+                <div class="row-dia" id="row-dia-dig-${i}" onclick="dibujarTimelineDia('${dia}', ${i})">
+                    <div class="row-dia-fecha">
+                        <strong>${numeroDia}</strong>
+                        <span>${textoMes}</span>
+                    </div>
+                    <div class="dig-stats">
+                        <div title="Fichas digitadas"><i class="fas fa-keyboard"></i> <b>${fichas.length}</b> fichas</div>
+                        <div title="Primera y última ficha"><i class="far fa-clock"></i> ${primera} - ${ultima}</div>
+                        ${perdidos > 0
+                            ? `<div title="${pausas.length} pausa(s) de más de ${window.digitacionUmbral} min" style="color:#b45309; font-weight:700;">
+                                   <i class="fas fa-hourglass-half"></i> ${formatoMinutosDig(perdidos)} muerto</div>`
+                            : `<div style="color:#047857;"><i class="fas fa-circle-check"></i> sin pausas</div>`}
+                        ${rezagoMedio != null
+                            ? `<div title="Días promedio entre la ejecución en campo y la digitación"><i class="fas fa-clock-rotate-left"></i> ${rezagoMedio} d de rezago</div>`
+                            : ''}
+                    </div>
+                    <div class="row-dia-arrow"><i class="fas fa-chevron-right"></i></div>
+                </div>`;
+        });
+ 
+        panel.innerHTML = `
+            <div class="panel-header" style="padding:15px 20px;">
+                <div class="panel-header-info">
+                    <h3 style="font-size:1.1rem; font-weight:700;">
+                        <i class="fas fa-keyboard" style="color:#1d4ed8; margin-right:6px;"></i>${a.nombre}
+                    </h3>
+                    <div style="font-size:0.72rem; color:#64748b; margin-top:2px;">
+                        ${a.total} fichas · ${a.dias_activos} días · promedio ${a.promedio_diario}/día
+                    </div>
+                </div>
+                <button class="panel-close-btn" onclick="cerrarPanelAnalista()">×</button>
+            </div>
+ 
+            <!-- El gráfico se repinta al cambiar de día -->
+            <div class="dig-perfil" id="dig-perfil-host"></div>
+ 
+            <div class="panel-content-wrapper">
+                <div class="panel-lista-dias">${listaDias}</div>
+                <div class="panel-mapa-view" id="panel-timeline-view"></div>
+            </div>`;
+ 
+        dibujarTimelineDia(dias[0], 0);
+    })
+    .catch(err => {
+        console.error('Error en el detalle de digitación:', err);
+        panel.innerHTML = `
+            <div class="panel-header">
+                <button class="panel-close-btn" onclick="cerrarPanelAnalista()">×</button>
+            </div>
+            <div style="padding:20px; text-align:center; color:#e74c3c;">
+                No se pudo cargar el detalle. ${err.message}
+            </div>`;
+    });
+}
+
+function dibujarPerfilHoras(dia) {
+    const host = document.getElementById('dig-perfil-host');
+    const perfil = window.digPerfil;
+    if (!host || !perfil) return;
+ 
+    const delDia = perfil.porDia[dia] || {};
+    const totalDia = Object.values(delDia).reduce((s, v) => s + v, 0);
+ 
+    let barras = '';
+    for (let h = perfil.horaMin; h <= perfil.horaMax; h++) {
+        const valorDia = delDia[h] || 0;
+        const valorProm = perfil.promedio[h] || 0;
+ 
+        const altoDia = Math.round((valorDia / perfil.maximo) * 100);
+        const altoProm = Math.round((valorProm / perfil.maximo) * 100);
+ 
+        const detalle = `${String(h).padStart(2, '0')}:00 — ${valorDia} ficha(s) este día`
+            + `\nPromedio del rango a esa hora: ${valorProm.toFixed(1)}`;
+ 
+        barras += `
+            <div class="dig-barra-hora" title="${detalle.replace(/"/g, '&quot;').replace(/\n/g, '&#10;')}">
+                <div class="dig-barra-pila">
+                    <div class="dig-barra-prom" style="height:${Math.max(altoProm, valorProm > 0 ? 3 : 0)}%;"></div>
+                    <div class="dig-barra-relleno" style="height:${Math.max(altoDia, valorDia > 0 ? 6 : 0)}%; background:${valorDia > 0 ? '#1d4ed8' : 'transparent'};"></div>
+                </div>
+                <span class="dig-barra-etiqueta">${h}</span>
+            </div>`;
+    }
+ 
+    host.innerHTML = `
+        <div class="dig-perfil-cabecera">
+            <div class="dig-perfil-titulo">Fichas por hora · ${dia}</div>
+            <div class="dig-perfil-leyenda">
+                <span><i class="dig-punto" style="background:#1d4ed8;"></i> Este día (${totalDia})</span>
+                <span><i class="dig-punto" style="background:#e2e8f0;"></i> Promedio del rango</span>
+            </div>
+        </div>
+        <div class="dig-perfil-barras">${barras}</div>`;
+}
+ 
+function cerrarPanelAnalista() {
+    document.getElementById('prod-split-layout')?.classList.remove('panel-open');
+    document.querySelectorAll('.fila-operario-matriz').forEach(f => f.classList.remove('fila-activa-matriz'));
+}
+ 
+ 
+/* --------------------------------------------------------------------------
+   LÍNEA DE TIEMPO DE UN DÍA
+   Cada ficha es un bloque sobre el eje de horas; los huecos por encima del
+   umbral se marcan en rojo con los minutos.
+   -------------------------------------------------------------------------- */
+function dibujarTimelineDia(dia, indexFila) {
+    const contenedor = document.getElementById('panel-timeline-view');
+    if (!contenedor) return;
+ 
+    document.querySelectorAll('.row-dia').forEach(el => el.classList.remove('activo'));
+    document.getElementById(`row-dia-dig-${indexFila}`)?.classList.add('activo');
+ 
+    // 👇 El gráfico de horas se actualiza con el día elegido
+    dibujarPerfilHoras(dia);
+ 
+    const fichas = (window.digitacionPorDia?.[dia] || []).filter(f => f.minuto_ini != null);
+    const umbral = window.digitacionUmbral || 15;
+ 
+    if (fichas.length === 0) {
+        contenedor.innerHTML = `<div style="padding:30px; text-align:center; color:#64748b;">
+            Este día no tiene horas registradas.</div>`;
+        return;
+    }
+ 
+    const minutoMin = Math.min(...fichas.map(f => f.minuto_ini));
+    const minutoMax = Math.max(...fichas.map(f => f.minuto_fin ?? f.minuto_ini));
+    const horaDesde = Math.floor(minutoMin / 60);
+    const horaHasta = Math.min(Math.ceil(minutoMax / 60), 24);
+    const inicioEje = horaDesde * 60;
+    const anchoEje = Math.max((horaHasta - horaDesde) * 60, 60);
+ 
+    const posicion = (minuto) => ((minuto - inicioEje) / anchoEje) * 100;
+ 
+    let reglas = '';
+    for (let h = horaDesde; h <= horaHasta; h++) {
+        reglas += `<div class="dig-tl-hora" style="left:${posicion(h * 60)}%;">
+                <span>${String(h).padStart(2, '0')}</span>
+            </div>`;
+    }
+ 
+    let bloques = '';
+    let pausasHtml = '';
+    let totalPerdido = 0;
+    let conteoPausas = 0;
+ 
+    fichas.forEach((f, i) => {
+        const fin = f.minuto_fin ?? (f.minuto_ini + 1);
+        const izq = posicion(f.minuto_ini);
+        const ancho = Math.max(posicion(fin) - izq, 0.4);
+ 
+        const detalle = `${f.hora_ini} - ${f.hora_fin} · ${f.suministro}`
+            + `\n${f.actividad}`
+            + (f.minutos_ficha != null ? `\nDuración: ${f.minutos_ficha} min` : '')
+            + (f.dias_rezago != null ? `\nEjecutado en campo el ${f.fecha_campo} (${f.dias_rezago} d antes)` : '');
+ 
+        bloques += `<div class="dig-tl-bloque" style="left:${izq}%; width:${ancho}%;"
+                         title="${escaparAtributo(detalle)}"></div>`;
+ 
+        if (f.pausa_previa != null && f.pausa_previa > umbral && i > 0) {
+            const anterior = fichas[i - 1];
+            const finAnterior = anterior.minuto_fin ?? anterior.minuto_ini;
+            const izqPausa = posicion(finAnterior);
+            const anchoPausa = Math.max(posicion(f.minuto_ini) - izqPausa, 0.3);
+ 
+            totalPerdido += f.pausa_previa;
+            conteoPausas++;
+ 
+            pausasHtml += `<div class="dig-tl-pausa" style="left:${izqPausa}%; width:${anchoPausa}%;"
+                                title="${anterior.hora_fin} a ${f.hora_ini} · ${f.pausa_previa} min sin digitar">
+                    ${anchoPausa > 4 ? `<span>${f.pausa_previa}m</span>` : ''}
+                </div>`;
+        }
+    });
+ 
+    const primera = fichas[0].hora_ini;
+    const ultima = fichas[fichas.length - 1].hora_fin;
+    const jornada = minutoMax - minutoMin;
+    const efectivo = Math.max(jornada - totalPerdido, 0);
+    const ritmo = efectivo >= 15 ? (fichas.length / (efectivo / 60)).toFixed(1) : '-';
+ 
+    contenedor.innerHTML = `
+        <div class="dig-tl-cabecera">
+            <div style="font-weight:600; font-size:0.9rem; color:#334155; white-space:nowrap;">
+                <i class="fas fa-timeline" style="color:#1d4ed8; margin-right:4px;"></i> Jornada del ${dia}
+            </div>
+            <div class="dig-tl-resumen">
+                <span title="Primera y última ficha del día"><i class="far fa-clock"></i> ${primera} - ${ultima}</span>
+                <span title="Fichas digitadas"><i class="fas fa-keyboard"></i> ${fichas.length}</span>
+                <span title="Fichas por hora efectiva"><i class="fas fa-bolt"></i> ${ritmo}/h</span>
+                ${conteoPausas > 0
+                    ? `<span class="dig-tl-alerta" title="${conteoPausas} pausa(s) de más de ${umbral} minutos">
+                           <i class="fas fa-hourglass-half"></i> ${conteoPausas} pausas · ${formatoMinutosDig(totalPerdido)}</span>`
+                    : `<span class="dig-tl-ok"><i class="fas fa-circle-check"></i> sin pausas</span>`}
+            </div>
+        </div>
+ 
+        <div class="dig-tl-lienzo">
+            <div class="dig-tl-pista">
+                ${reglas}
+                ${pausasHtml}
+                ${bloques}
+            </div>
+            <div class="dig-tl-leyenda">
+                <span><i class="dig-punto" style="background:#1d4ed8;"></i> Ficha digitada</span>
+                <span><i class="dig-punto" style="background:#fca5a5; border:1px solid #dc2626;"></i> Pausa mayor a ${umbral} min</span>
+            </div>
+        </div>
+ 
+        <div class="dig-tl-tabla-wrap">
+            <table class="dig-tl-tabla">
+                <thead>
+                    <tr><th>#</th><th>Hora</th><th>Suministro</th><th>Actividad</th><th>Min</th><th>Pausa</th></tr>
+                </thead>
+                <tbody>
+                    ${fichas.map((f, i) => `
+                        <tr class="${f.pausa_previa != null && f.pausa_previa > umbral ? 'dig-fila-pausa' : ''}">
+                            <td>${i + 1}</td>
+                            <td>${f.hora_ini} - ${f.hora_fin}</td>
+                            <td>${f.suministro}</td>
+                            <td title="${escaparAtributo(f.actividad)}">${(f.actividad || '').substring(0, 28)}</td>
+                            <td>${f.minutos_ficha != null ? f.minutos_ficha : '-'}</td>
+                            <td>${f.pausa_previa != null && f.pausa_previa > umbral
+                                    ? `<b style="color:#b91c1c;">${f.pausa_previa} min</b>`
+                                    : (f.pausa_previa != null ? `${f.pausa_previa} min` : '-')}</td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
+}
+ 
+ 
+/* ==========================================================================
+   AUXILIARES
+   ========================================================================== */
+ 
+function formatoMinutosDig(min) {
+    if (!min || min <= 0) return '0m';
+    if (min < 60) return `${min}m`;
+    const h = Math.floor(min / 60), m = min % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+ 
+/** Evita que un apóstrofo o una comilla rompa un atributo HTML. */
+function escaparAtributo(texto) {
+    return String(texto || '')
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\n/g, '&#10;');
 }
 
 //////////////// SISTEMA DE ALERTAS //////////////////
