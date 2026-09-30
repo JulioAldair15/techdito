@@ -708,9 +708,9 @@ class Carta(db.Model):
 
 class Produccion(db.Model):
     __tablename__ = 'produccion'
-    
+ 
     id_produccion = db.Column(db.Integer, primary_key=True)
-    
+ 
     # Datos de ubicación y suministro
     suministro = db.Column(db.String(20), nullable=False)
     ciclo = db.Column(db.String(10), nullable=True)
@@ -718,27 +718,35 @@ class Produccion(db.Model):
     urba = db.Column(db.String(100), nullable=True)
     calle = db.Column(db.String(150), nullable=True)
     nromuni = db.Column(db.String(20), nullable=True)
-    
+ 
     # Manejo híbrido de empleados (Texto crudo del CSV + Relación real)
     operario_csv = db.Column(db.String(150), nullable=False)
     id_empleado = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado', ondelete='SET NULL'), nullable=True)
-    
+ 
     # Tiempos de ejecución
     fecha_inicio = db.Column(db.Date, nullable=True)
     hora_ini = db.Column(db.Time, nullable=True)
     fecha_fin = db.Column(db.Date, nullable=True)
     hora_fin = db.Column(db.Time, nullable=True)
-    
+ 
     # Detalles de la tarea
     actividad = db.Column(db.String(50), nullable=True)
     cod_perd = db.Column(db.String(20), nullable=True)
-    
+ 
     # Georreferenciación (Numeric es el equivalente a DECIMAL en SQLAlchemy)
     este = db.Column(db.Numeric(12, 4), nullable=True)
     norte = db.Column(db.Numeric(12, 4), nullable=True)
     latitud = db.Column(db.Numeric(10, 8), nullable=True)
     longitud = db.Column(db.Numeric(11, 8), nullable=True)
-
+ 
+    # ------------------------------------------------------------------
+    # DIGITACIÓN
+    # ------------------------------------------------------------------
+    fecha_ini_dig = db.Column(db.DateTime, nullable=True)   # 👈 era db.Date
+    fecha_fin_dig = db.Column(db.DateTime, nullable=True)   # 👈 era db.Date
+    analista      = db.Column(db.String(150), nullable=True)
+    id_analista   = db.Column(db.Integer, nullable=True)    # 👈 NUEVO
+ 
     def __repr__(self):
         return f'<Produccion {self.suministro} - {self.actividad}>'
 
@@ -793,3 +801,23 @@ class BitacoraAlmacen(db.Model):
         db.Index('idx_bit_entidad_reg', 'entidad', 'id_registro'),
     )
 
+class Digitacion(db.Model):
+
+    __tablename__ = 'digitacion'
+ 
+    id_digitacion = db.Column(db.Integer, primary_key=True)
+ 
+    origen      = db.Column(db.String(30), nullable=False, default='CATASTRO')
+    analista    = db.Column(db.String(150), nullable=False)
+    id_analista = db.Column(db.Integer, nullable=True)
+    fecha_dig   = db.Column(db.DateTime, nullable=False)
+    suministro  = db.Column(db.String(30), nullable=False, default='')
+    cod_catastral = db.Column(db.String(30), nullable=True)
+ 
+    id_produccion = db.Column(db.Integer, nullable=True)
+ 
+    fecha_carga   = db.Column(db.DateTime, nullable=True)
+    usuario_carga = db.Column(db.String(100), nullable=True)
+ 
+    def __repr__(self):
+        return f'<Digitacion {self.origen} {self.analista} {self.fecha_dig}>'
