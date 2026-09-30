@@ -10318,7 +10318,48 @@ def resolver_coordenadas(lat_txt, lon_txt, este, norte, ref=""):
             return lat_utm, lon_utm
  
     return lat, lon
+
+def parse_fecha_hora(valor):
+    """'15/09/2026 08:47' -> datetime. Si no trae hora, queda a las 00:00."""
+    if valor is None or str(valor).strip() in ("", "-"):
+        return None
  
+    partes = str(valor).strip().replace("T", " ").split()
+ 
+    fecha = parse_fecha(partes[0])
+    if not fecha:
+        return None
+ 
+    hora = parse_hora(partes[1]) if len(partes) > 1 else None
+    return datetime.combine(fecha, hora or time(0, 0))
+
+def buscar_empleado_en_memoria(texto_nombre, memoria_empleados):
+    """
+    Devuelve el id_empleado cuyo nombre comparte al menos dos palabras con
+    el texto. Si hay empate entre varios, devuelve None (no adivina).
+ 
+    Es exactamente el criterio que ya usabas, solo extraído del bucle.
+    """
+    if not texto_nombre:
+        return None
+ 
+    palabras_csv = set(str(texto_nombre).upper().replace(',', ' ').split())
+    if len(palabras_csv) < 2:
+        return None
+ 
+    mejor_coincidencia = 0
+    candidatos = []
+ 
+    for emp in memoria_empleados:
+        coincidencias = len(palabras_csv & emp['palabras'])
+        if coincidencias >= 2:
+            if coincidencias > mejor_coincidencia:
+                mejor_coincidencia = coincidencias
+                candidatos = [emp['id']]
+            elif coincidencias == mejor_coincidencia:
+                candidatos.append(emp['id'])
+ 
+    return candidatos[0] if len(candidatos) == 1 else None
  
 # ---------------------------------------------------------------------------
 # RUTA
@@ -10327,6 +10368,12 @@ def resolver_coordenadas(lat_txt, lon_txt, este, norte, ref=""):
 def cargar_produccion_csv():
     try:
         datos_csv = request.get_json()
+ 
+        # El JS envía por lotes como {"filas": [...]}. Se aceptan las dos
+        # formas para no romper nada.
+        if isinstance(datos_csv, dict):
+            datos_csv = datos_csv.get('filas') or []
+ 
         if not datos_csv:
             return jsonify({"error": "No se recibieron datos"}), 400
  
@@ -10334,23 +10381,107 @@ def cargar_produccion_csv():
             v = fila.get(clave)
             return "" if v is None else str(v).strip()
  
-        # Códigos ya existentes en BD (para omitir duplicados)
-        codigos_entrantes = [txt(f, "cod_perd") for f in datos_csv if txt(f, "cod_perd")]
-        set_codigos_existentes = set()
-        if codigos_entrantes:
-            resultados = (db.session.query(Produccion.cod_perd)
-                          .filter(Produccion.cod_perd.in_(codigos_entrantes)).all())
-            set_codigos_existentes = {res[0] for res in resultados}
+        # Nombre de la llave primaria, para el UPDATE masivo
+        pk = Produccion.__mapper__.primary_key[0].name
  
-        # Memoria de empleados para asociar operario_csv
+        # ------------------------------------------------------------------
+        # Registros que ya existen, buscados por código.
+        # Se trae el id y los campos de digitación para poder completarlos,
+        # y se guardan como diccionario para no depender de posiciones.
+        # ------------------------------------------------------------------
+        codigos_entrantes = [txt(f, "cod_perd") for f in datos_csv if txt(f, "cod_perd")]
+ 
+        existentes_por_codigo = {}
+        if codigos_entrantes:
+            resultados = (db.session.query(
+                              getattr(Produccion, pk),
+                              Produccion.cod_perd,
+                              Produccion.fecha_ini_dig,
+                              Produccion.fecha_fin_dig,
+                              Produccion.analista,
+                              Produccion.id_analista)
+                          .filter(Produccion.cod_perd.in_(codigos_entrantes)).all())
+            for res in resultados:
+                existentes_por_codigo[res[1]] = {
+                    'id':            res[0],
+                    'fecha_ini_dig': res[2],
+                    'fecha_fin_dig': res[3],
+                    'analista':      res[4],
+                    'id_analista':   res[5],
+                }
+ 
+        # ------------------------------------------------------------------
+        # Filas SIN cod_perd: se reconocen por suministro + actividad +
+        # fecha + hora. Sin esto, resubir un mes las duplicaría todas.
+        #
+        # Solo se consulta si el archivo realmente trae filas sin código.
+        # ------------------------------------------------------------------
+        hay_filas_sin_codigo = any(not txt(f, "cod_perd") for f in datos_csv)
+ 
+        existentes_por_clave = {}
+        claves_repetidas = set()
+ 
+        if hay_filas_sin_codigo:
+            fechas_lote = [parse_fecha(f.get("fecha_fin")) for f in datos_csv]
+            fechas_lote = [f for f in fechas_lote if f]
+ 
+            if fechas_lote:
+                filas_rango = (db.session.query(
+                                   getattr(Produccion, pk),
+                                   Produccion.suministro,
+                                   Produccion.actividad,
+                                   Produccion.fecha_fin,
+                                   Produccion.hora_fin,
+                                   Produccion.fecha_ini_dig,
+                                   Produccion.fecha_fin_dig,
+                                   Produccion.analista,
+                                   Produccion.id_analista)
+                               .filter(Produccion.fecha_fin.between(min(fechas_lote),
+                                                                    max(fechas_lote))).all())
+                for res in filas_rango:
+                    clave = (str(res[1] or "").upper(), str(res[2] or "").upper(),
+                             res[3], res[4])
+                    if clave in existentes_por_clave:
+                        claves_repetidas.add(clave)
+                    else:
+                        existentes_por_clave[clave] = {
+                            'id':            res[0],
+                            'fecha_ini_dig': res[5],
+                            'fecha_fin_dig': res[6],
+                            'analista':      res[7],
+                            'id_analista':   res[8],
+                        }
+ 
+        # ------------------------------------------------------------------
+        # Memoria de empleados (igual que tenías)
+        # ------------------------------------------------------------------
         memoria_empleados = []
         for emp in Empleado.query.all():
             nombre_completo = f"{emp.nombres or ''} {emp.apellidos or ''}".upper().replace(',', ' ')
             memoria_empleados.append({'id': emp.id_empleado, 'palabras': set(nombre_completo.split())})
  
-        registros_omitidos = 0
+        # Para no repetir el emparejamiento del mismo nombre en cada fila
+        cache_nombres = {}
+ 
+        def id_por_nombre(nombre):
+            if not nombre:
+                return None
+            clave_cache = nombre.strip().upper()
+            if clave_cache not in cache_nombres:
+                cache_nombres[clave_cache] = buscar_empleado_en_memoria(nombre, memoria_empleados)
+            return cache_nombres[clave_cache]
+ 
         coordenadas_corregidas = 0
         nuevos_registros_a_guardar = []
+ 
+        actualizaciones = []
+        completados = 0
+        ya_al_dia = 0
+        no_identificadas = 0
+        duplicados_archivo = 0
+ 
+        # Códigos ya procesados en este mismo archivo (corrige el error A)
+        codigos_de_este_lote = set()
  
         for fila in datos_csv:
             suministro = txt(fila, "suministro")
@@ -10358,31 +10489,80 @@ def cargar_produccion_csv():
                 continue
  
             cod_perd = txt(fila, "cod_perd")
-            if cod_perd and cod_perd in set_codigos_existentes:
-                registros_omitidos += 1
-                continue
+ 
+            # Los tres campos de digitación (con hora)
+            fecha_ini_dig = parse_fecha_hora(fila.get("fecha_ini_dig"))
+            fecha_fin_dig = parse_fecha_hora(fila.get("fecha_fin_dig"))
+            analista = txt(fila, "analista")
+ 
+            fecha_fin_val = parse_fecha(fila.get("fecha_fin"))
+            hora_fin_val = parse_hora(fila.get("hora_fin"))
+ 
+            # --------------------------------------------------------------
+            # ¿Este registro ya está en la base?
+            # --------------------------------------------------------------
+            existente = None
             if cod_perd:
-                set_codigos_existentes.add(cod_perd)
+                existente = existentes_por_codigo.get(cod_perd)
+            else:
+                clave = (suministro.upper(), txt(fila, "actividad").upper(),
+                         fecha_fin_val, hora_fin_val)
+                if clave in claves_repetidas:
+                    # La misma combinación aparece más de una vez en la base:
+                    # no se puede saber a cuál corresponde, se deja quieta.
+                    no_identificadas += 1
+                    continue
+                existente = existentes_por_clave.get(clave)
  
-            # Empleado
+            # --------------------------------------------------------------
+            # YA EXISTE -> se completan los campos que están vacíos
+            # --------------------------------------------------------------
+            if existente:
+                cambios = {}
+ 
+                if fecha_ini_dig and existente['fecha_ini_dig'] is None:
+                    cambios['fecha_ini_dig'] = fecha_ini_dig
+ 
+                if fecha_fin_dig and existente['fecha_fin_dig'] is None:
+                    cambios['fecha_fin_dig'] = fecha_fin_dig
+ 
+                if analista and existente['analista'] in (None, ''):
+                    cambios['analista'] = analista
+                    id_a = id_por_nombre(analista)
+                    if id_a:
+                        cambios['id_analista'] = id_a
+ 
+                # El nombre ya estaba guardado pero sin enlazar: pasa con
+                # todo lo que se subió antes de crear la columna id_analista.
+                elif existente['analista'] and existente['id_analista'] is None:
+                    id_a = id_por_nombre(existente['analista'])
+                    if id_a:
+                        cambios['id_analista'] = id_a
+ 
+                if cambios:
+                    cambios[pk] = existente['id']
+                    actualizaciones.append(cambios)
+                    completados += 1
+                else:
+                    ya_al_dia += 1
+                continue
+ 
+            # --------------------------------------------------------------
+            # El mismo código repetido dentro del propio archivo
+            # --------------------------------------------------------------
+            if cod_perd:
+                if cod_perd in codigos_de_este_lote:
+                    duplicados_archivo += 1
+                    continue
+                codigos_de_este_lote.add(cod_perd)
+ 
+            # --------------------------------------------------------------
+            # NO EXISTE -> se inserta
+            # --------------------------------------------------------------
             operario_csv = txt(fila, "operario_csv").upper()
-            empleado_id = None
-            if operario_csv:
-                palabras_csv = set(operario_csv.replace(',', ' ').split())
-                mejor_coincidencia = 0
-                candidatos = []
-                for emp in memoria_empleados:
-                    coincidencias = len(palabras_csv & emp['palabras'])
-                    if coincidencias >= 2:
-                        if coincidencias > mejor_coincidencia:
-                            mejor_coincidencia = coincidencias
-                            candidatos = [emp['id']]
-                        elif coincidencias == mejor_coincidencia:
-                            candidatos.append(emp['id'])
-                if len(candidatos) == 1:
-                    empleado_id = candidatos[0]
+            empleado_id = id_por_nombre(operario_csv)
+            id_analista_val = id_por_nombre(analista)
  
-            # Coordenadas
             este = parse_decimal(fila.get("este"))
             norte = parse_decimal(fila.get("norte"))
             lat_directa = reparar_coordenada(fila.get("latitud"), 'latitud')
@@ -10406,8 +10586,8 @@ def cargar_produccion_csv():
  
                 fecha_inicio=parse_fecha(fila.get("fecha_inicio")),
                 hora_ini=parse_hora(fila.get("hora_ini")),
-                fecha_fin=parse_fecha(fila.get("fecha_fin")),
-                hora_fin=parse_hora(fila.get("hora_fin")),
+                fecha_fin=fecha_fin_val,
+                hora_fin=hora_fin_val,
  
                 actividad=txt(fila, "actividad"),
                 cod_perd=cod_perd,
@@ -10416,19 +10596,48 @@ def cargar_produccion_csv():
                 norte=norte,
                 latitud=latitud,
                 longitud=longitud,
+ 
+                fecha_ini_dig=fecha_ini_dig,
+                fecha_fin_dig=fecha_fin_dig,
+                analista=analista or None,
+                id_analista=id_analista_val,
             ))
  
+        # ------------------------------------------------------------------
+        # Grabar
+        # ------------------------------------------------------------------
         if nuevos_registros_a_guardar:
             db.session.bulk_save_objects(nuevos_registros_a_guardar)
+        if actualizaciones:
+            db.session.bulk_update_mappings(Produccion, actualizaciones)
+        if nuevos_registros_a_guardar or actualizaciones:
             db.session.commit()
  
+        # ------------------------------------------------------------------
+        # Mensaje
+        # ------------------------------------------------------------------
         mensaje_final = f"Se guardaron {len(nuevos_registros_a_guardar)} registros."
-        if registros_omitidos:
-            mensaje_final += f" Se omitieron {registros_omitidos} duplicados."
+        if completados:
+            mensaje_final += f" Se completaron {completados} registros existentes con los datos de digitación."
+        if ya_al_dia:
+            mensaje_final += f" {ya_al_dia} ya estaban al día."
+        if duplicados_archivo:
+            mensaje_final += f" {duplicados_archivo} filas venían repetidas en el archivo."
+        if no_identificadas:
+            mensaje_final += f" {no_identificadas} filas no se pudieron identificar."
         if coordenadas_corregidas:
             mensaje_final += f" Se corrigieron {coordenadas_corregidas} coordenadas usando Este/Norte."
  
-        return jsonify({"status": "success", "mensaje": mensaje_final}), 200
+        return jsonify({
+            "status": "success",
+            "mensaje": mensaje_final,
+            # Contadores para que el JS sume los lotes
+            "insertados": len(nuevos_registros_a_guardar),
+            "actualizados": completados,
+            "sin_cambios": ya_al_dia + duplicados_archivo,
+            "ambiguas": no_identificadas,
+            "duplicados_archivo": duplicados_archivo,
+        }), 200
  
     except Exception as e:
         db.session.rollback()
@@ -10455,6 +10664,414 @@ def obtener_areas():
     except Exception as e:
         print(f"Error obteniendo áreas: {e}")
         return jsonify({"error": "Error interno"}), 500
+
+
+# Pausa a partir de la cual se considera tiempo muerto entre dos fichas
+UMBRAL_PAUSA_DIG_MIN = 15
+ 
+# Las pausas que caen dentro del refrigerio no se cuentan como tiempo
+# muerto. Pon None para contarlas todas.
+REFRIGERIO_DIG = (13, 14)      # de 13:00 a 14:00
+ 
+# Rango máximo consultable de una vez (para no traer medio año a memoria)
+MAX_DIAS_RANGO_DIG = 92
+ 
+ 
+@app.route('/api/matriz_digitacion', methods=['POST'])
+def api_matriz_digitacion():
+    """
+    Producción de DIGITACIÓN: una fila por analista, una columna por día,
+    con fichas digitadas, jornada y tiempos muertos.
+ 
+    Cuerpo: { fecha_inicio, fecha_fin, area, analista }
+    """
+    try:
+        datos = request.get_json() or {}
+ 
+        # Los <input type="date"> mandan yyyy-mm-dd
+        try:
+            fecha_inicio = datetime.strptime(str(datos.get('fecha_inicio')), "%Y-%m-%d")
+            fecha_fin = datetime.strptime(str(datos.get('fecha_fin')), "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return jsonify({"error": "Seleccione un rango de fechas válido."}), 400
+ 
+        if fecha_fin < fecha_inicio:
+            return jsonify({"error": "La fecha de fin es anterior a la de inicio."}), 400
+ 
+        dias_rango = (fecha_fin.date() - fecha_inicio.date()).days + 1
+        if dias_rango > MAX_DIAS_RANGO_DIG:
+            return jsonify({"error": f"El rango es de {dias_rango} días. "
+                                     f"Consulte hasta {MAX_DIAS_RANGO_DIG} días a la vez."}), 400
+ 
+        area_filtro = (datos.get('area') or 'TODAS').strip()
+        analista_filtro = (datos.get('analista') or 'TODOS').strip()
+        origen_filtro = (datos.get('origen') or 'TODOS').strip().upper()
+ 
+        # Hasta el final del último día, sin usar el nombre time()
+        limite_superior = datetime.combine(fecha_fin.date(), datetime.max.time())
+ 
+        # ------------------------------------------------------------------
+        # Una sola consulta: se traen las marcas de tiempo y se calcula todo
+        # en Python, que es lo que permite detectar las pausas entre fichas
+        # consecutivas sin funciones de ventana.
+        # ------------------------------------------------------------------
+        consulta = (db.session.query(
+                        Produccion.id_analista,
+                        Produccion.analista,
+                        Produccion.fecha_ini_dig,
+                        Produccion.fecha_fin_dig,
+                        Produccion.actividad)
+                    .filter(Produccion.fecha_fin_dig.isnot(None))
+                    .filter(Produccion.fecha_fin_dig >= fecha_inicio)
+                    .filter(Produccion.fecha_fin_dig <= limite_superior))
+ 
+        if area_filtro and area_filtro != 'TODAS':
+            consulta = (consulta.join(Empleado, Empleado.id_empleado == Produccion.id_analista)
+                                .filter(Empleado.area == area_filtro))
+ 
+        if analista_filtro and analista_filtro != 'TODOS':
+            consulta = consulta.filter(Produccion.analista == analista_filtro)
+ 
+        filas = consulta.order_by(Produccion.fecha_fin_dig.asc()).all()
+        
+
+        if origen_filtro in ('TODOS', 'CATASTRO'):
+             consulta_otros = (db.session.query(
+                                   Digitacion.id_analista,
+                                   Digitacion.analista,
+                                   Digitacion.fecha_dig,
+                                   Digitacion.origen)
+                               .filter(Digitacion.fecha_dig >= fecha_inicio)
+                               .filter(Digitacion.fecha_dig <= limite_superior))
+
+             if origen_filtro != 'TODOS':
+                 consulta_otros = consulta_otros.filter(Digitacion.origen == origen_filtro)
+
+             if area_filtro and area_filtro != 'TODAS':
+                 consulta_otros = (consulta_otros
+                                   .join(Empleado, Empleado.id_empleado == Digitacion.id_analista)
+                                   .filter(Empleado.area == area_filtro))
+
+             if analista_filtro and analista_filtro != 'TODOS':
+                 consulta_otros = consulta_otros.filter(Digitacion.analista == analista_filtro)
+
+             filas = list(filas) + [
+                 (r[0], r[1], r[2], r[2], f"{r[3]} (digitación)")
+                 for r in consulta_otros.all()
+             ]
+ 
+        # ------------------------------------------------------------------
+        # Agrupar por persona y día
+        # ------------------------------------------------------------------
+        personas = {}
+        por_hora_global = {}
+ 
+        for id_an, nombre_an, ini_dig, fin_dig, actividad in filas:
+            clave = ('E', id_an) if id_an else ('N', (nombre_an or 'SIN ANALISTA').upper())
+ 
+            persona = personas.setdefault(clave, {
+                'id': id_an,
+                'nombre': (nombre_an or 'SIN ANALISTA').strip(),
+                'enlazado': bool(id_an),
+                'dias': {},
+            })
+ 
+            etiqueta_dia = fin_dig.strftime('%d/%m')
+            persona['dias'].setdefault(etiqueta_dia, []).append({
+                'ini': ini_dig,
+                'fin': fin_dig,
+                'actividad': actividad or '',
+            })
+ 
+            por_hora_global[fin_dig.hour] = por_hora_global.get(fin_dig.hour, 0) + 1
+ 
+        # ------------------------------------------------------------------
+        # Métricas por persona y día
+        # ------------------------------------------------------------------
+        def _en_refrigerio(momento):
+            if not REFRIGERIO_DIG:
+                return False
+            return REFRIGERIO_DIG[0] <= momento.hour < REFRIGERIO_DIG[1]
+ 
+        analistas = []
+        total_fichas_global = 0
+ 
+        for persona in personas.values():
+            dias_calculados = {}
+            total_persona = 0
+            minutos_perdidos_persona = 0
+            pausas_persona = 0
+ 
+            for etiqueta_dia, marcas in persona['dias'].items():
+                marcas.sort(key=lambda m: m['fin'])
+ 
+                fichas = len(marcas)
+                primera = marcas[0]['ini'] or marcas[0]['fin']
+                ultima = marcas[-1]['fin']
+                minutos_jornada = max(int((ultima - primera).total_seconds() // 60), 0)
+ 
+                pausas = []
+                for i in range(len(marcas) - 1):
+                    fin_actual = marcas[i]['fin']
+                    ini_siguiente = marcas[i + 1]['ini'] or marcas[i + 1]['fin']
+                    minutos = int((ini_siguiente - fin_actual).total_seconds() // 60)
+ 
+                    if minutos > UMBRAL_PAUSA_DIG_MIN and not _en_refrigerio(fin_actual):
+                        pausas.append({
+                            'desde': fin_actual.strftime('%H:%M'),
+                            'hasta': ini_siguiente.strftime('%H:%M'),
+                            'minutos': minutos,
+                            'indice': i + 1,
+                        })
+ 
+                minutos_perdidos = sum(p['minutos'] for p in pausas)
+                minutos_efectivos = max(minutos_jornada - minutos_perdidos, 0)
+ 
+                dias_calculados[etiqueta_dia] = {
+                    'fichas': fichas,
+                    'primera': primera.strftime('%H:%M'),
+                    'ultima': ultima.strftime('%H:%M'),
+                    'minutos_jornada': minutos_jornada,
+                    'minutos_efectivos': minutos_efectivos,
+                    'pausas': len(pausas),
+                    'minutos_perdidos': minutos_perdidos,
+                    'fichas_hora': round(fichas / (minutos_efectivos / 60), 1) if minutos_efectivos >= 15 else None,
+                }
+ 
+                total_persona += fichas
+                minutos_perdidos_persona += minutos_perdidos
+                pausas_persona += len(pausas)
+ 
+            dias_activos = len(dias_calculados)
+            analistas.append({
+                'id': persona['id'],
+                'nombre': persona['nombre'],
+                'enlazado': persona['enlazado'],
+                'dias': dias_calculados,
+                'total': total_persona,
+                'dias_activos': dias_activos,
+                'promedio_diario': round(total_persona / dias_activos, 1) if dias_activos else 0,
+                'pausas': pausas_persona,
+                'minutos_perdidos': minutos_perdidos_persona,
+            })
+            total_fichas_global += total_persona
+ 
+        analistas.sort(key=lambda a: a['nombre'])
+ 
+        # ------------------------------------------------------------------
+        # Etiquetas de los días del rango
+        # ------------------------------------------------------------------
+        fechas = []
+        cursor = fecha_inicio.date()
+        while cursor <= fecha_fin.date():
+            fechas.append(cursor.strftime('%d/%m'))
+            cursor += timedelta(days=1)
+ 
+        dias_con_actividad = len({d for a in analistas for d in a['dias']})
+ 
+        return jsonify({
+            'fechas': fechas,
+            'analistas': analistas,
+            'resumen': {
+                'total_fichas': total_fichas_global,
+                'analistas': len(analistas),
+                'sin_enlazar': sum(1 for a in analistas if not a['enlazado']),
+                'dias_con_actividad': dias_con_actividad,
+                'promedio_diario': round(total_fichas_global / dias_con_actividad, 1) if dias_con_actividad else 0,
+                'por_hora': {str(h): por_hora_global.get(h, 0) for h in range(24)},
+                'umbral_pausa': UMBRAL_PAUSA_DIG_MIN,
+            },
+        })
+ 
+    except Exception:
+        app.logger.exception("Error generando la matriz de digitación")
+        return jsonify({"error": "No se pudo generar la matriz de digitación."}), 500
+ 
+ 
+# ==========================================================================
+# SECCIÓN D — DETALLE DE UN DÍA (alimenta la línea de tiempo)
+# ==========================================================================
+@app.route('/api/detalle_digitacion', methods=['POST'])
+def api_detalle_digitacion():
+    """
+    Fichas digitadas por un analista en un rango, de las dos fuentes, con
+    la pausa previa a cada una.
+ 
+    Cuerpo: { id_analista, analista, fecha_inicio, fecha_fin, origen }
+    """
+    try:
+        datos = request.get_json() or {}
+        id_analista = datos.get('id_analista')
+        nombre_analista = (datos.get('analista') or '').strip()
+        origen_filtro = (datos.get('origen') or 'TODOS').strip().upper()
+ 
+        try:
+            desde = datetime.strptime(str(datos.get('fecha_inicio')), "%Y-%m-%d")
+            hasta_dia = datetime.strptime(str(datos.get('fecha_fin')), "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return jsonify({"error": "Rango de fechas inválido."}), 400
+ 
+        hasta = datetime.combine(hasta_dia.date(), datetime.max.time())
+ 
+        if not id_analista and not nombre_analista:
+            return jsonify({"error": "Falta identificar al analista."}), 400
+ 
+        crudas = []
+ 
+        # ------------------------------------------------------------------
+        # Fuente 1: la digitación que viene con la orden de trabajo
+        # ------------------------------------------------------------------
+        if origen_filtro in ('TODOS', 'INSPECCIONES'):
+            consulta = (db.session.query(Produccion)
+                        .filter(Produccion.fecha_fin_dig.isnot(None))
+                        .filter(Produccion.fecha_fin_dig >= desde)
+                        .filter(Produccion.fecha_fin_dig <= hasta))
+ 
+            if id_analista:
+                consulta = consulta.filter(Produccion.id_analista == id_analista)
+            else:
+                consulta = consulta.filter(Produccion.analista == nombre_analista)
+ 
+            for r in consulta.all():
+                ini = r.fecha_ini_dig or r.fecha_fin_dig
+                crudas.append({
+                    'orden': r.fecha_fin_dig,
+                    'ini': ini,
+                    'fin': r.fecha_fin_dig,
+                    'suministro': r.suministro or '',
+                    'actividad': r.actividad or '',
+                    'direccion': f"{r.urba or ''} {r.calle or ''} {r.nromuni or ''}".strip(),
+                    'fecha_campo': r.fecha_fin,
+                    'origen': 'ORDEN',
+                })
+ 
+        # ------------------------------------------------------------------
+        # Fuente 2: la digitación suelta (catastro)
+        # Cada ficha es un instante: no hay hora de inicio ni de fin.
+        # ------------------------------------------------------------------
+        if origen_filtro in ('TODOS', 'CATASTRO'):
+            consulta_otros = (db.session.query(Digitacion)
+                              .filter(Digitacion.fecha_dig >= desde)
+                              .filter(Digitacion.fecha_dig <= hasta))
+ 
+            if origen_filtro != 'TODOS':
+                consulta_otros = consulta_otros.filter(Digitacion.origen == origen_filtro)
+ 
+            if id_analista:
+                consulta_otros = consulta_otros.filter(Digitacion.id_analista == id_analista)
+            else:
+                consulta_otros = consulta_otros.filter(Digitacion.analista == nombre_analista)
+ 
+            for r in consulta_otros.all():
+                crudas.append({
+                    'orden': r.fecha_dig,
+                    'ini': r.fecha_dig,
+                    'fin': r.fecha_dig,
+                    'suministro': r.suministro or '',
+                    'actividad': f"{r.origen} (digitación)",
+                    'direccion': '',
+                    'fecha_campo': None,
+                    'origen': r.origen,
+                })
+ 
+        crudas.sort(key=lambda x: x['orden'])
+ 
+        # ------------------------------------------------------------------
+        # Pausas entre fichas consecutivas del mismo día
+        # ------------------------------------------------------------------
+        fichas = []
+        anterior_fin = None
+        anterior_dia = None
+ 
+        for c in crudas:
+            ini, fin = c['ini'], c['fin']
+            dia = fin.strftime('%d/%m/%Y')
+ 
+            pausa = None
+            if anterior_fin and anterior_dia == dia:
+                pausa = int((ini - anterior_fin).total_seconds() // 60)
+ 
+            duracion = int((fin - ini).total_seconds() // 60)
+ 
+            fichas.append({
+                'dia': dia,
+                'suministro': c['suministro'],
+                'actividad': c['actividad'],
+                'direccion': c['direccion'],
+                'hora_ini': ini.strftime('%H:%M'),
+                'hora_fin': fin.strftime('%H:%M'),
+                # En los registros sin intervalo no hay duración que informar
+                'minutos_ficha': duracion if duracion > 0 else None,
+                'pausa_previa': pausa,
+                'minuto_ini': ini.hour * 60 + ini.minute,
+                'minuto_fin': fin.hour * 60 + fin.minute,
+                'fecha_campo': c['fecha_campo'].strftime('%d/%m/%Y') if c['fecha_campo'] else '',
+                'dias_rezago': (fin.date() - c['fecha_campo']).days if c['fecha_campo'] else None,
+                'origen': c['origen'],
+            })
+ 
+            anterior_fin = fin
+            anterior_dia = dia
+ 
+        return jsonify({
+            'fichas': fichas,
+            'umbral_pausa': UMBRAL_PAUSA_DIG_MIN,
+        })
+ 
+    except Exception:
+        app.logger.exception("Error obteniendo el detalle de digitación")
+        return jsonify({"error": "No se pudo obtener el detalle."}), 500
+
+
+@app.route('/api/analistas_sin_enlazar', methods=['GET'])
+def api_analistas_sin_enlazar():
+    """Nombres de analista que no coincidieron con ningún empleado."""
+    try:
+        filas = (db.session.query(Produccion.analista, db.func.count().label('fichas'))
+                 .filter(Produccion.analista.isnot(None))
+                 .filter(Produccion.analista != '')
+                 .filter(Produccion.id_analista.is_(None))
+                 .group_by(Produccion.analista)
+                 .order_by(db.func.count().desc()).all())
+ 
+        return jsonify({
+            'analistas': [{'nombre': f[0], 'fichas': f[1]} for f in filas]
+        })
+    except Exception:
+        app.logger.exception("Error listando analistas sin enlazar")
+        return jsonify({"error": "No se pudo consultar."}), 500
+ 
+ 
+@app.route('/api/filtros_digitacion', methods=['POST'])
+def api_filtros_digitacion():
+    """Analistas que digitaron algo dentro del rango, para el desplegable."""
+    try:
+        datos = request.get_json() or {}
+        try:
+            desde = datetime.strptime(str(datos.get('fecha_inicio')), "%Y-%m-%d")
+            hasta = datetime.combine(
+                datetime.strptime(str(datos.get('fecha_fin')), "%Y-%m-%d").date(),
+                time(23, 59, 59))
+        except (ValueError, TypeError):
+            return jsonify({'analistas': []})
+ 
+        filas = (db.session.query(Produccion.analista)
+                 .filter(Produccion.analista.isnot(None))
+                 .filter(Produccion.analista != '')
+                 .filter(Produccion.fecha_fin_dig >= desde)
+                 .filter(Produccion.fecha_fin_dig <= hasta)
+                 .distinct().order_by(Produccion.analista.asc()).all())
+
+        otros = (db.session.query(Digitacion.analista)
+                  .filter(Digitacion.fecha_dig >= desde)
+                  .filter(Digitacion.fecha_dig <= hasta)
+                  .distinct().all())
+        nombres = sorted({f[0] for f in filas} | {o[0] for o in otros})
+ 
+        return jsonify({'analistas': [f[0] for f in filas]})
+    except Exception:
+        app.logger.exception("Error cargando filtros de digitación")
+        return jsonify({'analistas': []})
 
 
 # ========================================================
@@ -10782,6 +11399,346 @@ def generar_matriz():
         app.logger.exception(f"[MATRIZ] Error generando la matriz: {e}")
         return jsonify({"error": "Error interno"}), 500
 
+def detectar_orden_dig_fecha(muestras):
+    """
+    Deduce si las fechas del archivo son mm/dd/yyyy o dd/mm/yyyy.
+ 
+    No se asume el orden, porque 09/03/2026 es válido en los dos y significa
+    cosas distintas. Si en alguna fila el primer número pasa de 12, solo
+    puede ser un día.
+ 
+    Devuelve 'MDY', 'DMY' o 'MEZCLADO'.
+    """
+    primero_alto = False
+    segundo_alto = False
+ 
+    for texto in muestras:
+        coincide = re.match(r'^\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4})', str(texto or ''))
+        if not coincide:
+            continue
+        if int(coincide.group(1)) > 12:
+            primero_alto = True
+        if int(coincide.group(2)) > 12:
+            segundo_alto = True
+ 
+    if primero_alto and segundo_alto:
+        return 'MEZCLADO'          # el archivo trae los dos órdenes
+    if primero_alto:
+        return 'DMY'
+    return 'MDY'                   # lo que declara este reporte
+ 
+ 
+def parse_dig_fecha_hora(valor, orden='MDY'):
+    """
+    Fecha del reporte de digitación -> datetime.
+ 
+    Acepta:
+        9/14/2026 12:47:39 AM   ->  2026-09-14 00:47:39   (12 horas)
+        9/14/2026 2:30 PM       ->  2026-09-14 14:30:00
+        09/14/2026 14:47:39     ->  2026-09-14 14:47:39   (24 horas)
+        9/14/2026               ->  2026-09-14 00:00:00
+        2026-09-14 14:47:39
+ 
+    No usa %p de strptime porque depende del idioma del servidor: el
+    sufijo AM/PM se separa y se convierte a mano, que funciona siempre.
+    """
+    if valor is None:
+        return None
+ 
+    texto = str(valor).strip().upper().replace('T', ' ')
+    if not texto or texto in ('-', 'NULL', 'NONE'):
+        return None
+ 
+    # El a. m. / p. m. se escribe de varias formas según quién exporte
+    for viejo, nuevo in (('A. M.', 'AM'), ('P. M.', 'PM'),
+                         ('A.M.', 'AM'), ('P.M.', 'PM'),
+                         ('A. M', 'AM'), ('P. M', 'PM')):
+        texto = texto.replace(viejo, nuevo)
+    texto = re.sub(r'\s+', ' ', texto).strip()
+ 
+    # El sufijo se aparta antes de parsear
+    sufijo = None
+    if texto.endswith(' AM'):
+        sufijo, texto = 'AM', texto[:-3].strip()
+    elif texto.endswith(' PM'):
+        sufijo, texto = 'PM', texto[:-3].strip()
+    elif texto.endswith('AM'):
+        sufijo, texto = 'AM', texto[:-2].strip()
+    elif texto.endswith('PM'):
+        sufijo, texto = 'PM', texto[:-2].strip()
+ 
+    dia_mes = '%m/%d/%Y' if orden == 'MDY' else '%d/%m/%Y'
+    dia_mes_guion = dia_mes.replace('/', '-')
+ 
+    formatos = (
+        f'{dia_mes} %H:%M:%S',
+        f'{dia_mes} %H:%M',
+        dia_mes,
+        f'{dia_mes_guion} %H:%M:%S',
+        f'{dia_mes_guion} %H:%M',
+        dia_mes_guion,
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d %H:%M',
+        '%Y-%m-%d',
+    )
+ 
+    momento = None
+    for formato in formatos:
+        try:
+            momento = datetime.strptime(texto, formato)
+            break
+        except ValueError:
+            continue
+ 
+    if momento is None:
+        return None
+ 
+    # 12:47:39 AM son las 00:47 · 2:30 PM son las 14:30
+    if sufijo == 'AM' and momento.hour == 12:
+        momento = momento.replace(hour=0)
+    elif sufijo == 'PM' and momento.hour < 12:
+        momento = momento.replace(hour=momento.hour + 12)
+ 
+    return momento
+ 
+ 
+@app.route('/cargar_digitacion_catastro', methods=['POST'])
+def cargar_digitacion_catastro():
+    """
+    Carga el reporte de digitación de catastro.
+ 
+    Cuerpo: { filas: [{analista, fecha_dig, suministro, cod_catastral}],
+              origen: 'CATASTRO' }
+ 
+    No toca la tabla produccion. Resubir el mismo archivo no duplica nada:
+    la clave (origen, analista, fecha_dig, suministro) identifica cada fila.
+    """
+    try:
+        payload = request.get_json(silent=True)
+ 
+        if isinstance(payload, dict):
+            filas_csv = payload.get('filas') or []
+            origen = (payload.get('origen') or 'CATASTRO').strip().upper()[:30]
+        else:
+            filas_csv = payload or []
+            origen = 'CATASTRO'
+ 
+        if not isinstance(filas_csv, list) or not filas_csv:
+            return jsonify({"status": "error",
+                            "error": "No se recibió ninguna fila."}), 400
+ 
+        # ------------------------------------------------------------------
+        # 1. Deducir el orden de la fecha con todo el lote
+        # ------------------------------------------------------------------
+        muestras = [f.get('fecha_dig') for f in filas_csv if isinstance(f, dict)]
+        orden = detectar_orden_dig_fecha(muestras)
+ 
+        # Rastro en la consola de Flask: confirma que corre este parser.
+        # Debe imprimir la fecha convertida, no None.
+        primera_muestra = next((m for m in muestras if m), None)
+        print(f">>> [DIGITACION] orden={orden} · muestra={primera_muestra!r} "
+              f"-> {parse_dig_fecha_hora(primera_muestra, orden)}")
+ 
+        if orden == 'MEZCLADO':
+            return jsonify({
+                "status": "error",
+                "error": "El archivo trae fechas en dos formatos distintos "
+                         "(unas dd/mm y otras mm/dd). Corrija el archivo antes "
+                         "de subirlo: cargarlo así guardaría fechas erróneas."
+            }), 400
+ 
+        # ------------------------------------------------------------------
+        # 2. Normalizar, contando por qué se cae cada fila
+        # ------------------------------------------------------------------
+        preparadas = []
+        sin_analista = 0
+        sin_fecha = 0
+        ejemplos_fecha = []
+        ejemplos_claves = []
+ 
+        for fila in filas_csv:
+            if not isinstance(fila, dict):
+                sin_analista += 1
+                continue
+ 
+            if len(ejemplos_claves) < 1:
+                ejemplos_claves.append(sorted(fila.keys()))
+ 
+            analista = str(fila.get('analista') or '').strip()[:150]
+            fecha_dig = parse_dig_fecha_hora(fila.get('fecha_dig'), orden)
+ 
+            # El identificador del predio puede venir en cualquiera de los
+            # dos códigos. Se conservan ambos y manda el de cliente.
+            cod_cliente = str(fila.get('suministro') or '').strip()[:30]
+            cod_catastral = str(fila.get('cod_catastral') or '').strip()[:30]
+            suministro = cod_cliente or cod_catastral
+ 
+            if not analista:
+                sin_analista += 1
+                continue
+ 
+            if not fecha_dig:
+                sin_fecha += 1
+                if len(ejemplos_fecha) < 3:
+                    bruto = fila.get('fecha_dig')
+                    ejemplos_fecha.append(str(bruto)[:40] if bruto else '(vacío)')
+                continue
+ 
+            preparadas.append({
+                'analista': analista.upper(),
+                'fecha_dig': fecha_dig,
+                'suministro': suministro,
+                'cod_catastral': cod_catastral,
+            })
+ 
+        if not preparadas:
+            detalle = []
+            if sin_analista:
+                detalle.append(f"{sin_analista} sin digitador")
+            if sin_fecha:
+                detalle.append(f"{sin_fecha} con fecha ilegible")
+ 
+            mensaje = "No se pudo leer ninguna fila: " + ", ".join(detalle) + "."
+            if ejemplos_fecha:
+                mensaje += (" Ejemplos de fecha que no se entendieron: "
+                            + " | ".join(ejemplos_fecha) + ".")
+            if ejemplos_claves:
+                mensaje += (" Columnas que llegaron: "
+                            + ", ".join(ejemplos_claves[0]) + ".")
+ 
+            return jsonify({"status": "error", "error": mensaje}), 400
+ 
+        # ------------------------------------------------------------------
+        # 3. Qué hay ya en la base, dentro del rango de este lote
+        # ------------------------------------------------------------------
+        fechas = [p['fecha_dig'] for p in preparadas]
+        desde, hasta = min(fechas), max(fechas)
+ 
+        existentes = set()
+        for reg in (db.session.query(Digitacion.analista,
+                                     Digitacion.fecha_dig,
+                                     Digitacion.suministro)
+                    .filter(Digitacion.origen == origen)
+                    .filter(Digitacion.fecha_dig.between(desde, hasta)).all()):
+            existentes.add((reg[0], reg[1], reg[2] or ''))
+ 
+        # ------------------------------------------------------------------
+        # 4. Memoria de empleados para enlazar al digitador
+        # ------------------------------------------------------------------
+        memoria_empleados = []
+        for emp in Empleado.query.all():
+            nombre_completo = f"{emp.nombres or ''} {emp.apellidos or ''}".upper().replace(',', ' ')
+            memoria_empleados.append({'id': emp.id_empleado, 'palabras': set(nombre_completo.split())})
+ 
+        cache_nombres = {}
+ 
+        def id_por_nombre(nombre):
+            if nombre not in cache_nombres:
+                cache_nombres[nombre] = buscar_empleado_en_memoria(nombre, memoria_empleados)
+            return cache_nombres[nombre]
+ 
+        # ------------------------------------------------------------------
+        # 5. Insertar solo lo que falta
+        # ------------------------------------------------------------------
+        ahora = datetime.now()
+        usuario = session.get('user_name')
+ 
+        nuevos = []
+        repetidas = 0
+        vistas_en_lote = set()
+ 
+        for p in preparadas:
+            clave = (p['analista'], p['fecha_dig'], p['suministro'])
+ 
+            if clave in existentes or clave in vistas_en_lote:
+                repetidas += 1
+                continue
+            vistas_en_lote.add(clave)
+ 
+            nuevos.append(Digitacion(
+                origen=origen,
+                analista=p['analista'],
+                id_analista=id_por_nombre(p['analista']),
+                fecha_dig=p['fecha_dig'],
+                suministro=p['suministro'],
+                cod_catastral=p['cod_catastral'] or None,
+                fecha_carga=ahora,
+                usuario_carga=usuario,
+            ))
+ 
+        if nuevos:
+            db.session.bulk_save_objects(nuevos)
+            db.session.commit()
+ 
+        # ------------------------------------------------------------------
+        # 6. Respuesta
+        # ------------------------------------------------------------------
+        sin_enlazar = sum(1 for n in nuevos if n.id_analista is None)
+        sin_codigo = sum(1 for p in preparadas if not p['suministro'])
+        descartadas = sin_analista + sin_fecha
+ 
+        partes = [f"{len(nuevos)} registros nuevos"]
+        if repetidas:
+            partes.append(f"{repetidas} ya estaban cargados")
+        if sin_fecha:
+            partes.append(f"{sin_fecha} con fecha ilegible")
+        if sin_analista:
+            partes.append(f"{sin_analista} sin digitador")
+        if sin_enlazar:
+            partes.append(f"{sin_enlazar} sin enlazar a un empleado")
+        if sin_codigo:
+            partes.append(f"{sin_codigo} sin código de predio")
+ 
+        return jsonify({
+            "status": "success",
+            "mensaje": f"Digitación de {origen}: " + ", ".join(partes)
+                       + f". Fechas leídas como {'mm/dd/yyyy' if orden == 'MDY' else 'dd/mm/yyyy'}.",
+            "insertados": len(nuevos),
+            "actualizados": 0,
+            "sin_cambios": repetidas,
+            "ambiguas": 0,
+            "descartadas": descartadas,
+            "orden_fecha": orden,
+        }), 200
+ 
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Error cargando la digitación de catastro")
+        return jsonify({"status": "error",
+                        "error": "No se pudo procesar el archivo."}), 500
+
+
+@app.route('/api/obtener_filtros_produccion', methods=['POST'])
+def obtener_filtros_produccion():
+    try:
+        data = request.get_json()
+        fecha_inicio = data.get('fecha_inicio')
+        fecha_fin = data.get('fecha_fin')
+
+        if not fecha_inicio or not fecha_fin:
+            return jsonify({"error": "Fechas incompletas"}), 400
+
+        # Buscamos actividades únicas en ese rango de fechas
+        actividades = db.session.query(Produccion.actividad)\
+            .filter(Produccion.fecha_fin >= fecha_inicio, Produccion.fecha_fin <= fecha_fin)\
+            .filter(Produccion.actividad != None, Produccion.actividad != '')\
+            .distinct().all()
+
+        # Buscamos operarios únicos en ese rango de fechas
+        operarios = db.session.query(Produccion.operario_csv)\
+            .filter(Produccion.fecha_fin >= fecha_inicio, Produccion.fecha_fin <= fecha_fin)\
+            .filter(Produccion.operario_csv != None, Produccion.operario_csv != '')\
+            .distinct().all()
+
+        return jsonify({
+            "status": "success",
+            "actividades": [a[0] for a in actividades], # a[0] extrae el texto de la tupla de SQLAlchemy
+            "operarios": [o[0] for o in operarios]
+        }), 200
+
+    except Exception as e:
+        print(f"Error obteniendo filtros: {e}")
+        return jsonify({"error": "Error interno del servidor"}), 500
 
 @app.route('/api/matriz/reenlazar-operadores', methods=['POST'])
 @requiere_login
@@ -10840,41 +11797,8 @@ def reenlazar_operadores_matriz():
         app.logger.exception(f"[RE-ENLACE] Error: {e}")
         return jsonify({"error": "Error interno al re-enlazar operadores."}), 500
 
-
-@app.route('/api/obtener_filtros_produccion', methods=['POST'])
-def obtener_filtros_produccion():
-    try:
-        data = request.get_json()
-        fecha_inicio = data.get('fecha_inicio')
-        fecha_fin = data.get('fecha_fin')
-
-        if not fecha_inicio or not fecha_fin:
-            return jsonify({"error": "Fechas incompletas"}), 400
-
-        # Buscamos actividades únicas en ese rango de fechas
-        actividades = db.session.query(Produccion.actividad)\
-            .filter(Produccion.fecha_fin >= fecha_inicio, Produccion.fecha_fin <= fecha_fin)\
-            .filter(Produccion.actividad != None, Produccion.actividad != '')\
-            .distinct().all()
-
-        # Buscamos operarios únicos en ese rango de fechas
-        operarios = db.session.query(Produccion.operario_csv)\
-            .filter(Produccion.fecha_fin >= fecha_inicio, Produccion.fecha_fin <= fecha_fin)\
-            .filter(Produccion.operario_csv != None, Produccion.operario_csv != '')\
-            .distinct().all()
-
-        return jsonify({
-            "status": "success",
-            "actividades": [a[0] for a in actividades], # a[0] extrae el texto de la tupla de SQLAlchemy
-            "operarios": [o[0] for o in operarios]
-        }), 200
-
-    except Exception as e:
-        print(f"Error obteniendo filtros: {e}")
-        return jsonify({"error": "Error interno del servidor"}), 500
-
-
 @app.route('/api/obtener_detalle_rango_operario', methods=['POST'])
+@requiere_login          # quítalo si este módulo aún no usa la bitácora
 def obtener_detalle_rango_operario():
     try:
         data = request.get_json() or {}
@@ -11088,7 +12012,6 @@ def obtener_detalle_rango_operario():
     except Exception as e:
         app.logger.exception(f"[DETALLE OPERARIO] Error: {e}")
         return jsonify({"error": "Error interno"}), 500
-
 
 
 @app.route('/api/empleados_por_area', methods=['POST'])
