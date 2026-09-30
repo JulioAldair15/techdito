@@ -11969,6 +11969,7 @@ def obtener_detalle_rango_operario():
                 "CALLE2": r.calle or "",
                 "NROMUNI": r.nromuni or "",
                 "ACTIVIDAD": r.actividad or "",
+                "CICLO": r.ciclo or "", 
                 "FECHA INI EJECUCION": r.fecha_inicio.strftime("%d/%m/%Y") if r.fecha_inicio else "",
                 "FECHA EJECUCION": r.fecha_fin.strftime("%d/%m/%Y") if r.fecha_fin else "",
                 "HORA INI": r.hora_ini.strftime("%H:%M") if r.hora_ini else "",
