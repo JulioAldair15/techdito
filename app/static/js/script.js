@@ -13503,7 +13503,8 @@ function dibujarMatriz(fechas, operarios) {
 
     thead.innerHTML = `<th class="col-sticky-left" title="Nombres y Apellidos">Colaborador</th>`;
     tbody.innerHTML = '';
-
+    limpiarPieTabla();
+    
     fechas.forEach(fecha => {
         const [diaStr, mesStr] = fecha.split('/');
         let mes = parseInt(mesStr);
@@ -15066,6 +15067,11 @@ const ESCALA_DIG = [
     { fondo: '#93c5fd', texto: '#172554' },
     { fondo: '#1d4ed8', texto: '#ffffff' }
 ];
+
+function limpiarPieTabla() {
+    const tfoot = document.getElementById('foot-tabla-produccion');
+    if (tfoot) tfoot.innerHTML = '';
+}
  
  
 /* ==========================================================================
@@ -15109,7 +15115,7 @@ function cambiarModoProduccion(modo) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="2" class="text-center" style="padding:40px; color:#64748b;">
         <i class="fas ${esDig ? 'fa-keyboard' : 'fa-calendar-alt'}" style="font-size:2.5rem; margin-bottom:12px; color:#cbd5e1; display:block;"></i>
         Seleccione un rango de fechas y pulse <b>Generar Tabla</b>.</td></tr>`;
- 
+    limpiarPieTabla(); 
     const fIni = document.getElementById('filtro-prod-inicio')?.value;
     const fFin = document.getElementById('filtro-prod-fin')?.value;
     if (fIni && fFin) {
@@ -15194,7 +15200,9 @@ function generarTablaDigitacion() {
 function dibujarMatrizDigitacion(fechas, analistas, resumen) {
     const thead = document.querySelector('#tabla-produccion thead tr');
     const tbody = document.getElementById('body-tabla-produccion');
- 
+
+    limpiarPieTabla();
+    
     if (!analistas || analistas.length === 0) {
         thead.innerHTML = `<th class="col-sticky-left">Analista</th>`;
         tbody.innerHTML = `<tr><td class="text-center" style="padding:40px; color:#64748b;">
