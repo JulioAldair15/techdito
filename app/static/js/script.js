@@ -503,7 +503,7 @@ document.addEventListener('click', function(event) {
     // CATÁLOGOS
     // ------------------------------------------------------------------------
     const ESTADOS = [
-        ['A', 'DÍA ASISTIDO'], ['DT', 'DOMINGO TRABAJADO'], ['FT', 'FERIADO TRABAJADO'],
+        ['A', 'DÍA ASISTIDO'], ['MJ', 'MEDIA JORNADA'], ['DT', 'DOMINGO TRABAJADO'], ['FT', 'FERIADO TRABAJADO'],
         ['LG', 'LICENCIA CON GOCE DE HABER'], ['DM', 'DESCANSO MÉDICO'], ['V', 'VACACIONES'],
         ['LSG', 'LICENCIA SIN GOCE DE HABER'], ['F', 'FALTA'], ['R', 'RENUNCIÓ'],
         ['SU', 'SUSP. PERFECTA LABORES'], ['CE', 'CESE'], ['FG', 'FERIADO GANADO'],
