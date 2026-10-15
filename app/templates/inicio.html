@@ -2806,9 +2806,32 @@
 
                         <div style="flex: 1.2; min-width: 150px;">
                             <label style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;">Área</label>
-                            <select id="filtro-prod-area" class="prod-input">
-                                <option value="TODAS">-- Todas las áreas --</option>
-                            </select>
+                                                        <div class="ms-area" id="ms-area">
+                                <button type="button" class="prod-input ms-area-boton" id="ms-area-boton"
+                                        aria-haspopup="true" aria-expanded="false"
+                                        onclick="alternarPanelAreas(event)">
+                                    <span class="ms-area-texto" id="ms-area-texto">-- Todas las áreas --</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+
+                                <div class="ms-area-panel" id="ms-area-panel">
+                                    <div class="ms-area-lista">
+                                        <label class="ms-area-item ms-area-todas">
+                                            <input type="checkbox" id="ms-area-chk-todas"
+                                                   onchange="marcarTodasLasAreas(this.checked)">
+                                            <span>Todas las áreas</span>
+                                        </label>
+                                        <div id="ms-area-lista"></div>
+                                    </div>
+
+                                    <div class="ms-area-pie">
+                                        <span class="ms-area-conteo" id="ms-area-conteo">Sin filtro: se muestran todas</span>
+                                        <button type="button" class="ms-area-btn" onclick="limpiarAreas()">Limpiar</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <input type="hidden" id="filtro-prod-area" value="TODAS">
                         </div>
 
                         <div style="flex: 1.5; min-width: 180px;">
