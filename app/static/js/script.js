@@ -13429,7 +13429,7 @@ window.matrizGlobalData = { fechas: [], operarios: [] };
 function generarTablaProduccion() {
     const fInicio = document.getElementById('filtro-prod-inicio').value;
     const fFin = document.getElementById('filtro-prod-fin').value;
-    const area = document.getElementById('filtro-prod-area').value; // <--- NUEVO: CAPTURAMOS EL ÁREA
+    const areas = obtenerAreasSeleccionadas();
     const actividad = document.getElementById('filtro-prod-actividad').value;
     const operario = document.getElementById('filtro-prod-operario').value;
 
@@ -13445,7 +13445,12 @@ function generarTablaProduccion() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // 🔥 NUEVO: Enviamos el área en el cuerpo de la petición JSON
-        body: JSON.stringify({ fecha_inicio: fInicio, fecha_fin: fFin, area: area, actividad: actividad, operario: operario })
+        body: JSON.stringify({
+            fecha_inicio: fInicio, fecha_fin: fFin,
+            areas: areas,
+            area: areas.length === 1 ? areas[0] : 'TODAS',
+            actividad: actividad, operario: operario
+        })
     })
     .then(response => response.json())
     .then(data => {
@@ -13745,21 +13750,19 @@ document.addEventListener('DOMContentLoaded', function() {
     cargarAreasSelect();
 });
 
+window.listaAreas = [];          // todas las áreas disponibles
+window.areasSeleccionadas = [];  // vacío = todas
+
 function cargarAreasSelect() {
     fetch('/api/obtener_areas')
     .then(response => response.json())
     .then(data => {
-        if (data.status === 'success') {
-            const selectArea = document.getElementById('filtro-prod-area');
-            
-            // Recorremos la lista y creamos un <option> por cada área
-            data.areas.forEach(area => {
-                const option = document.createElement('option');
-                option.value = area;
-                option.textContent = area;
-                selectArea.appendChild(option);
-            });
-        }
+        if (data.status !== 'success') return;
+
+        window.listaAreas = (data.areas || []).filter(Boolean);
+        construirPanelAreas();
+        sincronizarAreas();
+        llenarSelectAreasModal();
     })
     .catch(err => console.error("❌ Error al cargar las áreas:", err));
 }
@@ -14889,17 +14892,21 @@ function abrirModalCargas() {
         modal.style.display = 'flex';
         console.log("2. Modal hecho visible. Buscando selects...");
 
-        const selectAreaModal = document.getElementById('cargas-select-area');
-        const selectPrincipal = document.getElementById('filtro-prod-area');
-        
-        // Protección: Solo copia si ambos existen en el HTML
-        if (selectAreaModal && selectPrincipal) {
-            if (selectAreaModal.options.length <= 1) {
-                selectAreaModal.innerHTML = selectPrincipal.innerHTML;
-                selectAreaModal.value = ""; 
-            }
+                // Las áreas se piden al servidor, no se copian de otro elemento.
+        // Así el modal también funciona para los supervisores limitados,
+        // que no ven la barra de filtros.
+        if (window.listaAreas.length === 0) {
+            fetch('/api/obtener_areas')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        window.listaAreas = (data.areas || []).filter(Boolean);
+                        llenarSelectAreasModal();
+                    }
+                })
+                .catch(err => console.error("Error cargando áreas:", err));
         } else {
-            console.warn("Advertencia: No se encontró uno de los select de área.");
+            llenarSelectAreasModal();
         }
         
         console.log("3. Seteando fechas e inicializando lista...");
@@ -14921,6 +14928,126 @@ function abrirModalCargas() {
         alert("El código falló al intentar abrir el modal. Presiona F12 y revisa la consola.");
     }
 }
+
+/* ==========================================================================
+   COMPONENTE DE SELECCIÓN MÚLTIPLE DE ÁREAS
+   ========================================================================== */
+
+function construirPanelAreas() {
+    const lista = document.getElementById('ms-area-lista');
+    if (!lista) return;
+
+    if (window.listaAreas.length === 0) {
+        lista.innerHTML = `<div class="ms-area-vacio">No hay áreas registradas</div>`;
+        return;
+    }
+
+    lista.innerHTML = window.listaAreas.map((area, i) => `
+        <label class="ms-area-item">
+            <input type="checkbox" value="${escaparAtributo(area)}"
+                   id="ms-area-chk-${i}" onchange="alternarArea(this)">
+            <span title="${escaparAtributo(area)}">${area}</span>
+        </label>
+    `).join('');
+}
+
+function alternarPanelAreas(evento) {
+    if (evento) evento.stopPropagation();
+    const caja = document.getElementById('ms-area');
+    if (!caja) return;
+    const abierto = caja.classList.toggle('abierto');
+    document.getElementById('ms-area-boton')?.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+}
+
+function alternarArea(checkbox) {
+    const area = checkbox.value;
+    if (checkbox.checked) {
+        if (!window.areasSeleccionadas.includes(area)) window.areasSeleccionadas.push(area);
+    } else {
+        window.areasSeleccionadas = window.areasSeleccionadas.filter(a => a !== area);
+    }
+    sincronizarAreas();
+}
+
+function marcarTodasLasAreas(marcar) {
+    window.areasSeleccionadas = marcar ? [...window.listaAreas] : [];
+    document.querySelectorAll('#ms-area-lista input[type="checkbox"]')
+            .forEach(chk => { chk.checked = marcar; });
+    sincronizarAreas();
+}
+
+function limpiarAreas() { marcarTodasLasAreas(false); }
+
+/** Refresca el texto del botón, el contador y el input oculto. */
+function sincronizarAreas() {
+    const caja    = document.getElementById('ms-area');
+    const texto   = document.getElementById('ms-area-texto');
+    const oculto  = document.getElementById('filtro-prod-area');
+    const conteo  = document.getElementById('ms-area-conteo');
+    const chkTodas = document.getElementById('ms-area-chk-todas');
+
+    const n = window.areasSeleccionadas.length;
+    const total = window.listaAreas.length;
+
+    if (texto) {
+        if (n === 0)                        texto.innerText = '-- Todas las áreas --';
+        else if (n === 1)                   texto.innerText = window.areasSeleccionadas[0];
+        else if (n === total && total > 0)  texto.innerText = '-- Todas las áreas --';
+        else                                texto.innerText = `${n} áreas seleccionadas`;
+    }
+
+    if (caja) caja.classList.toggle('con-seleccion', n > 0 && n < total);
+
+    if (conteo) {
+        conteo.innerText = n === 0 ? 'Sin filtro: se muestran todas'
+                                   : `${n} de ${total} seleccionadas`;
+    }
+
+    if (chkTodas) {
+        chkTodas.checked = (n === total && total > 0);
+        chkTodas.indeterminate = (n > 0 && n < total);
+    }
+
+    if (oculto) {
+        oculto.value = (n === 0 || n === total) ? 'TODAS'
+                                                : window.areasSeleccionadas.join(',');
+    }
+}
+
+/** Lo que se manda al servidor: [] significa todas. */
+function obtenerAreasSeleccionadas() {
+    const n = window.areasSeleccionadas.length;
+    return (n === 0 || n === window.listaAreas.length) ? [] : [...window.areasSeleccionadas];
+}
+
+/** El <select> del modal de Cargas, que sigue siendo de una sola área. */
+function llenarSelectAreasModal() {
+    const select = document.getElementById('cargas-select-area');
+    if (!select || window.listaAreas.length === 0) return;
+    if (select.options.length > 1) return;
+
+    select.innerHTML = '<option value="">-- Seleccione un área --</option>';
+    window.listaAreas.forEach(area => {
+        const op = document.createElement('option');
+        op.value = area;
+        op.textContent = area;
+        select.appendChild(op);
+    });
+}
+
+// Cerrar el panel al hacer clic fuera
+document.addEventListener('click', function (e) {
+    const caja = document.getElementById('ms-area');
+    if (caja && caja.classList.contains('abierto') && !caja.contains(e.target)) {
+        caja.classList.remove('abierto');
+        document.getElementById('ms-area-boton')?.setAttribute('aria-expanded', 'false');
+    }
+});
+
+// Cerrar con Escape
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') document.getElementById('ms-area')?.classList.remove('abierto');
+});
 
 function cerrarModalCargas() {
     document.getElementById('modal-cargas').style.display = 'none';
@@ -15296,7 +15423,7 @@ function cargarFiltrosDigitacion() {
 function generarTablaDigitacion() {
     const fIni = document.getElementById('filtro-prod-inicio').value;
     const fFin = document.getElementById('filtro-prod-fin').value;
-    const area = document.getElementById('filtro-prod-area').value;
+    const areas = obtenerAreasSeleccionadas();
     const analista = document.getElementById('filtro-prod-operario').value;
  
     if (!fIni || !fFin) {
@@ -15311,7 +15438,12 @@ function generarTablaDigitacion() {
     fetch('/api/matriz_digitacion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha_inicio: fIni, fecha_fin: fFin, area: area, analista: analista })
+        body: JSON.stringify({
+            fecha_inicio: fIni, fecha_fin: fFin,
+            areas: areas,
+            area: areas.length === 1 ? areas[0] : 'TODAS',
+            analista: analista
+        })
     })
     .then(r => r.json())
     .then(data => {
