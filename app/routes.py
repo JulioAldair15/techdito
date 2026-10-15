@@ -10703,7 +10703,7 @@ def api_matriz_digitacion():
             return jsonify({"error": f"El rango es de {dias_rango} días. "
                                      f"Consulte hasta {MAX_DIAS_RANGO_DIG} días a la vez."}), 400
  
-        area_filtro = (datos.get('area') or 'TODAS').strip()
+        areas = areas_del_filtro(datos)
         analista_filtro = (datos.get('analista') or 'TODOS').strip()
         origen_filtro = (datos.get('origen') or 'TODOS').strip().upper()
  
@@ -10725,9 +10725,9 @@ def api_matriz_digitacion():
                     .filter(Produccion.fecha_fin_dig >= fecha_inicio)
                     .filter(Produccion.fecha_fin_dig <= limite_superior))
  
-        if area_filtro and area_filtro != 'TODAS':
+        if areas:
             consulta = (consulta.join(Empleado, Empleado.id_empleado == Produccion.id_analista)
-                                .filter(Empleado.area == area_filtro))
+                                .filter(Empleado.area.in_(areas)))
  
         if analista_filtro and analista_filtro != 'TODOS':
             consulta = consulta.filter(Produccion.analista == analista_filtro)
@@ -10747,10 +10747,10 @@ def api_matriz_digitacion():
              if origen_filtro != 'TODOS':
                  consulta_otros = consulta_otros.filter(Digitacion.origen == origen_filtro)
 
-             if area_filtro and area_filtro != 'TODAS':
+             if areas:
                  consulta_otros = (consulta_otros
                                    .join(Empleado, Empleado.id_empleado == Digitacion.id_analista)
-                                   .filter(Empleado.area == area_filtro))
+                                   .filter(Empleado.area == areas))
 
              if analista_filtro and analista_filtro != 'TODOS':
                  consulta_otros = consulta_otros.filter(Digitacion.analista == analista_filtro)
@@ -11073,6 +11073,18 @@ def api_filtros_digitacion():
         app.logger.exception("Error cargando filtros de digitación")
         return jsonify({'analistas': []})
 
+def areas_del_filtro(data):
+    """Lista de áreas a filtrar, o [] si no hay filtro.
+    Acepta 'areas' (lista) y 'area' (texto) para no romper lo anterior."""
+    areas = data.get('areas')
+    if not areas:
+        una = data.get('area')
+        areas = [una] if una else []
+    if isinstance(areas, str):
+        areas = [a.strip() for a in areas.split(',')]
+    return [a.strip() for a in areas
+            if a and str(a).strip().upper() not in ('TODAS', 'TODOS', '')]
+    
 
 # ========================================================
 # DICCIONARIO MAESTRO DE METAS POR ACTIVIDAD
@@ -11165,7 +11177,7 @@ def generar_matriz():
         data = request.get_json() or {}
         fecha_inicio = datetime.strptime(data.get('fecha_inicio'), "%Y-%m-%d").date()
         fecha_fin = datetime.strptime(data.get('fecha_fin'), "%Y-%m-%d").date()
-        area = data.get('area')
+        areas = areas_del_filtro(data)
         actividad = data.get('actividad')
         operario = data.get('operario')
  
@@ -11191,8 +11203,8 @@ def generar_matriz():
                 MatrizValidacion.fecha_lectura <= fecha_fin
             )
  
-            if area and area != 'TODAS':
-                q_lec = q_lec.filter(Empleado.area == area)
+            if areas:
+                q_lec = q_lec.filter(Empleado.area.in_(areas))
             if operario and operario != 'TODOS':
                 q_lec = q_lec.filter(MatrizValidacion.operador == operario)
  
@@ -11227,8 +11239,8 @@ def generar_matriz():
             Produccion.fecha_fin <= fecha_fin
         )
  
-        if area and area != 'TODAS':
-            q_prod = q_prod.filter(Empleado.area == area)
+        if areas:
+            q_prod = q_prod.filter(Empleado.area.in_(areas))
         if actividad and actividad != 'TODAS':
             q_prod = q_prod.filter(Produccion.actividad == actividad)
         if operario and operario != 'TODOS':
