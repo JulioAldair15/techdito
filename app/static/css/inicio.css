@@ -11168,3 +11168,34 @@ input[type="number"].input-carga-dinamico {
     .dig-stats { grid-template-columns: 1fr; }
     .dig-tl-cabecera { align-items: flex-start; }
 }
+
+@keyframes pulsoDiscrepancia {
+      0% { box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.25); }
+     50% { box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.95); }
+    100% { box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.25); }
+}
+ 
+.badge-discrepancia {
+    cursor: help;
+    animation: pulsoDiscrepancia 2.4s ease-in-out infinite;
+}
+ 
+/* Al pasar el cursor se queda fijo: la celda se lee sin el parpadeo */
+.badge-discrepancia:hover {
+    animation-play-state: paused;
+    box-shadow: 0 0 0 2px #d97706;
+}
+ 
+/* Accesibilidad: sin animación, el borde se queda encendido */
+@media (prefers-reduced-motion: reduce) {
+    .badge-discrepancia {
+        animation: none;
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.95);
+    }
+}
+
+.prod-badge-mini.badge-asistencia:not(.bg-ausente) {
+    background: transparent;
+    color: #475569;
+    font-weight: 700;
+}
