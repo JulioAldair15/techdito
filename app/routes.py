@@ -11357,11 +11357,20 @@ def generar_matriz():
                 dia["ejecutado"] += ejecutado
                 dia["ratio"] += ratio
             else:
-                matriz[llave]["dias"][fecha_str] = {
+                dia_nuevo = {
                     "tipo": "produccion",
                     "ejecutado": ejecutado,
                     "ratio": ratio
                 }
+
+                if id_emp:
+                    asist_dia = asistencia_dict.get(id_emp, {}).get(fecha_str)
+                    dia_nuevo["tiene_asistencia"] = bool(asist_dia)
+                    if asist_dia:
+                        dia_nuevo["estado_asistencia"] = asist_dia["estado"]
+                        dia_nuevo["origen_asistencia"] = asist_dia["origen"]
+ 
+                matriz[llave]["dias"][fecha_str] = dia_nuevo
  
             matriz[llave]["puntaje_acumulado"] += ratio
  
