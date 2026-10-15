@@ -13467,21 +13467,70 @@ function generarTablaProduccion() {
     });
 }
 
+const ESTADOS_ASISTENCIA = {
+    // ---- Presente: debería tener producción ----
+    'A':   { nombre: 'Día asistido',                   trabaja: true  },
+    'MJ':  { nombre: 'Media jornada',                  trabaja: true  },
+    'DT':  { nombre: 'Domingo trabajado',              trabaja: true  },
+    'FT':  { nombre: 'Feriado trabajado',              trabaja: true  },
+ 
+    // ---- No debería estar trabajando ----
+    'LG':  { nombre: 'Licencia con goce de haber',     trabaja: false },
+    'DM':  { nombre: 'Descanso médico',                trabaja: false },
+    'V':   { nombre: 'Vacaciones',                     trabaja: false },
+    'LSG': { nombre: 'Licencia sin goce de haber',     trabaja: false },
+    'F':   { nombre: 'Falta',                          trabaja: false },
+    'R':   { nombre: 'Renunció',                       trabaja: false },
+    'SU':  { nombre: 'Suspensión perfecta de labores', trabaja: false },
+    'CE':  { nombre: 'Cese',                           trabaja: false },
+    'FG':  { nombre: 'Feriado ganado',                 trabaja: false },
+    'LD':  { nombre: 'Licencia por defunción',         trabaja: false },
+    'DC':  { nombre: 'Día compensado',                 trabaja: false },
+    'LP':  { nombre: 'Licencia por paternidad',        trabaja: false },
+    'TC':  { nombre: 'Término de contrato',            trabaja: false },
+ 
+    // ---- Neutro: aún no es un hecho, no se evalúa ----
+    'AP':  { nombre: 'Asistencia proyectada',          trabaja: null  }
+};
+ 
+/* Marcar también en domingos y feriados.
+   En false por defecto: si el supervisor marca asistencia los domingos por
+   costumbre, se encenderían decenas de celdas sin nada que revisar.
+   Ojo: DT (domingo trabajado) y FT (feriado trabajado) SÍ se evalúan
+   siempre, porque esos estados afirman que la persona trabajó ese día. */
+const ALERTAR_EN_NO_LABORABLES = false;
+ 
+/* Por si este archivo se pega antes que el de digitación */
+if (typeof escaparAtributo !== 'function') {
+    window.escaparAtributo = function (texto) {
+        return String(texto || '')
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/\n/g, '&#10;');
+    };
+}
+ 
+/** Datos del estado, o null si es una letra que no está en la tabla. */
+function infoEstadoAsistencia(estado) {
+    const clave = String(estado || '').trim().toUpperCase();
+    return ESTADOS_ASISTENCIA[clave] || null;
+}
+ 
+ 
 function dibujarMatriz(fechas, operarios) {
     const thead = document.querySelector('#tabla-produccion thead tr');
     const tbody = document.getElementById('body-tabla-produccion');
-    
+ 
     operarios.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
-    
+ 
     const fInicio = document.getElementById('filtro-prod-inicio').value;
     let anioActual = fInicio ? parseInt(fInicio.split('-')[0]) : new Date().getFullYear();
     let mesAnterior = fInicio ? parseInt(fInicio.split('-')[1]) : new Date().getMonth() + 1;
-    
+ 
     const esDomingoMapa = {};
-    const esFeriadoMapa = {}; // 👈 Nuevo mapa para guardar los feriados
-    let diasLaborables = 0; 
-
-    // 🔥 DICCIONARIO DE FERIADOS DE PERÚ (DD/MM)
+    const esFeriadoMapa = {};
+    let diasLaborables = 0;
+ 
     const feriadosPeru = {
         "01/01": "Año Nuevo",
         "02/04": "Jueves Santo",  // Dinámico (2026)
@@ -13500,97 +13549,156 @@ function dibujarMatriz(fechas, operarios) {
         "09/12": "Batalla de Ayacucho",
         "25/12": "Navidad"
     };
-
-    thead.innerHTML = `<th class="col-sticky-left" title="Nombres y Apellidos">Colaborador</th>`;
+ 
     tbody.innerHTML = '';
     limpiarPieTabla();
-    
+ 
+    // ----------------------------------------------------------------------
+    // CABECERA
+    // ----------------------------------------------------------------------
+    const partesHead = [`<th class="col-sticky-left" title="Nombres y Apellidos">Colaborador</th>`];
+ 
     fechas.forEach(fecha => {
         const [diaStr, mesStr] = fecha.split('/');
-        let mes = parseInt(mesStr);
+        const mes = parseInt(mesStr);
         if (mes < mesAnterior) anioActual++;
         mesAnterior = mes;
-
+ 
         const fechaObj = new Date(anioActual, mes - 1, parseInt(diaStr));
         const esDomingo = fechaObj.getDay() === 0;
         esDomingoMapa[fecha] = esDomingo;
-
-        // 🔥 Verificador de Feriados
-        const diaMes = `${diaStr}/${mesStr}`;
-        const nombreFeriado = feriadosPeru[diaMes];
-        const esFeriado = !!nombreFeriado; // True si existe en el diccionario
+ 
+        const nombreFeriado = feriadosPeru[`${diaStr}/${mesStr}`];
+        const esFeriado = !!nombreFeriado;
         esFeriadoMapa[fecha] = esFeriado;
-
-        // Restamos domingos y feriados de la meta de días laborables
-        if (!esDomingo && !esFeriado) diasLaborables++; 
-
+ 
+        if (!esDomingo && !esFeriado) diasLaborables++;
+ 
         const claseExtra = esDomingo ? 'col-domingo' : (esFeriado ? 'col-feriado' : '');
         const tituloCol = esFeriado ? `${fecha} - ${nombreFeriado}` : fecha;
-
-        thead.innerHTML += `<th class="text-center col-dia ${claseExtra}" title="${tituloCol}">${diaStr}</th>`;
+ 
+        partesHead.push(`<th class="text-center col-dia ${claseExtra}" title="${tituloCol}">${diaStr}</th>`);
     });
-
-    if (diasLaborables === 0) diasLaborables = 1; // Seguridad anti división por cero
-
-    thead.innerHTML += `
+ 
+    if (diasLaborables === 0) diasLaborables = 1;
+ 
+    partesHead.push(`
         <th class="text-center" style="background-color: #f8fafc; min-width: 45px; border-left: 2px solid var(--prod-border); font-size: 0.8rem; color: #64748b;">Pts.</th>
         <th class="text-center" style="background-color: #f8fafc; min-width: 60px; font-size: 0.8rem; color: #64748b;">Base</th>
         <th class="col-sticky-right text-center" style="background-color: #f1f5f9; min-width: 70px; font-size: 0.85rem; color: #475569;">Total (S/)</th>
-    `;
-
+    `);
+    thead.innerHTML = partesHead.join('');
+ 
+    // ----------------------------------------------------------------------
+    // FILAS
+    // ----------------------------------------------------------------------
+    const filas = [];
+    let totalDiscrepancias = 0;
+ 
     operarios.forEach((op, index) => {
-        // Reemplaza esto:
-    // let filaHtml = `<tr>
-    
-    // Por esto:
-    let filaHtml = `<tr id="fila-operario-${index}" class="fila-operario-matriz">
-            <td class="col-sticky-left font-bold prod-celda-click" title="Ver detalle de ${op.nombre}" onclick="abrirPanelOperario(${index})">
+        let filaHtml = `<tr id="fila-operario-${index}" class="fila-operario-matriz">
+            <td class="col-sticky-left font-bold prod-celda-click" title="Ver detalle de ${escaparAtributo(op.nombre)}" onclick="abrirPanelOperario(${index})">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${op.nombre}</span>
                     <i class="fas fa-chevron-right prod-icon-click"></i>
                 </div>
             </td>`;
-
-        let puntajeRealCalculado = 0; // 👈 LA CALCULADORA ESTRICTA INICIA EN CERO
-
+ 
+        let puntajeRealCalculado = 0;
+ 
         fechas.forEach(fecha => {
             const dataDia = op.dias[fecha];
             const esDomingo = esDomingoMapa[fecha];
             const esFeriado = esFeriadoMapa[fecha];
-            
+ 
             const claseExtra = esDomingo ? 'col-domingo' : (esFeriado ? 'col-feriado' : '');
-            
+            const diaLaborable = !esDomingo && !esFeriado;
+ 
             if (dataDia && dataDia.tipo === "produccion") {
-                // 👈 SOLO SUMAMOS PUNTOS SI REALMENTE HUBO PRODUCCIÓN (Ratio de alcance)
                 puntajeRealCalculado += dataDia.ratio;
-
-                let claseBg = dataDia.ratio < 1.0 ? "bg-alerta" : (dataDia.ratio === 1.0 ? "bg-meta" : "bg-sobre"); 
-                filaHtml += `<td class="col-dia ${claseExtra}"><div class="prod-badge-mini ${claseBg}" title="${fecha}: ${dataDia.ejecutado} regs">${dataDia.ratio.toFixed(2)}</div></td>`;
-                
-            } else if (dataDia && dataDia.tipo === "asistencia") {
-                let esFalta = (dataDia.estado === 'F' || dataDia.estado === 'LSG');
-                let claseAsist = esFalta ? 'bg-ausente' : '';
-                let colorAsist = esFalta ? '' : 'color: #475569; font-weight: 700;';
-                
-                // 🔥 EL TOOLTIP Y EL CURSOR DE AYUDA 🔥
-                let tooltipTexto = `Asistencia origen: Supervisor de ${dataDia.origen}`;
-                
-                filaHtml += `<td class="col-dia text-center ${claseExtra}" title="${tooltipTexto}" style="cursor: help;">
-                    <span class="${claseAsist}" style="${colorAsist}">${dataDia.estado}</span>
+ 
+                let claseAlerta = '';
+                let tituloCelda = `${fecha}: ${dataDia.ejecutado} regs`;
+ 
+                const info = infoEstadoAsistencia(dataDia.estado_asistencia);
+ 
+                // ----------------------------------------------------------
+                // Ejecutó, pero su asistencia dice que no debía trabajar
+                // ----------------------------------------------------------
+                if (info && info.trabaja === false) {
+                    claseAlerta = ' badge-discrepancia';
+                    totalDiscrepancias++;
+                    tituloCelda = `⚠ Trabajo en un día no laborable para esta persona\n\n`
+                        + `${fecha}: ${dataDia.ejecutado} registros ejecutados, `
+                        + `pero su asistencia figura como "${dataDia.estado_asistencia} — ${info.nombre}".\n\n`
+                        + `O la asistencia está mal registrada, o el trabajo se le atribuyó por error.`;
+ 
+                // ----------------------------------------------------------
+                // Ejecutó y nadie marcó su asistencia
+                // (solo se evalúa si el backend mandó el dato)
+                // ----------------------------------------------------------
+                } else if (dataDia.tiene_asistencia === false
+                           && (ALERTAR_EN_NO_LABORABLES || diaLaborable)) {
+                    claseAlerta = ' badge-discrepancia';
+                    totalDiscrepancias++;
+                    tituloCelda = `⚠ Trabajo sin asistencia registrada\n\n`
+                        + `${fecha}: ${dataDia.ejecutado} registros ejecutados, `
+                        + `pero ningún supervisor marcó su asistencia ese día.`;
+ 
+                } else if (info) {
+                    // Todo en orden: el tooltip igual informa el estado
+                    tituloCelda = `${fecha}: ${dataDia.ejecutado} regs · `
+                                + `${dataDia.estado_asistencia} (${info.nombre})`;
+                }
+ 
+                const claseBg = dataDia.ratio < 1.0 ? "bg-alerta" : (dataDia.ratio === 1.0 ? "bg-meta" : "bg-sobre");
+ 
+                filaHtml += `<td class="col-dia ${claseExtra}">
+                    <div class="prod-badge-mini ${claseBg}${claseAlerta}" title="${escaparAtributo(tituloCelda)}">${dataDia.ratio.toFixed(2)}</div>
                 </td>`;
+ 
+            } else if (dataDia && dataDia.tipo === "asistencia") {
+                const estado = String(dataDia.estado || '').trim().toUpperCase();
+                const info = infoEstadoAsistencia(estado);
+                const esFalta = (estado === 'F' || estado === 'LSG');
+ 
+                let claseAlerta = '';
+                let tituloCelda = info
+                    ? `${fecha}: ${estado} — ${info.nombre}\nRegistrada por el supervisor de ${dataDia.origen}`
+                    : `Asistencia origen: Supervisor de ${dataDia.origen}`;
+ 
+                // ----------------------------------------------------------
+                // Figura presente, pero no hay nada ejecutado
+                // DT y FT se evalúan siempre: afirman que trabajó ese día.
+                // ----------------------------------------------------------
+                const evaluarEsteDia = ALERTAR_EN_NO_LABORABLES
+                                     || diaLaborable
+                                     || estado === 'DT' || estado === 'FT';
+ 
+                if (info && info.trabaja === true && evaluarEsteDia) {
+                    claseAlerta = ' badge-discrepancia';
+                    totalDiscrepancias++;
+                    tituloCelda = `⚠ Asistencia sin producción\n\n`
+                        + `${fecha}: figura como "${estado} — ${info.nombre}" `
+                        + `pero no tiene ningún trabajo registrado en el sistema.\n\n`
+                        + `Asistencia registrada por el supervisor de ${dataDia.origen}.`;
+                }
+ 
+                filaHtml += `<td class="col-dia text-center ${claseExtra}">
+                    <div class="prod-badge-mini badge-asistencia ${esFalta ? 'bg-ausente' : ''}${claseAlerta}" title="${escaparAtributo(tituloCelda)}">${dataDia.estado}</div>
+                </td>`;
+ 
             } else {
                 filaHtml += `<td class="col-dia text-center ${claseExtra}"><span class="bg-vacio">-</span></td>`;
             }
         });
-
-        // 🔥 CÁLCULO DE SUELDO CON LOS PUNTOS REALES (Ignorando la data del backend)
+ 
         const sueldoContrato = op.sueldo_contrato || 0;
         const sueldoPagar = (sueldoContrato / 26) * puntajeRealCalculado;
-
-        // Semáforo Suave evaluado sobre los puntos reales vs días hábiles
+ 
         const rendimiento = puntajeRealCalculado / diasLaborables;
         let bgColorTotal, colorTextoTotal;
-
+ 
         if (rendimiento >= 0.95) {
             bgColorTotal = "#f0fdf4"; colorTextoTotal = "#15803d"; // Verde
         } else if (rendimiento >= 0.60) {
@@ -13598,15 +13706,39 @@ function dibujarMatriz(fechas, operarios) {
         } else {
             bgColorTotal = "#fef2f2"; colorTextoTotal = "#b91c1c"; // Rojo
         }
-
+ 
         filaHtml += `
             <td class="text-center" style="background-color: #f8fafc; border-left: 2px solid var(--prod-border); color: #64748b; font-size: 0.8rem;">${puntajeRealCalculado.toFixed(2)}</td>
             <td class="text-center" style="background-color: #f8fafc; color: #94a3b8; font-size: 0.8rem;">${sueldoContrato.toFixed(0)}</td>
             <td class="col-sticky-right text-center" style="background-color: ${bgColorTotal}; color: ${colorTextoTotal}; font-size: 0.85rem;">${sueldoPagar.toFixed(2)}</td>
         </tr>`;
-
-        tbody.innerHTML += filaHtml;
+ 
+        filas.push(filaHtml);
     });
+ 
+    tbody.innerHTML = filas.join('');
+ 
+    // ----------------------------------------------------------------------
+    // Resumen de discrepancias en el pie
+    // ----------------------------------------------------------------------
+    if (totalDiscrepancias > 0) {
+        const tfoot = document.getElementById('foot-tabla-produccion');
+        if (tfoot) {
+            tfoot.innerHTML = `<tr>
+                <td class="col-sticky-left" style="font-weight:700; color:#b45309; font-size:0.78rem;">
+                    <i class="fas fa-triangle-exclamation" style="margin-right:4px;"></i>
+                    ${totalDiscrepancias} día${totalDiscrepancias > 1 ? 's' : ''} por revisar
+                </td>
+                <td colspan="${fechas.length + 3}" style="color:#475569; font-size:0.78rem; padding:6px 10px;">
+                    Recuadros con borde ámbar: la asistencia y lo ejecutado no coinciden.
+                    Pase el cursor sobre uno para ver el detalle.
+                </td>
+            </tr>`;
+        }
+    }
+ 
+    console.log(`📊 [MATRIZ] ${operarios.length} colaboradores · ${fechas.length} días · `
+              + `${totalDiscrepancias} discrepancias detectadas`);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
