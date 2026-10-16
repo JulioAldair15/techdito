@@ -15617,6 +15617,150 @@ function dibujarMatrizDigitacion(fechas, analistas, resumen) {
 }
  
  
+const JORNADA_DIG = {
+    inicio: 8 * 60 + 30,        // 08:30 — entrada
+    fin:    17 * 60 + 30,       // 17:30 — salida: a partir de aquí es hora extra
+ 
+    // Ventana donde buscar el refrigerio. No se fija a una hora concreta
+    // porque unos lo toman 13:00-14:00 y otros 13:30-14:30.
+    refriDesde: 12 * 60 + 30,   // 12:30
+    refriHasta: 15 * 60,        // 15:00
+    refriMin: 35,               // una pausa más corta no es un almuerzo
+    refriMax: 95                // una más larga ya es otra cosa
+};
+ 
+ 
+/* ==========================================================================
+   ANÁLISIS DE UN DÍA
+   Una sola función calcula todo; la usan la lista de días y la línea de
+   tiempo, así no hay dos cuentas distintas del mismo número.
+   ========================================================================== */
+function analizarDiaDigitacion(fichasDia, umbral) {
+    const fichas = (fichasDia || [])
+        .filter(f => f.minuto_ini != null)
+        .slice()
+        .sort((a, b) => a.minuto_ini - b.minuto_ini);
+ 
+    if (fichas.length === 0) return null;
+ 
+    const finDe = (f) => f.minuto_fin ?? f.minuto_ini;
+ 
+    // ----------------------------------------------------------------------
+    // Pausas entre fichas
+    // ----------------------------------------------------------------------
+    const pausas = [];
+    for (let i = 1; i < fichas.length; i++) {
+        const desde = finDe(fichas[i - 1]);
+        const hasta = fichas[i].minuto_ini;
+        const minutos = hasta - desde;
+        if (minutos <= 0) continue;
+        pausas.push({ indice: i, desde, hasta, minutos, tipo: null });
+    }
+ 
+    // ----------------------------------------------------------------------
+    // El refrigerio: la pausa más larga dentro de la ventana del mediodía
+    // ----------------------------------------------------------------------
+    let refrigerio = null;
+    pausas.forEach(p => {
+        const enVentana = p.desde >= JORNADA_DIG.refriDesde && p.desde <= JORNADA_DIG.refriHasta;
+        const duracionPlausible = p.minutos >= JORNADA_DIG.refriMin && p.minutos <= JORNADA_DIG.refriMax;
+        if (enVentana && duracionPlausible && (!refrigerio || p.minutos > refrigerio.minutos)) {
+            refrigerio = p;
+        }
+    });
+    if (refrigerio) refrigerio.tipo = 'refrigerio';
+ 
+    // El resto de pausas largas sí son tiempo muerto
+    pausas.forEach(p => {
+        if (p.tipo !== 'refrigerio' && p.minutos > umbral) p.tipo = 'muerta';
+    });
+ 
+    // ----------------------------------------------------------------------
+    // Clasificar cada ficha por tramo horario
+    // ----------------------------------------------------------------------
+    fichas.forEach(f => {
+        const fin = finDe(f);
+        f._extra = fin >= JORNADA_DIG.fin;
+        f._antes = f.minuto_ini < JORNADA_DIG.inicio;
+    });
+ 
+    const primera = fichas[0].minuto_ini;
+    const ultima = finDe(fichas[fichas.length - 1]);
+ 
+    const fichasExtra = fichas.filter(f => f._extra);
+    const fichasAntes = fichas.filter(f => f._antes);
+    const fichasJornada = fichas.filter(f => !f._extra && !f._antes);
+ 
+    // ----------------------------------------------------------------------
+    // Tiempo muerto, separado por tramo
+    // ----------------------------------------------------------------------
+    const muertas = pausas.filter(p => p.tipo === 'muerta');
+    const muertasExtra = muertas.filter(p => p.desde >= JORNADA_DIG.fin);
+    const muertasJornada = muertas.filter(p => p.desde < JORNADA_DIG.fin);
+ 
+    const minutosMuertoExtra = muertasExtra.reduce((s, p) => s + p.minutos, 0);
+    const minutosMuertoJornada = muertasJornada.reduce((s, p) => s + p.minutos, 0);
+ 
+    // ----------------------------------------------------------------------
+    // Permanencia y ritmo
+    // ----------------------------------------------------------------------
+    const minutosExtra = ultima > JORNADA_DIG.fin ? (ultima - JORNADA_DIG.fin) : 0;
+    const finJornadaReal = Math.min(ultima, JORNADA_DIG.fin);
+    const minutosJornada = Math.max(finJornadaReal - primera, 0);
+ 
+    const efectivosJornada = Math.max(
+        minutosJornada - minutosMuertoJornada - (refrigerio ? refrigerio.minutos : 0), 0);
+    const efectivosExtra = Math.max(minutosExtra - minutosMuertoExtra, 0);
+ 
+    const ritmo = (cantidad, minutos) =>
+        minutos >= 15 ? +(cantidad / (minutos / 60)).toFixed(1) : null;
+ 
+    const ritmoJornada = ritmo(fichasJornada.length + fichasAntes.length, efectivosJornada);
+    const ritmoExtra = ritmo(fichasExtra.length, efectivosExtra);
+ 
+    // El dato que permite decidir: ¿la hora extra rinde como la jornada?
+    const eficienciaExtra = (ritmoJornada && ritmoExtra)
+        ? Math.round((ritmoExtra / ritmoJornada) * 100)
+        : null;
+ 
+    return {
+        fichas,
+        pausas,
+        refrigerio,
+        primera,
+        ultima,
+        totalFichas: fichas.length,
+ 
+        fichasJornada: fichasJornada.length,
+        fichasExtra: fichasExtra.length,
+        fichasAntes: fichasAntes.length,
+ 
+        minutosJornada,
+        minutosExtra,
+        efectivosJornada,
+        efectivosExtra,
+ 
+        minutosMuertoJornada,
+        minutosMuertoExtra,
+        minutosMuertoTotal: minutosMuertoJornada + minutosMuertoExtra,
+        conteoPausas: muertas.length,
+ 
+        ritmoJornada,
+        ritmoExtra,
+        eficienciaExtra,
+ 
+        salioTarde: minutosExtra > 0
+    };
+}
+ 
+ 
+/** 870 -> "14:30" */
+function minutoATexto(minuto) {
+    const h = Math.floor(minuto / 60), m = minuto % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+ 
+ 
 /* ==========================================================================
    PANEL DEL ANALISTA
    ========================================================================== */
@@ -15676,7 +15820,7 @@ function abrirPanelAnalista(index) {
         }
  
         // ------------------------------------------------------------------
-        // Agrupar por día
+        // Agrupar por día y analizar cada uno
         // ------------------------------------------------------------------
         const porDia = {};
         window.digitacionDetalle.forEach(f => {
@@ -15689,10 +15833,59 @@ function abrirPanelAnalista(index) {
         });
  
         window.digitacionPorDia = porDia;
+        window.digitacionAnalisis = {};
+        dias.forEach(d => {
+            window.digitacionAnalisis[d] = analizarDiaDigitacion(porDia[d], window.digitacionUmbral);
+        });
  
         // ------------------------------------------------------------------
-        // Perfil por hora: se calcula UNA vez por día y se guarda.
-        // El gráfico luego solo lee de aquí al cambiar de día.
+        // Resumen de horas extras de todo el rango
+        // ------------------------------------------------------------------
+        const resumenHE = {
+            dias: 0, minutos: 0, fichas: 0, muerto: 0,
+            efectivosExtra: 0, fichasJornada: 0, efectivosJornada: 0
+        };
+ 
+        dias.forEach(d => {
+            const an = window.digitacionAnalisis[d];
+            if (!an) return;
+            resumenHE.fichasJornada += an.fichasJornada + an.fichasAntes;
+            resumenHE.efectivosJornada += an.efectivosJornada;
+            if (an.salioTarde) {
+                resumenHE.dias++;
+                resumenHE.minutos += an.minutosExtra;
+                resumenHE.fichas += an.fichasExtra;
+                resumenHE.muerto += an.minutosMuertoExtra;
+                resumenHE.efectivosExtra += an.efectivosExtra;
+            }
+        });
+ 
+        const ritmoGlobalJornada = resumenHE.efectivosJornada >= 30
+            ? resumenHE.fichasJornada / (resumenHE.efectivosJornada / 60) : null;
+        const ritmoGlobalExtra = resumenHE.efectivosExtra >= 30
+            ? resumenHE.fichas / (resumenHE.efectivosExtra / 60) : null;
+        const eficienciaGlobal = (ritmoGlobalJornada && ritmoGlobalExtra)
+            ? Math.round((ritmoGlobalExtra / ritmoGlobalJornada) * 100) : null;
+ 
+        let chipResumenHE = '';
+        if (resumenHE.dias > 0) {
+            const pctFichas = Math.round((resumenHE.fichas / (a.total || 1)) * 100);
+            const detalle = `Horas extras en el rango (desde las ${minutoATexto(JORNADA_DIG.fin)})\n\n`
+                + `${resumenHE.dias} día(s) con permanencia extra\n`
+                + `${formatoMinutosDig(resumenHE.minutos)} en total\n`
+                + `${resumenHE.fichas} fichas digitadas (${pctFichas}% de su producción)\n`
+                + (resumenHE.muerto > 0 ? `${formatoMinutosDig(resumenHE.muerto)} de tiempo muerto dentro de esas horas\n` : '')
+                + (eficienciaGlobal != null
+                    ? `\nRinde al ${eficienciaGlobal}% de su ritmo en jornada normal`
+                    : '');
+ 
+            chipResumenHE = `<span class="dig-resumen-extra" title="${escaparAtributo(detalle)}">
+                    <i class="fas fa-moon"></i> ${formatoMinutosDig(resumenHE.minutos)} extra · ${resumenHE.fichas} fichas
+                 </span>`;
+        }
+ 
+        // ------------------------------------------------------------------
+        // Perfil por hora (igual que antes, pero guardando el tramo)
         // ------------------------------------------------------------------
         const perfilPorDia = {};
         const acumuladoRango = {};
@@ -15709,11 +15902,9 @@ function abrirPanelAnalista(index) {
                 if (h > horaMax) horaMax = h;
             });
             perfilPorDia[dia] = conteo;
- 
             Object.values(conteo).forEach(v => { if (v > maximoBarra) maximoBarra = v; });
         });
  
-        // Promedio del rango por hora (sobre los días en que hubo actividad)
         const promedioRango = {};
         Object.keys(acumuladoRango).forEach(h => {
             promedioRango[h] = acumuladoRango[h] / dias.length;
@@ -15735,16 +15926,14 @@ function abrirPanelAnalista(index) {
         let listaDias = '';
  
         dias.forEach((dia, i) => {
-            const fichas = porDia[dia];
+            const an = window.digitacionAnalisis[dia];
+            if (!an) return;
+ 
             const partes = dia.split('/');
             const numeroDia = partes[0];
             const textoMes = meses[parseInt(partes[1], 10) - 1] || '';
  
-            const pausas = fichas.filter(f => f.pausa_previa != null && f.pausa_previa > window.digitacionUmbral);
-            const perdidos = pausas.reduce((s, f) => s + f.pausa_previa, 0);
-            const primera = fichas[0].hora_ini || fichas[0].hora_fin;
-            const ultima = fichas[fichas.length - 1].hora_fin;
-            const rezagos = fichas.map(f => f.dias_rezago).filter(v => v != null);
+            const rezagos = porDia[dia].map(f => f.dias_rezago).filter(v => v != null);
             const rezagoMedio = rezagos.length
                 ? (rezagos.reduce((s, v) => s + v, 0) / rezagos.length).toFixed(1) : null;
  
@@ -15755,12 +15944,19 @@ function abrirPanelAnalista(index) {
                         <span>${textoMes}</span>
                     </div>
                     <div class="dig-stats">
-                        <div title="Fichas digitadas"><i class="fas fa-keyboard"></i> <b>${fichas.length}</b> fichas</div>
-                        <div title="Primera y última ficha"><i class="far fa-clock"></i> ${primera} - ${ultima}</div>
-                        ${perdidos > 0
-                            ? `<div title="${pausas.length} pausa(s) de más de ${window.digitacionUmbral} min" style="color:#b45309; font-weight:700;">
-                                   <i class="fas fa-hourglass-half"></i> ${formatoMinutosDig(perdidos)} muerto</div>`
+                        <div title="Fichas digitadas"><i class="fas fa-keyboard"></i> <b>${an.totalFichas}</b> fichas</div>
+                        <div title="Primera y última ficha"><i class="far fa-clock"></i> ${minutoATexto(an.primera)} - ${minutoATexto(an.ultima)}</div>
+ 
+                        ${an.minutosMuertoTotal > 0
+                            ? `<div title="${an.conteoPausas} pausa(s) de más de ${window.digitacionUmbral} min, sin contar el refrigerio" style="color:#b45309; font-weight:700;">
+                                   <i class="fas fa-hourglass-half"></i> ${formatoMinutosDig(an.minutosMuertoTotal)} muerto</div>`
                             : `<div style="color:#047857;"><i class="fas fa-circle-check"></i> sin pausas</div>`}
+ 
+                        ${an.salioTarde
+                            ? `<div class="dig-dato-extra" title="Permanencia después de las ${minutoATexto(JORNADA_DIG.fin)}: ${formatoMinutosDig(an.minutosExtra)} · ${an.fichasExtra} fichas">
+                                   <i class="fas fa-moon"></i> ${formatoMinutosDig(an.minutosExtra)} extra</div>`
+                            : ''}
+ 
                         ${rezagoMedio != null
                             ? `<div title="Días promedio entre la ejecución en campo y la digitación"><i class="fas fa-clock-rotate-left"></i> ${rezagoMedio} d de rezago</div>`
                             : ''}
@@ -15777,12 +15973,12 @@ function abrirPanelAnalista(index) {
                     </h3>
                     <div style="font-size:0.72rem; color:#64748b; margin-top:2px;">
                         ${a.total} fichas · ${a.dias_activos} días · promedio ${a.promedio_diario}/día
+                        ${chipResumenHE}
                     </div>
                 </div>
                 <button class="panel-close-btn" onclick="cerrarPanelAnalista()">×</button>
             </div>
  
-            <!-- El gráfico se repinta al cambiar de día -->
             <div class="dig-perfil" id="dig-perfil-host"></div>
  
             <div class="panel-content-wrapper">
@@ -15811,25 +16007,33 @@ function dibujarPerfilHoras(dia) {
  
     const delDia = perfil.porDia[dia] || {};
     const totalDia = Object.values(delDia).reduce((s, v) => s + v, 0);
+    const horaExtraDesde = Math.floor(JORNADA_DIG.fin / 60);
  
     let barras = '';
+    let hayExtra = false;
+ 
     for (let h = perfil.horaMin; h <= perfil.horaMax; h++) {
         const valorDia = delDia[h] || 0;
         const valorProm = perfil.promedio[h] || 0;
+        const esExtra = h >= horaExtraDesde;
+        if (esExtra && valorDia > 0) hayExtra = true;
  
         const altoDia = Math.round((valorDia / perfil.maximo) * 100);
         const altoProm = Math.round((valorProm / perfil.maximo) * 100);
  
         const detalle = `${String(h).padStart(2, '0')}:00 — ${valorDia} ficha(s) este día`
-            + `\nPromedio del rango a esa hora: ${valorProm.toFixed(1)}`;
+            + `\nPromedio del rango a esa hora: ${valorProm.toFixed(1)}`
+            + (esExtra ? `\nFuera de la jornada` : '');
+ 
+        const color = valorDia > 0 ? (esExtra ? '#7c3aed' : '#1d4ed8') : 'transparent';
  
         barras += `
-            <div class="dig-barra-hora" title="${detalle.replace(/"/g, '&quot;').replace(/\n/g, '&#10;')}">
+            <div class="dig-barra-hora" title="${escaparAtributo(detalle)}">
                 <div class="dig-barra-pila">
                     <div class="dig-barra-prom" style="height:${Math.max(altoProm, valorProm > 0 ? 3 : 0)}%;"></div>
-                    <div class="dig-barra-relleno" style="height:${Math.max(altoDia, valorDia > 0 ? 6 : 0)}%; background:${valorDia > 0 ? '#1d4ed8' : 'transparent'};"></div>
+                    <div class="dig-barra-relleno" style="height:${Math.max(altoDia, valorDia > 0 ? 6 : 0)}%; background:${color};"></div>
                 </div>
-                <span class="dig-barra-etiqueta">${h}</span>
+                <span class="dig-barra-etiqueta" style="${esExtra ? 'color:#7c3aed; font-weight:700;' : ''}">${h}</span>
             </div>`;
     }
  
@@ -15838,11 +16042,13 @@ function dibujarPerfilHoras(dia) {
             <div class="dig-perfil-titulo">Fichas por hora · ${dia}</div>
             <div class="dig-perfil-leyenda">
                 <span><i class="dig-punto" style="background:#1d4ed8;"></i> Este día (${totalDia})</span>
+                ${hayExtra ? `<span><i class="dig-punto" style="background:#7c3aed;"></i> Fuera de jornada</span>` : ''}
                 <span><i class="dig-punto" style="background:#e2e8f0;"></i> Promedio del rango</span>
             </div>
         </div>
         <div class="dig-perfil-barras">${barras}</div>`;
 }
+ 
  
 function cerrarPanelAnalista() {
     document.getElementById('prod-split-layout')?.classList.remove('panel-open');
@@ -15862,22 +16068,27 @@ function dibujarTimelineDia(dia, indexFila) {
     document.querySelectorAll('.row-dia').forEach(el => el.classList.remove('activo'));
     document.getElementById(`row-dia-dig-${indexFila}`)?.classList.add('activo');
  
-    // 👇 El gráfico de horas se actualiza con el día elegido
     dibujarPerfilHoras(dia);
  
-    const fichas = (window.digitacionPorDia?.[dia] || []).filter(f => f.minuto_ini != null);
     const umbral = window.digitacionUmbral || 15;
+    const an = window.digitacionAnalisis?.[dia]
+            || analizarDiaDigitacion(window.digitacionPorDia?.[dia], umbral);
  
-    if (fichas.length === 0) {
+    if (!an) {
         contenedor.innerHTML = `<div style="padding:30px; text-align:center; color:#64748b;">
             Este día no tiene horas registradas.</div>`;
         return;
     }
  
-    const minutoMin = Math.min(...fichas.map(f => f.minuto_ini));
-    const minutoMax = Math.max(...fichas.map(f => f.minuto_fin ?? f.minuto_ini));
-    const horaDesde = Math.floor(minutoMin / 60);
-    const horaHasta = Math.min(Math.ceil(minutoMax / 60), 24);
+    const fichas = an.fichas;
+    const finDe = (f) => f.minuto_fin ?? f.minuto_ini;
+ 
+    // ----------------------------------------------------------------------
+    // Eje: siempre incluye la hora de salida, para que la franja de horas
+    // extras se vea aunque ese día nadie se haya quedado
+    // ----------------------------------------------------------------------
+    const horaDesde = Math.floor(Math.min(an.primera, JORNADA_DIG.inicio) / 60);
+    const horaHasta = Math.min(Math.ceil(Math.max(an.ultima, JORNADA_DIG.fin) / 60), 24);
     const inicioEje = horaDesde * 60;
     const anchoEje = Math.max((horaHasta - horaDesde) * 60, 60);
  
@@ -15890,45 +16101,81 @@ function dibujarTimelineDia(dia, indexFila) {
             </div>`;
     }
  
-    let bloques = '';
-    let pausasHtml = '';
-    let totalPerdido = 0;
-    let conteoPausas = 0;
+    // Franja de fuera de jornada
+    const izqExtra = posicion(JORNADA_DIG.fin);
+    const zonaExtra = izqExtra < 100
+        ? `<div class="dig-tl-zona-extra" style="left:${izqExtra}%; right:0;"><span>EXTRA</span></div>`
+        : '';
  
-    fichas.forEach((f, i) => {
-        const fin = f.minuto_fin ?? (f.minuto_ini + 1);
+    // ----------------------------------------------------------------------
+    // Bloques de ficha
+    // ----------------------------------------------------------------------
+    let bloques = '';
+    fichas.forEach(f => {
+        const fin = finDe(f) === f.minuto_ini ? f.minuto_ini + 1 : finDe(f);
         const izq = posicion(f.minuto_ini);
         const ancho = Math.max(posicion(fin) - izq, 0.4);
  
         const detalle = `${f.hora_ini} - ${f.hora_fin} · ${f.suministro}`
             + `\n${f.actividad}`
             + (f.minutos_ficha != null ? `\nDuración: ${f.minutos_ficha} min` : '')
+            + (f._extra ? `\n⏱ Fuera de la jornada` : '')
             + (f.dias_rezago != null ? `\nEjecutado en campo el ${f.fecha_campo} (${f.dias_rezago} d antes)` : '');
  
-        bloques += `<div class="dig-tl-bloque" style="left:${izq}%; width:${ancho}%;"
+        bloques += `<div class="dig-tl-bloque${f._extra ? ' es-extra' : ''}"
+                         style="left:${izq}%; width:${ancho}%;"
                          title="${escaparAtributo(detalle)}"></div>`;
+    });
  
-        if (f.pausa_previa != null && f.pausa_previa > umbral && i > 0) {
-            const anterior = fichas[i - 1];
-            const finAnterior = anterior.minuto_fin ?? anterior.minuto_ini;
-            const izqPausa = posicion(finAnterior);
-            const anchoPausa = Math.max(posicion(f.minuto_ini) - izqPausa, 0.3);
+    // ----------------------------------------------------------------------
+    // Pausas: el refrigerio en gris, el tiempo muerto en rojo
+    // ----------------------------------------------------------------------
+    let pausasHtml = '';
+    an.pausas.forEach(p => {
+        if (!p.tipo) return;
  
-            totalPerdido += f.pausa_previa;
-            conteoPausas++;
+        const izq = posicion(p.desde);
+        const ancho = Math.max(posicion(p.hasta) - izq, 0.3);
+        const rotulo = `${minutoATexto(p.desde)} a ${minutoATexto(p.hasta)}`;
  
-            pausasHtml += `<div class="dig-tl-pausa" style="left:${izqPausa}%; width:${anchoPausa}%;"
-                                title="${anterior.hora_fin} a ${f.hora_ini} · ${f.pausa_previa} min sin digitar">
-                    ${anchoPausa > 4 ? `<span>${f.pausa_previa}m</span>` : ''}
+        if (p.tipo === 'refrigerio') {
+            pausasHtml += `<div class="dig-tl-refrigerio" style="left:${izq}%; width:${ancho}%;"
+                                title="${rotulo} · Refrigerio (${p.minutos} min). No cuenta como tiempo muerto.">
+                    ${ancho > 5 ? `<span>REFRIGERIO</span>` : ''}
+                </div>`;
+        } else {
+            const enExtra = p.desde >= JORNADA_DIG.fin;
+            pausasHtml += `<div class="dig-tl-pausa" style="left:${izq}%; width:${ancho}%;"
+                                title="${rotulo} · ${p.minutos} min sin digitar${enExtra ? ' (en horas extras)' : ''}">
+                    ${ancho > 4 ? `<span>${p.minutos}m</span>` : ''}
                 </div>`;
         }
     });
  
-    const primera = fichas[0].hora_ini;
-    const ultima = fichas[fichas.length - 1].hora_fin;
-    const jornada = minutoMax - minutoMin;
-    const efectivo = Math.max(jornada - totalPerdido, 0);
-    const ritmo = efectivo >= 15 ? (fichas.length / (efectivo / 60)).toFixed(1) : '-';
+    // ----------------------------------------------------------------------
+    // Chip de horas extras en la cabecera
+    // ----------------------------------------------------------------------
+    let chipExtra = '';
+    if (an.salioTarde) {
+        const rindePoco = an.eficienciaExtra != null && an.eficienciaExtra < 70;
+ 
+        const detalle = `Horas extras del ${dia}\n\n`
+            + `Salida: ${minutoATexto(JORNADA_DIG.fin)} · última ficha: ${minutoATexto(an.ultima)}\n`
+            + `Permanencia extra: ${formatoMinutosDig(an.minutosExtra)}\n`
+            + `Fichas en ese tramo: ${an.fichasExtra}\n`
+            + (an.ritmoExtra != null ? `Ritmo: ${an.ritmoExtra}/h` : 'Ritmo: sin datos suficientes')
+            + (an.ritmoJornada != null ? ` (en jornada: ${an.ritmoJornada}/h)` : '')
+            + (an.eficienciaExtra != null ? `\n\nRinde al ${an.eficienciaExtra}% de su ritmo normal` : '')
+            + (an.minutosMuertoExtra > 0
+                ? `\n⚠ ${formatoMinutosDig(an.minutosMuertoExtra)} de tiempo muerto dentro de las horas extras` : '');
+ 
+        chipExtra = `<span class="dig-chip-extra ${rindePoco ? 'rinde-poco' : ''}" title="${escaparAtributo(detalle)}">
+                <i class="fas fa-moon"></i>
+                ${formatoMinutosDig(an.minutosExtra)} extra · ${an.fichasExtra} fichas${an.eficienciaExtra != null ? ` · ${an.eficienciaExtra}%` : ''}
+             </span>`;
+    }
+ 
+    const ritmoTexto = an.ritmoJornada != null ? `${an.ritmoJornada}/h` : '-';
  
     contenedor.innerHTML = `
         <div class="dig-tl-cabecera">
@@ -15936,12 +16183,13 @@ function dibujarTimelineDia(dia, indexFila) {
                 <i class="fas fa-timeline" style="color:#1d4ed8; margin-right:4px;"></i> Jornada del ${dia}
             </div>
             <div class="dig-tl-resumen">
-                <span title="Primera y última ficha del día"><i class="far fa-clock"></i> ${primera} - ${ultima}</span>
-                <span title="Fichas digitadas"><i class="fas fa-keyboard"></i> ${fichas.length}</span>
-                <span title="Fichas por hora efectiva"><i class="fas fa-bolt"></i> ${ritmo}/h</span>
-                ${conteoPausas > 0
-                    ? `<span class="dig-tl-alerta" title="${conteoPausas} pausa(s) de más de ${umbral} minutos">
-                           <i class="fas fa-hourglass-half"></i> ${conteoPausas} pausas · ${formatoMinutosDig(totalPerdido)}</span>`
+                <span title="Primera y última ficha del día"><i class="far fa-clock"></i> ${minutoATexto(an.primera)} - ${minutoATexto(an.ultima)}</span>
+                <span title="Fichas digitadas"><i class="fas fa-keyboard"></i> ${an.totalFichas}</span>
+                <span title="Fichas por hora efectiva dentro de la jornada"><i class="fas fa-bolt"></i> ${ritmoTexto}</span>
+                ${chipExtra}
+                ${an.minutosMuertoTotal > 0
+                    ? `<span class="dig-tl-alerta" title="${an.conteoPausas} pausa(s) de más de ${umbral} minutos, sin contar el refrigerio">
+                           <i class="fas fa-hourglass-half"></i> ${an.conteoPausas} pausas · ${formatoMinutosDig(an.minutosMuertoTotal)}</span>`
                     : `<span class="dig-tl-ok"><i class="fas fa-circle-check"></i> sin pausas</span>`}
             </div>
         </div>
@@ -15949,11 +16197,14 @@ function dibujarTimelineDia(dia, indexFila) {
         <div class="dig-tl-lienzo">
             <div class="dig-tl-pista">
                 ${reglas}
+                ${zonaExtra}
                 ${pausasHtml}
                 ${bloques}
             </div>
             <div class="dig-tl-leyenda">
                 <span><i class="dig-punto" style="background:#1d4ed8;"></i> Ficha digitada</span>
+                ${an.fichasExtra > 0 ? `<span><i class="dig-punto" style="background:#7c3aed;"></i> Hora extra</span>` : ''}
+                ${an.refrigerio ? `<span><i class="dig-punto" style="background:#e2e8f0; border:1px dashed #cbd5e1;"></i> Refrigerio</span>` : ''}
                 <span><i class="dig-punto" style="background:#fca5a5; border:1px solid #dc2626;"></i> Pausa mayor a ${umbral} min</span>
             </div>
         </div>
@@ -15964,22 +16215,34 @@ function dibujarTimelineDia(dia, indexFila) {
                     <tr><th>#</th><th>Hora</th><th>Suministro</th><th>Actividad</th><th>Min</th><th>Pausa</th></tr>
                 </thead>
                 <tbody>
-                    ${fichas.map((f, i) => `
-                        <tr class="${f.pausa_previa != null && f.pausa_previa > umbral ? 'dig-fila-pausa' : ''}">
+                    ${fichas.map((f, i) => {
+                        const pausaDeEsta = an.pausas.find(p => p.indice === i);
+                        const esMuerta = pausaDeEsta && pausaDeEsta.tipo === 'muerta';
+                        const esRefri = pausaDeEsta && pausaDeEsta.tipo === 'refrigerio';
+ 
+                        let celdaPausa = '-';
+                        if (esMuerta) {
+                            celdaPausa = `<b style="color:#b91c1c;">${pausaDeEsta.minutos} min</b>`;
+                        } else if (esRefri) {
+                            celdaPausa = `<span style="color:#64748b;" title="Refrigerio">${pausaDeEsta.minutos} min 🍽</span>`;
+                        } else if (pausaDeEsta) {
+                            celdaPausa = `${pausaDeEsta.minutos} min`;
+                        }
+ 
+                        return `
+                        <tr class="${f._extra ? 'dig-fila-extra ' : ''}${esMuerta ? 'dig-fila-pausa' : ''}">
                             <td>${i + 1}</td>
-                            <td>${f.hora_ini} - ${f.hora_fin}</td>
+                            <td>${f.hora_ini} - ${f.hora_fin}${f._extra ? `<span class="dig-tl-etiqueta-he">HE</span>` : ''}</td>
                             <td>${f.suministro}</td>
                             <td title="${escaparAtributo(f.actividad)}">${(f.actividad || '').substring(0, 28)}</td>
                             <td>${f.minutos_ficha != null ? f.minutos_ficha : '-'}</td>
-                            <td>${f.pausa_previa != null && f.pausa_previa > umbral
-                                    ? `<b style="color:#b91c1c;">${f.pausa_previa} min</b>`
-                                    : (f.pausa_previa != null ? `${f.pausa_previa} min` : '-')}</td>
-                        </tr>`).join('')}
+                            <td>${celdaPausa}</td>
+                        </tr>`;
+                    }).join('')}
                 </tbody>
             </table>
         </div>`;
 }
- 
  
 /* ==========================================================================
    AUXILIARES
