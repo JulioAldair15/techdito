@@ -11349,4 +11349,156 @@ input[type="number"].input-carga-dinamico {
 }
  
 .ms-area-btn:hover { background: #eff6ff; }
+
+
+/* --------------------------------------------------------------------------
+   Chip de horas extras en la cabecera
+   -------------------------------------------------------------------------- */
  
+.dig-chip-extra {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #5b21b6;
+    background: #f5f3ff;
+    border: 1px solid #ddd6fe;
+    border-radius: 999px;
+    padding: 2px 9px;
+    cursor: help;
+}
+ 
+.dig-chip-extra i { color: #7c3aed; font-size: 0.68rem; }
+ 
+/* Cuando el rendimiento en horas extras cae mucho, el chip avisa */
+.dig-chip-extra.rinde-poco {
+    color: #b45309;
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+.dig-chip-extra.rinde-poco i { color: #d97706; }
+ 
+ 
+/* --------------------------------------------------------------------------
+   Resumen del rango, bajo el nombre del analista
+   -------------------------------------------------------------------------- */
+ 
+.dig-resumen-extra {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    color: #6d28d9;
+    background: #f5f3ff;
+    border: 1px solid #ede9fe;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    cursor: help;
+}
+ 
+ 
+/* --------------------------------------------------------------------------
+   Línea de tiempo
+   -------------------------------------------------------------------------- */
+ 
+/* Franja de fondo que marca el horario fuera de jornada */
+.dig-tl-zona-extra {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(124, 58, 237, 0.05),
+        rgba(124, 58, 237, 0.05) 5px,
+        rgba(124, 58, 237, 0.10) 5px,
+        rgba(124, 58, 237, 0.10) 10px
+    );
+    border-left: 1px dashed #c4b5fd;
+    pointer-events: none;
+}
+ 
+.dig-tl-zona-extra span {
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #7c3aed;
+    letter-spacing: .3px;
+}
+ 
+/* Fichas digitadas fuera de la jornada */
+.dig-tl-bloque.es-extra { background: #7c3aed; }
+.dig-tl-bloque.es-extra:hover { background: #6d28d9; }
+ 
+/* El refrigerio: pausa esperada, en gris y sin alarma */
+.dig-tl-refrigerio {
+    position: absolute;
+    top: 8px;
+    height: 30px;
+    background: repeating-linear-gradient(
+        -45deg,
+        #f1f5f9,
+        #f1f5f9 4px,
+        #e2e8f0 4px,
+        #e2e8f0 8px
+    );
+    border: 1px dashed #cbd5e1;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: help;
+}
+ 
+.dig-tl-refrigerio span {
+    font-size: 0.55rem;
+    font-weight: 600;
+    color: #64748b;
+}
+ 
+ 
+/* --------------------------------------------------------------------------
+   Tabla del día
+   -------------------------------------------------------------------------- */
+ 
+/* Fichas digitadas en horas extras */
+.dig-tl-tabla tr.dig-fila-extra {
+    background: #faf5ff;
+}
+ 
+.dig-tl-tabla tr.dig-fila-extra td:first-child {
+    box-shadow: inset 3px 0 0 0 #7c3aed;
+}
+ 
+/* Si además tuvo una pausa larga, el ámbar manda: es lo que hay que mirar */
+.dig-tl-tabla tr.dig-fila-extra.dig-fila-pausa {
+    background: #fffbeb;
+}
+ 
+.dig-tl-etiqueta-he {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #6d28d9;
+    background: #ede9fe;
+    border-radius: 3px;
+    padding: 0 4px;
+    margin-left: 5px;
+    vertical-align: middle;
+}
+ 
+ 
+/* --------------------------------------------------------------------------
+   Lista de días
+   -------------------------------------------------------------------------- */
+ 
+.dig-stats .dig-dato-extra {
+    color: #6d28d9;
+    font-weight: 700;
+}
+ 
+.dig-stats .dig-dato-extra i { color: #7c3aed; }
