@@ -503,7 +503,7 @@ document.addEventListener('click', function(event) {
     // CATÁLOGOS
     // ------------------------------------------------------------------------
     const ESTADOS = [
-        ['A', 'DÍA ASISTIDO'], ['MJ', 'MEDIA JORNADA'], ['DT', 'DOMINGO TRABAJADO'], ['FT', 'FERIADO TRABAJADO'],
+        ['A', 'DÍA ASISTIDO'], ['MJ', 'MEDIA JORNADA'], ['VA', 'VACACIONES ADELANTADAS'], ['DT', 'DOMINGO TRABAJADO'], ['FT', 'FERIADO TRABAJADO'],
         ['LG', 'LICENCIA CON GOCE DE HABER'], ['DM', 'DESCANSO MÉDICO'], ['V', 'VACACIONES'],
         ['LSG', 'LICENCIA SIN GOCE DE HABER'], ['F', 'FALTA'], ['R', 'RENUNCIÓ'],
         ['SU', 'SUSP. PERFECTA LABORES'], ['CE', 'CESE'], ['FG', 'FERIADO GANADO'],
@@ -13476,6 +13476,7 @@ const ESTADOS_ASISTENCIA = {
     // ---- Presente: debería tener producción ----
     'A':   { nombre: 'Día asistido',                   trabaja: true  },
     'MJ':  { nombre: 'Media jornada',                  trabaja: true  },
+    'VA':  { nombre: 'Vacaciones adelantadas',         trabaja: true  },
     'DT':  { nombre: 'Domingo trabajado',              trabaja: true  },
     'FT':  { nombre: 'Feriado trabajado',              trabaja: true  },
  
