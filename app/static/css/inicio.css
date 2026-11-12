@@ -11502,3 +11502,33 @@ input[type="number"].input-carga-dinamico {
 }
  
 .dig-stats .dig-dato-extra i { color: #7c3aed; }
+
+/* ==========================================================================
+   ⚡ KARDEX - LISTA VIRTUAL (la activa script.js con más de 400 movimientos)
+   .alm-kardex-fijo = columnas de ancho fijo para que no "salten" al hacer scroll.
+   .kardex-espaciador = filas vacías que mantienen el alto total del scroll.
+   ========================================================================== */
+#almacen table.alm-kardex-fijo { table-layout: fixed; }
+#almacen table.alm-kardex-fijo th:nth-child(1)  { width: 105px; }
+#almacen table.alm-kardex-fijo th:nth-child(2)  { width: 115px; }
+#almacen table.alm-kardex-fijo th:nth-child(3)  { width: 110px; }
+#almacen table.alm-kardex-fijo th:nth-child(4)  { width: 250px; }
+#almacen table.alm-kardex-fijo th:nth-child(5)  { width: 60px; }
+#almacen table.alm-kardex-fijo th:nth-child(6)  { width: 80px; }
+#almacen table.alm-kardex-fijo th:nth-child(7)  { width: 150px; }
+#almacen table.alm-kardex-fijo th:nth-child(8)  { width: 100px; }
+#almacen table.alm-kardex-fijo th:nth-child(9)  { width: 100px; }
+#almacen table.alm-kardex-fijo th:nth-child(10) { width: 220px; }
+#almacen table.alm-kardex-fijo th:nth-child(11) { width: 200px; }
+#almacen table.alm-kardex-fijo th:nth-child(12) { width: 200px; }
+#almacen table.alm-kardex-fijo th:nth-child(13) { width: 140px; }
+#almacen table.alm-kardex-fijo th:nth-child(14) { width: 140px; }
+#almacen table.alm-kardex-fijo th:nth-child(15) { width: 120px; }
+#almacen table.alm-kardex-fijo th:nth-child(16) { width: 115px; }
+#almacen table.alm-kardex-fijo th:nth-child(17) { width: 120px; }
+#almacen table.alm-kardex-fijo th:nth-child(18) { width: 200px; }
+#almacen table.alm-kardex-fijo th:nth-child(19) { width: 140px; }
+#almacen .alm-table tbody tr.kardex-espaciador,
+#almacen .alm-table tbody tr.kardex-espaciador:hover { background: transparent; }
+#almacen .alm-table tbody tr.kardex-espaciador td { padding: 0; border: 0; }
+
