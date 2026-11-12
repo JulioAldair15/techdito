@@ -45,6 +45,11 @@ function adjustContentWidth() {
 
 // --- LÓGICA DE SECCIONES (CORE) ---
 function showSection(sectionId) {
+    // ⚡ ALMACÉN: carga diferida. Solo se piden los datos la PRIMERA vez que se entra al módulo
+    if (sectionId === 'almacen' && typeof window.cargarAlmacenInicial === 'function') {
+        window.cargarAlmacenInicial();
+    }
+
     const sections = document.querySelectorAll('.section');
 
     // 🔁 Ocultar TODO primero
