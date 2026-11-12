@@ -8647,6 +8647,13 @@ function guardarProveedor() {
     });
 }
 
+window.cargarAlmacenInicial = function () {
+    if (window._almacenCargado) return;
+    window._almacenCargado = true;
+    cargarDatosMaestros();
+    cargarHistorialKardex(1);
+};
+
 // CARGA DE DATOS ASÍNCRONA VÍA AJAX
 function cargarDatosMaestros() {
     fetch('/almacen/api/listar-datos')
@@ -9829,8 +9836,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
 
-    cargarDatosMaestros();
-    cargarHistorialKardex(1);
+    // ⚡ ANTES aquí se llamaba cargarDatosMaestros() y cargarHistorialKardex(1) al abrir el sistema,
+    //    aunque el usuario nunca entrara a Almacén. Ahora se cargan en cargarAlmacenInicial() (ver showSection).
     
     // 1. Detectar cuando el contenedor del Select2 recibe el foco y forzar su apertura
     $(document).on('focus', '.select2-selection.select2-selection--single', function() {
@@ -10525,45 +10532,43 @@ function ejecutarBusquedaHistorial() {
     }, 400); // 400ms de retraso para no saturar el servidor mientras tipea
 }
 
-function cargarHistorialKardex() {
-    const tbody = document.getElementById('body-tabla-historico');
-    const search = document.getElementById('filtro-hist-texto').value;
-    
-    // 1. CAPTURAMOS LAS FECHAS DEL HTML
-    const fechaInicio = document.getElementById('filtro-hist-inicio').value;
-    const fechaFin = document.getElementById('filtro-hist-fin').value;
-    
-    tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="padding: 30px;"><i class="fas fa-spinner fa-spin fa-lg"></i> Cargando todos los movimientos...</td></tr>`;
+// ==========================================================================
+// ⚡ KARDEX - LISTA VIRTUAL
+// Todos los movimientos se guardan en memoria (kardexFilas) y solo se dibujan en el DOM las filas
+// que caben en pantalla (+ un margen). Así el listado completo se ve igual, pero el navegador
+// maneja ~60 filas en vez de miles. Con <= KARDEX_UMBRAL_VIRTUAL filas se dibuja todo como siempre.
+// ==========================================================================
+const KARDEX_UMBRAL_VIRTUAL = 400;   // a partir de cuántas filas se activa la lista virtual
+const KARDEX_BUFFER = 15;            // filas extra dibujadas arriba y abajo de lo visible
+let kardexFilas = [];                // TODOS los movimientos (datos, no DOM)
+let kardexVirtual = false;
+let kardexAltoFila = 48;             // se mide solo con la primera fila dibujada
+let kardexVentana = { ini: -1, fin: -1 };
+let kardexRaf = 0;
 
-    // 2. CONSTRUIMOS LA URL (Sin page ni limit)
-    let url = `/almacen/api/historico-kardex?tipo=${historialCurrentTipo}&search=${encodeURIComponent(search)}`;
-    
-    if (fechaInicio) url += `&fecha_inicio=${fechaInicio}`;
-    if (fechaFin) url += `&fecha_fin=${fechaFin}`;
-    
-    // Deshabilitamos el caché en los headers
-    fetch(url, {
-        method: 'GET',
-        headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        },
-        cache: 'no-store'
-    })
-    .then(res => res.json())
-    .then(response => {
-        if(!response.success) throw new Error(response.error);
-        
-        tbody.innerHTML = '';
-        
-        if(response.data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="color: #94a3b8; padding: 30px;">No se encontraron movimientos.</td></tr>`;
-            return;
-        }
+// Con muchas filas se usa 'table-layout: fixed' (clase .alm-kardex-fijo en inicio.css): columnas estables al hacer scroll.
+function aplicarLayoutKardex(activo) {
+    const tabla = document.getElementById('body-tabla-historico').closest('table');
+    if (tabla) tabla.classList.toggle('alm-kardex-fijo', !!activo);
+}
 
-        // Renderizamos todas las filas completas
-        response.data.forEach(m => {
+function kardexOnScroll() {
+    if (!kardexVirtual || kardexRaf) return;
+    kardexRaf = requestAnimationFrame(() => { kardexRaf = 0; kardexPintarVentana(false); });
+}
+
+function kardexScroller() {
+    const sc = document.getElementById('body-tabla-historico').closest('.alm-table-scroll');
+    if (sc && !sc._kardexScroll) {
+        sc._kardexScroll = true;
+        sc.style.overflowAnchor = 'none';
+        sc.addEventListener('scroll', kardexOnScroll, { passive: true });
+    }
+    return sc;
+}
+
+// HTML de UNA fila del kardex (es el mismo markup de siempre: las funciones de edición/eliminar no cambian)
+function kardexFilaHTML(m) {
             const isEntrada = m.tipo === 'ENTRADA';
             const badgeTipo = isEntrada ? `<span class="alm-badge alm-badge-entrada"><i class="fas fa-arrow-down"></i> ENTRADA</span>` : `<span class="alm-badge alm-badge-salida"><i class="fas fa-arrow-up"></i> SALIDA</span>`;
             const colorCant = isEntrada ? '#16a34a' : '#ef4444';
@@ -10572,7 +10577,7 @@ function cargarHistorialKardex() {
             // 🚨 Preparamos el texto de la observación para el tooltip
             const obsTexto = m.obs && m.obs !== '-' ? m.obs : '-';
 
-            tbody.insertAdjacentHTML('beforeend', `
+            return `
                 <tr id="fila-kardex-${m.id_mov}" 
                     data-tipo="${m.tipo}"
                     data-cant="${m.cantidad}"
@@ -10632,8 +10637,131 @@ function cargarHistorialKardex() {
                         </div>
                     </td>
                 </tr>
-            `);
-        });
+            `;
+}
+
+// Texto de cada columna (solo se usa para ordenar cuando la lista es virtual)
+function kardexTextoCelda(m, col) {
+    const isEntrada = m.tipo === 'ENTRADA';
+    switch (col) {
+        case 0:  return String(m.fecha);
+        case 1:  return String(m.tipo);
+        case 2:  return String(m.codigo);
+        case 3:  return String(m.producto);
+        case 4:  return String(m.talla ? m.talla : '-');
+        case 5:  return String(m.unidad);
+        case 6:  return String(m.categoria);
+        case 7:  return (isEntrada ? '+' : '-') + m.cantidad;
+        case 8:  return String(m.stock_actual);
+        case 9:  return String(m.proveedor);
+        case 10: return String(m.empleado_recupero ? m.empleado_recupero : '-');
+        case 11: return String(m.empleado);
+        case 12: return String(m.area);
+        case 13: return String(m.cargo);
+        case 14: return String(m.documento ? m.documento : '-');
+        case 15: return String(m.fecha_factura ? m.fecha_factura : '-');
+        case 16: return String(m.guia ? m.guia : '-');
+        case 17: return String(m.obs && m.obs !== '-' ? m.obs : '-');
+        default: return '';
+    }
+}
+
+// Dibuja solo la ventana de filas visible, con dos filas "espaciadoras" que mantienen el alto total del scroll
+function kardexPintarVentana(forzar, yaMedido) {
+    const tbody = document.getElementById('body-tabla-historico');
+    const sc = kardexScroller();
+    if (!tbody || !sc) return;
+    const total = kardexFilas.length;
+    const cab = tbody.closest('table').tHead;
+    const altoCab = cab ? cab.offsetHeight : 0;
+    const altoVista = sc.clientHeight || 700;
+    const v0 = Math.max(0, Math.floor((sc.scrollTop - altoCab) / kardexAltoFila));
+    const v1 = Math.min(total, v0 + Math.ceil(altoVista / kardexAltoFila) + 1);
+    const w = kardexVentana;
+
+    if (!forzar && w.ini >= 0) {
+        const faltaArriba = v0 < w.ini + 2 && w.ini > 0;
+        const faltaAbajo = v1 > w.fin - 2 && w.fin < total;
+        if (!faltaArriba && !faltaAbajo) return;                         // lo visible ya está dibujado
+        const activo = document.activeElement;                           // no redibujar mientras se escribe en una fila en edición
+        if (activo && activo.tagName === 'INPUT' && tbody.contains(activo)) return;
+    }
+
+    const ini = Math.max(0, v0 - KARDEX_BUFFER);
+    const fin = Math.min(total, v1 + KARDEX_BUFFER);
+    kardexVentana = { ini, fin };
+
+    const espaciador = (n) => n > 0
+        ? `<tr class="kardex-espaciador" aria-hidden="true"><td colspan="19" style="height:${n * kardexAltoFila}px"></td></tr>`
+        : '';
+    let html = espaciador(ini);
+    for (let i = ini; i < fin; i++) html += kardexFilaHTML(kardexFilas[i]);
+    html += espaciador(total - fin);
+    tbody.innerHTML = html;
+
+    // Medir el alto real de una fila (la primera vez) y reajustar los espaciadores si hace falta
+    if (!yaMedido) {
+        const f = tbody.querySelector('tr[id^="fila-kardex-"]');
+        const h = f ? f.getBoundingClientRect().height : 0;
+        if (h > 0 && Math.abs(h - kardexAltoFila) >= 0.5) {
+            kardexAltoFila = h;
+            kardexPintarVentana(true, true);
+        }
+    }
+}
+
+function cargarHistorialKardex() {
+    const tbody = document.getElementById('body-tabla-historico');
+    const search = document.getElementById('filtro-hist-texto').value;
+    
+    // 1. CAPTURAMOS LAS FECHAS DEL HTML
+    const fechaInicio = document.getElementById('filtro-hist-inicio').value;
+    const fechaFin = document.getElementById('filtro-hist-fin').value;
+    
+    tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="padding: 30px;"><i class="fas fa-spinner fa-spin fa-lg"></i> Cargando todos los movimientos...</td></tr>`;
+    kardexFilas = [];          // ⚡ se limpia el estado de la lista virtual hasta que lleguen los datos nuevos
+    kardexVirtual = false;
+
+    // 2. CONSTRUIMOS LA URL (Sin page ni limit)
+    let url = `/almacen/api/historico-kardex?tipo=${historialCurrentTipo}&search=${encodeURIComponent(search)}`;
+    
+    if (fechaInicio) url += `&fecha_inicio=${fechaInicio}`;
+    if (fechaFin) url += `&fecha_fin=${fechaFin}`;
+    
+    // Deshabilitamos el caché en los headers
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        },
+        cache: 'no-store'
+    })
+    .then(res => res.json())
+    .then(response => {
+        if(!response.success) throw new Error(response.error);
+        
+        tbody.innerHTML = '';
+        
+        if(response.data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="19" class="alm-text-center" style="color: #94a3b8; padding: 30px;">No se encontraron movimientos.</td></tr>`;
+            return;
+        }
+
+        // ⚡ ANTES: se creaba el <tr> de TODAS las filas en el DOM (miles de filas = navegador congelado).
+        //    AHORA: todos los movimientos quedan en memoria y solo se dibujan las filas que se ven en pantalla
+        //    (lista virtual). El usuario sigue viendo TODO el listado en una sola lista, con su scroll normal.
+        kardexFilas = response.data;
+        kardexVirtual = kardexFilas.length > KARDEX_UMBRAL_VIRTUAL;
+        aplicarLayoutKardex(kardexVirtual);
+        if (kardexVirtual) {
+            kardexScroller().scrollTop = 0;
+            kardexVentana = { ini: -1, fin: -1 };
+            kardexPintarVentana(true);
+        } else {
+            tbody.innerHTML = kardexFilas.map(kardexFilaHTML).join('');   // pocas filas: se dibujan todas como antes
+        }
     })
     .catch(err => {
         console.error("Error cargando historial:", err);
@@ -10739,10 +10867,11 @@ let kardexSortAsc = true;
 
 function ordenarTablaKardex(colIndex, tipoDato) {
     const tbody = document.getElementById('body-tabla-historico');
-    const filas = Array.from(tbody.querySelectorAll('tr'));
+    // ⚡ Lista virtual: se ordenan los DATOS en memoria; si no, las filas del DOM como siempre
+    const filas = kardexVirtual ? kardexFilas.slice() : Array.from(tbody.querySelectorAll('tr'));
     
     // Evitar errores si la tabla dice "Cargando..." o "No hay movimientos"
-    if (filas.length === 0 || (filas.length === 1 && filas[0].cells.length === 1)) return;
+    if (filas.length === 0 || (!kardexVirtual && filas.length === 1 && filas[0].cells.length === 1)) return;
 
     // Determinar dirección del orden
     if (kardexSortCol === colIndex) {
@@ -10767,9 +10896,13 @@ function ordenarTablaKardex(colIndex, tipoDato) {
     });
 
     // Ordenar mágicamente
+    // ⚡ ANTES: innerText dentro del sort (miles de reflows). AHORA: el texto de cada fila se lee una sola vez.
+    const textosCelda = new Map();
+    filas.forEach(f => textosCelda.set(f, kardexVirtual ? kardexTextoCelda(f, colIndex) : f.cells[colIndex].textContent.trim()));
+
     filas.sort((a, b) => {
-        let valA = a.cells[colIndex].innerText.trim();
-        let valB = b.cells[colIndex].innerText.trim();
+        let valA = textosCelda.get(a);
+        let valB = textosCelda.get(b);
 
         if (tipoDato === 'fecha') {
             const parsearFecha = (str) => {
@@ -10801,7 +10934,14 @@ function ordenarTablaKardex(colIndex, tipoDato) {
     });
 
     // Reinyectar las filas ordenadas al instante
-    filas.forEach(fila => tbody.appendChild(fila));
+    if (kardexVirtual) {
+        kardexFilas = filas;
+        kardexScroller().scrollTop = 0;
+        kardexVentana = { ini: -1, fin: -1 };
+        kardexPintarVentana(true);
+    } else {
+        filas.forEach(fila => tbody.appendChild(fila));
+    }
 }
 
 function eliminarMovimientoBd(idMovimiento) {
