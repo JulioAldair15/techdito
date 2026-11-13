@@ -9954,7 +9954,7 @@ function filtrarInventario() {
         const categoria = celdas[5].textContent.toUpperCase();
 
         // 2. Unimos todo el texto relevante de la fila en un solo "bloque" de texto
-        const contenidoFila = categoria;
+        const contenidoFila = `${fecha} ${codigo} ${nombre} ${proveedor} ${categoria}`;
 
         // 3. Magia del filtro: Verificamos si TODAS las palabras buscadas están incluidas en el contenido
         // Si el usuario no escribió nada (palabras está vacío), .every() retorna true y muestra todo.
