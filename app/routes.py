@@ -99,6 +99,8 @@ import click
 from decimal import Decimal
 from sqlalchemy import inspect as sa_inspect
 
+from sqlalchemy.exc import IntegrityError
+
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
 LIMA_TZ = ZoneInfo("America/Lima")
@@ -8185,6 +8187,18 @@ def agregar_unidad():
         return error_interno(e)
  
  
+def _siguiente_codigo(prefijo):
+    codigos = (db.session.query(Producto.codigo_identificador)
+               .filter(Producto.codigo_identificador.like(f"{prefijo}-%")).all())
+    mayor = 0
+    for (cod,) in codigos:
+        try:
+            mayor = max(mayor, int(cod.rsplit('-', 1)[1]))
+        except (ValueError, IndexError):
+            continue
+    return f"{prefijo}-{mayor + 1:04d}"
+
+ 
 # ------------------------------ CATEGORÍAS ------------------------------
 @app.route('/almacen/crear-categoria', methods=['POST'])
 @requiere_login
@@ -8228,7 +8242,7 @@ def crear_categoria():
 def crear_producto():
     try:
         data = request.get_json() or {}
-        nombre = (data.get('nombre_prod') or '').strip()
+        nombre = (data.get('nombre_prod') or '').strip().upper()
         id_cat = data.get('id_categoria')
         unidad = data.get('unidad_medida')
         precio = float(data.get('precio_igv') or 0.00)
@@ -8245,8 +8259,7 @@ def crear_producto():
         if not categoria:
             return jsonify({"success": False, "message": "Categoría no válida."}), 400
  
-        total_productos = Producto.query.filter_by(id_categoria=id_cat).count()
-        codigo_final = f"{categoria.codigo_prefijo}-{str(total_productos + 1).zfill(4)}"
+        codigo_final = _siguiente_codigo(categoria.codigo_prefijo)
  
         nuevo_prod = Producto(id_categoria=id_cat, codigo_identificador=codigo_final,
                               nombre_prod=nombre, unidad_medida=unidad, precio_igv=precio)
@@ -8300,6 +8313,40 @@ def editar_producto():
                            antes=antes, despues=foto(producto))
         db.session.commit()
         return jsonify({"success": True})
+    except Exception as e:
+        return error_interno(e)
+
+@app.route('/almacen/eliminar-producto', methods=['POST'])
+@requiere_login
+def eliminar_producto():
+    try:
+        data = request.get_json() or {}
+        id_prod = data.get('id_producto')
+
+        producto = Producto.query.get(id_prod) if id_prod else None
+        if not producto:
+            return jsonify({"success": False, "message": "Producto no encontrado."}), 404
+
+        # Solo se elimina si nunca tuvo movimientos ni stock
+        if MovimientoDetalle.query.filter_by(id_producto=producto.id_producto).first() \
+                or (producto.stock or 0) != 0:
+            return jsonify({"success": False,
+                            "message": f"No se puede eliminar {producto.codigo_identificador}: "
+                                       f"ya tiene movimientos o stock en el kardex."}), 409
+
+        id_producto = producto.id_producto
+        codigo, nombre = producto.codigo_identificador, producto.nombre_prod
+        antes = foto(producto)
+
+        db.session.delete(producto)
+        registrar_bitacora('ELIMINAR', 'PRODUCTO', id_producto,
+                           f"Eliminó el producto {codigo} - {nombre}", antes=antes)
+        db.session.commit()
+        return jsonify({"success": True, "message": f"Producto {codigo} eliminado."})
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"success": False,
+                        "message": "No se puede eliminar: el producto está referenciado en otros registros."}), 409
     except Exception as e:
         return error_interno(e)
  
