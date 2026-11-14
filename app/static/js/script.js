@@ -8709,13 +8709,17 @@ function cargarDatosMaestros() {
                                     onclick="editarDesdeLista('${p.id_producto}', '${p.id_categoria}', '${p.codigo}', '${p.nombre}', '${p.unidad}')">
                                     <i class="fas fa-pencil-alt"></i>
                                 </button>
+                                <button type="button" class="alm-icon-btn" style="color: #ef4444;" title="Eliminar Producto"
+                                    onclick="eliminarProducto('${p.id_producto}', '${p.codigo}')">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
                             </div>
                         </td>
                     </tr>
                 `;
                 tbodyProductos.insertAdjacentHTML('beforeend', filaHTML);
             });
-            
+            filtrarProductos();
             $('#sel-cat-producto').trigger('change');
 
             // --- Cargar tabla de PROVEEDORES ---
@@ -9579,6 +9583,35 @@ function editarDesdeListaProveedor(id, ruc, razon, comercial, celular, correo, d
     const filaEdicion = formulario.closest('tr');
     filaEdicion.style.backgroundColor = '#fef2f2';
     setTimeout(() => { filaEdicion.style.backgroundColor = '#fffbeb'; }, 800);
+}
+
+async function eliminarProducto(idProducto, codigo) {
+    if (!confirm(`¿Eliminar el producto ${codigo}?\n\nEsta acción no se puede deshacer.`)) return;
+
+    try {
+        const res = await fetch('/almacen/eliminar-producto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_producto: idProducto })
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            alert(data.message || 'No se pudo eliminar el producto.');
+            return;
+        }
+
+        alert(data.message);
+
+        // Si justo lo estabas editando, salimos del modo edición
+        if (String(document.getElementById('id-producto-editar').value) === String(idProducto)) {
+            cancelarEdicion();
+        }
+        cargarDatosMaestros();   // refresca la tabla y también los selects de inventario, entradas y salidas
+    } catch (error) {
+        console.error('Error al eliminar producto:', error);
+        alert('Ocurrió un error al comunicarse con el servidor.');
+    }
 }
 
 
