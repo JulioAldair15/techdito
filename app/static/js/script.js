@@ -11172,17 +11172,26 @@ document.addEventListener("DOMContentLoaded", () => {
             btnSubirData.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
             btnSubirData.disabled = true;
 
-            // Preparar la data para enviar por POST (FormData)
-            const formData = new FormData();
-            formData.append('archivo_csv', file);
-
             try {
-                const response = await fetch('/subir_matriz_csv', {
-                    method: 'POST',
-                    body: formData
-                });
+                // Si el archivo trae registros que ya existen, el servidor no guarda nada y
+                // pide decidir: reemplazar los pendientes, omitirlos o cancelar.
+                let modo = '';
+                let response, result;
+                while (true) {
+                    const formData = new FormData();
+                    formData.append('archivo_csv', file);
+                    if (modo) formData.append('modo', modo);
 
-                const result = await response.json();
+                    response = await fetch('/subir_matriz_csv', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    result = await response.json();
+
+                    if (!result.requiere_decision || modo) break;
+                    modo = await preguntarDuplicadosMatriz(result);   // 'reemplazar' | 'omitir' | null
+                    if (!modo) return;                                // canceló: no se sube nada
+                }
 
                 if (response.ok) {
                     // Éxito: Mostrar alerta, cerrar modal y limpiar el input
@@ -11217,6 +11226,63 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+// ==========================================
+// REGISTROS QUE YA EXISTEN: ¿REEMPLAZAR U OMITIR?
+// (se abre al subir un CSV con suministros que ya están en el mismo periodo)
+// ==========================================
+function preguntarDuplicadosMatriz(info) {
+    return new Promise(resolve => {
+        const anterior = document.getElementById('panel-duplicados-matriz');
+        if (anterior) anterior.remove();
+
+        const n = v => Number(v) || 0;
+        const periodos = (info.periodos || []).map(escaparHtmlMatriz).join(', ') || '-';
+        const textoOmitir = n(info.nuevos)
+            ? `Omitir y subir solo los ${n(info.nuevos)} nuevos`
+            : 'Omitir (no hay registros nuevos)';
+
+        const overlay = document.createElement('div');
+        overlay.id = 'panel-duplicados-matriz';
+        overlay.className = 'modal-overlay-clean';
+        overlay.style.display = 'flex';
+        overlay.style.zIndex = '10060';
+        overlay.innerHTML = `
+            <div class="modal-dialog-clean" style="max-width:640px; width:95%;">
+                <div class="modal-header-clean">
+                    <h3>Registros que ya existen</h3>
+                </div>
+                <p style="margin:0 0 12px;">
+                    <b>${n(info.existentes)}</b> de los ${n(info.total_archivo)} registros de este archivo
+                    ya están en el sistema para el periodo <b>${periodos}</b>. ¿Qué deseas hacer?
+                </p>
+                <table class="table-pro" style="width:100%; margin-bottom:12px;">
+                    <tbody>
+                        <tr><td>Registros nuevos</td>
+                            <td style="text-align:right; font-weight:600;">${n(info.nuevos)}</td></tr>
+                        <tr><td>Ya existen y siguen pendientes (se pueden reemplazar)</td>
+                            <td style="text-align:right; font-weight:600;">${n(info.reemplazables)}</td></tr>
+                        <tr><td>Ya existen y están en el celular o validados (no se tocan)</td>
+                            <td style="text-align:right; font-weight:600;">${n(info.protegidos)}</td></tr>
+                    </tbody>
+                </table>
+                <div class="modal-footer-clean" style="flex-wrap:wrap; gap:8px;">
+                    <button class="btn-clean-ghost" type="button" data-modo="">Cancelar</button>
+                    <button class="btn-clean-ghost" type="button" data-modo="omitir">${textoOmitir}</button>
+                    <button class="btn-clean-primary" type="button" data-modo="reemplazar"
+                            ${n(info.reemplazables) ? '' : 'disabled title="Ninguno sigue pendiente"'}>
+                        Reemplazar ${n(info.reemplazables)} y subir los nuevos
+                    </button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        overlay.querySelectorAll('[data-modo]').forEach(boton => boton.addEventListener('click', () => {
+            overlay.remove();
+            resolve(boton.dataset.modo || null);
+        }));
+    });
+}
 
 // ==========================================
 // OPERARIOS DEL CSV SIN EMPLEADO: CONFIRMAR CON UN CLIC
