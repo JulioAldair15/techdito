@@ -517,7 +517,7 @@ document.addEventListener('click', function(event) {
     ];
     const TITULO_ESTADO = Object.fromEntries(ESTADOS);
     const ESTADOS_DOMINGO = ['DT', 'DC', 'FT'];
-    const ESTADOS_HABILITAN = ['A', 'DT', 'FT', 'DC'];   // estados que permiten pasajes/viáticos/ruta
+    const ESTADOS_HABILITAN = ['A', 'DT', 'FT', 'DC', 'MJ'];   // estados que permiten pasajes/viáticos/ruta
  
     // ------------------------------------------------------------------------
     // CONFIGURACIÓN POR ÁREA  (clave = id de la <div class="section">)
