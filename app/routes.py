@@ -9087,6 +9087,36 @@ def _operadores_sin_enlazar_con_sugerencias(memoria=None, solo=None):
 # ==========================================================================
 # SECCIÓN C — SUBIR CSV DE LECTURAS (ahora enlaza fecha y empleado)
 # ==========================================================================
+FILAS_BUSQUEDA_CABECERA = 10
+
+
+def detectar_cabecera_csv(texto_csv, columnas_requeridas, max_filas=FILAS_BUSQUEDA_CABECERA):
+    """
+    Busca la fila de cabeceras del CSV dentro de las primeras `max_filas` filas, y con ella
+    el delimitador (; , tabulador o |). Excel suele dejar filas en blanco antes de la cabecera.
+    Devuelve (delimitador, indice_fila, cabeceras, faltantes). Si ninguna fila trae todas las
+    columnas, devuelve la que trae más, con la lista de columnas que le faltan.
+    """
+    requeridas = list(columnas_requeridas)
+    mejor = (-1, ',', 0, [], requeridas)
+    for delimitador in (';', ',', '\t', '|'):
+        try:
+            lector = csv.reader(io.StringIO(texto_csv, newline=None), delimiter=delimitador)
+            for indice, fila in enumerate(lector):
+                if indice >= max_filas:
+                    break
+                cabeceras = [' '.join(str(c).replace('\ufeff', '').split()).upper() for c in fila]
+                faltantes = [c for c in requeridas if c not in cabeceras]
+                if not faltantes:
+                    return delimitador, indice, cabeceras, []
+                encontradas = len(requeridas) - len(faltantes)
+                if encontradas > mejor[0]:
+                    mejor = (encontradas, delimitador, indice, cabeceras, faltantes)
+        except csv.Error:
+            continue
+    return mejor[1:]
+
+
 @app.route('/subir_matriz_csv', methods=['POST'])
 def subir_matriz_csv():
     if 'archivo_csv' not in request.files:
@@ -9104,20 +9134,8 @@ def subir_matriz_csv():
             texto_csv = contenido.decode("utf-8-sig")   # quita el BOM que agrega Excel
         except UnicodeDecodeError:
             texto_csv = contenido.decode("cp1252")      # CSV guardado como ANSI (Ñ, tildes)
-        stream = io.StringIO(texto_csv, newline=None)
- 
-        primera_linea = stream.readline()
-        segunda_linea = stream.readline()
-        delimiter = ';' if ';' in primera_linea + segunda_linea else ','
- 
-        stream.seek(0)
-        reader = csv.reader(stream, delimiter=delimiter)
- 
-        headers_raw = next(reader, None)
-        if not headers_raw:
-            return jsonify({'error': 'El archivo está vacío o no tiene cabeceras válidas.'}), 400
- 
-        headers = [h.strip().upper() for h in headers_raw]
+        if not texto_csv.strip():
+            return jsonify({'error': 'El archivo está vacío.'}), 400
  
         columnas_requeridas = {
             'CLICODFAC': 'clicodfac',
@@ -9146,11 +9164,23 @@ def subir_matriz_csv():
             'NORTE': 'norte'
         }
  
-        indices_col = {}
-        for col_csv, col_db in columnas_requeridas.items():
-            if col_csv not in headers:
-                return jsonify({'error': f'Falta la columna requerida en el CSV: {col_csv}'}), 400
-            indices_col[col_db] = headers.index(col_csv)
+        # 🔎 La cabecera puede estar en la 1ra, 2da, 3ra... fila: Excel suele dejar filas
+        # en blanco arriba. Se busca la fila que trae las columnas (y su delimitador).
+        delimiter, fila_cabecera, headers, faltantes = detectar_cabecera_csv(
+            texto_csv, columnas_requeridas.keys())
+        if len(faltantes) == len(columnas_requeridas):
+            return jsonify({'error': (f'No se encontró la fila de cabeceras en las primeras '
+                                      f'{FILAS_BUSQUEDA_CABECERA} filas del CSV. Debe tener columnas '
+                                      f'como CLICODFAC, MEDCODYGO, LECTURA, FECLEC.')}), 400
+        if faltantes:
+            return jsonify({'error': (f'Faltan columnas requeridas en la cabecera (fila {fila_cabecera + 1}): '
+                                      f'{", ".join(faltantes)}')}), 400
+ 
+        reader = csv.reader(io.StringIO(texto_csv, newline=None), delimiter=delimiter)
+        for _ in range(fila_cabecera + 1):   # salta las filas en blanco de arriba y la cabecera
+            next(reader, None)
+ 
+        indices_col = {col_db: headers.index(col_csv) for col_csv, col_db in columnas_requeridas.items()}
  
         for col_csv, col_db in columnas_opcionales.items():
             if col_csv in headers:
@@ -9163,7 +9193,7 @@ def subir_matriz_csv():
         periodos_en_csv = set()
  
         for row in reader:
-            if not row or not any(row):
+            if not row or not any(c.strip() for c in row):
                 continue
  
             datos_fila = {
