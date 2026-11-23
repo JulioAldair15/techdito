@@ -8863,51 +8863,226 @@ def parse_fecha_flexible(valor):
     return None
  
  
+# --------------------------------------------------------------------------
+# EMPAREJAMIENTO DE NOMBRES: "NOMBRE OPERADOR" del CSV -> empleado
+# El enlace se hace UNA vez al subir el CSV y queda guardado en id_empleado.
+# La app móvil descarga por id_empleado, así que ya no depende de cómo vino
+# escrito el nombre ese día ni de quién descargó primero.
+# --------------------------------------------------------------------------
+CONECTORES_NOMBRE = frozenset({'DE', 'DEL', 'LA', 'LAS', 'LOS', 'Y'})
+
+
+def palabras_nombre(texto):
+    """
+    'Pérez García, Juan'  ->  {'PEREZ', 'GARCIA', 'JUAN'}
+    Quita tildes (Ñ -> N), signos, basura de codificación (?, �) y conectores
+    (DE, LA...). El orden no importa: se trabaja con un conjunto de palabras.
+    """
+    t = unicodedata.normalize('NFKD', str(texto or '').upper())
+    t = ''.join(c for c in t if not unicodedata.combining(c))
+    t = re.sub(r'[,.;:/_()\-]', ' ', t)   # separadores -> espacio
+    t = re.sub(r'[^A-Z ]', '', t)         # todo lo demás (?, �, dígitos) -> fuera
+    return frozenset(t.split()) - CONECTORES_NOMBRE
+
+
+def clave_nombre(texto):
+    """Clave estable de un nombre: palabras normalizadas y ordenadas."""
+    return ' '.join(sorted(palabras_nombre(texto)))
+
+
+def _difiere_en_una_letra(a, b):
+    """True si a y b se diferencian en UNA letra (cambiada, sobrante o faltante)."""
+    if a == b or min(len(a), len(b)) < 4 or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    corto, largo = (a, b) if len(a) < len(b) else (b, a)
+    return any(largo[:i] + largo[i + 1:] == corto for i in range(len(largo)))
+
+
 def cargar_memoria_empleados():
-    """[{id, palabras}] para emparejar nombres escritos de cualquier forma."""
+    """[{id, palabras, nombre, activo}]. Funciona aunque el nombre completo esté solo en 'nombres'."""
     memoria = []
-    for emp in db.session.query(Empleado.id_empleado, Empleado.nombres, Empleado.apellidos).all():
-        nombre_completo = f"{emp.nombres or ''} {emp.apellidos or ''}".upper().replace(',', ' ')
-        memoria.append({'id': emp.id_empleado, 'palabras': set(nombre_completo.split())})
+    for emp in db.session.query(Empleado.id_empleado, Empleado.nombres,
+                                Empleado.apellidos, Empleado.estado).all():
+        nombre = ' '.join(f"{emp.nombres or ''} {emp.apellidos or ''}".split()).upper()
+        palabras = palabras_nombre(nombre)
+        if palabras:
+            memoria.append({
+                'id': emp.id_empleado,
+                'palabras': palabras,
+                'nombre': nombre,
+                'activo': (emp.estado or 'ACTIVO').strip().upper() == 'ACTIVO',
+            })
     return memoria
- 
- 
-def buscar_empleado_por_nombre(texto_operario, memoria_empleados):
+
+
+def cargar_alias():
+    """{clave_nombre: id_empleado} de los operarios que el supervisor ya confirmó."""
+    try:
+        return {a.clave: a.id_empleado for a in OperadorAlias.query.all()}
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.warning("[MATRIZ] Falta la tabla operador_alias: ejecuta "
+                           "2026_11_23_CREATE_TABLE_operador_alias.sql")
+        return {}
+
+
+def _unico(candidatos):
+    """Un solo candidato -> ese. Si empatan, gana el único ACTIVO. Si no, None (no adivina)."""
+    if len(candidatos) == 1:
+        return candidatos[0]['id']
+    activos = [c for c in candidatos if c['activo']]
+    return activos[0]['id'] if len(activos) == 1 else None
+
+
+def resolver_operador(texto_operario, memoria_empleados, alias=None):
     """
-    Devuelve id_empleado si hay UNA sola coincidencia clara (2+ palabras en común).
-    Es la misma lógica que ya usabas en cargar_produccion_csv.
+    Devuelve (id_empleado, metodo). metodo indica cómo se enlazó:
+      'alias'      -> el supervisor ya lo confirmó antes (tabla operador_alias).
+      'exacto'     -> mismas palabras en cualquier orden ("PEREZ GARCIA, JUAN" = "JUAN PEREZ GARCIA").
+      'parcial'    -> todas las palabras del nombre más corto están en el otro
+                      ("PEREZ GARCIA JUAN CARLOS" encuentra a "JUAN CARLOS PEREZ").
+      'aproximado' -> corrige UN tipeo de una letra, solo si además coinciden 3 palabras
+                      exactas ("QISPE MAMANI PEDRO PABLO" -> "PEDRO PABLO QUISPE MAMANI").
+                      Con solo 2 palabras exactas no se arriesga: MARIO y MARIA PEREZ GARCIA
+                      podrían ser hermanos.
+    Si no hay coincidencia o hay empate entre varios empleados: (None, None).
     """
-    if not texto_operario:
-        return None
- 
-    palabras_csv = set(str(texto_operario).upper().replace(',', ' ').split())
-    mejor = 0
-    candidatos = []
- 
+    palabras = palabras_nombre(texto_operario)
+    if len(palabras) < 2:
+        return None, None
+
+    if alias:
+        id_alias = alias.get(' '.join(sorted(palabras)))
+        if id_alias:
+            return id_alias, 'alias'
+
+    exactos = [e for e in memoria_empleados if e['palabras'] == palabras]
+    if exactos:
+        id_emp = _unico(exactos)
+        return (id_emp, 'exacto') if id_emp else (None, None)
+
+    mejor, candidatos = 0, []
     for emp in memoria_empleados:
-        coincidencias = len(palabras_csv & emp['palabras'])
-        if coincidencias >= 2:
-            if coincidencias > mejor:
-                mejor = coincidencias
-                candidatos = [emp['id']]
-            elif coincidencias == mejor:
-                candidatos.append(emp['id'])
- 
-    return candidatos[0] if len(candidatos) == 1 else None
- 
- 
+        comunes = len(palabras & emp['palabras'])
+        if comunes < 2 or comunes < min(len(palabras), len(emp['palabras'])):
+            continue
+        if comunes > mejor:
+            mejor, candidatos = comunes, [emp]
+        elif comunes == mejor:
+            candidatos.append(emp)
+    if candidatos:
+        id_emp = _unico(candidatos)
+        return (id_emp, 'parcial') if id_emp else (None, None)
+
+    candidatos = []
+    for emp in memoria_empleados:
+        comunes = palabras & emp['palabras']
+        if len(comunes) < 3:
+            continue
+        parejas = [(a, b) for a in palabras - comunes for b in emp['palabras'] - comunes
+                   if _difiere_en_una_letra(a, b)]
+        if len(parejas) == 1 and len(comunes) + 1 >= min(len(palabras), len(emp['palabras'])):
+            candidatos.append(emp)
+    if candidatos:
+        id_emp = _unico(candidatos)
+        if id_emp:
+            return id_emp, 'aproximado'
+
+    return None, None
+
+
+def buscar_empleado_por_nombre(texto_operario, memoria_empleados, alias=None):
+    """Devuelve solo el id_empleado (o None). Ver resolver_operador()."""
+    return resolver_operador(texto_operario, memoria_empleados, alias)[0]
+
+
+def sugerir_empleados(texto_operario, memoria_empleados, limite=5):
+    """Empleados más parecidos a un operario que no se pudo enlazar, para confirmar con un clic."""
+    clave = clave_nombre(texto_operario)
+    if not clave:
+        return []
+    puntuados = []
+    for emp in memoria_empleados:
+        clave_emp = ' '.join(sorted(emp['palabras']))
+        puntaje = round((fuzz.token_set_ratio(clave, clave_emp) +
+                         fuzz.token_sort_ratio(clave, clave_emp)) / 2)
+        if puntaje >= 60:
+            puntuados.append({'id_empleado': emp['id'], 'nombre': emp['nombre'],
+                              'activo': emp['activo'], 'puntaje': puntaje})
+    puntuados.sort(key=lambda s: (-s['puntaje'], not s['activo'], s['nombre']))
+    return puntuados[:limite]
+
+
 def _clave_persona(id_empleado, nombre_texto):
     """
     Identifica a la misma persona aunque su nombre esté escrito distinto en
-    cada tabla ("PEREZ, JUAN" y "JUAN PEREZ" dan la misma clave).
+    cada tabla ("PEREZ, JUAN" y "JUAN PÉREZ" dan la misma clave).
     Si hay id_empleado, ese manda.
     """
     if id_empleado:
         return ('E', id_empleado)
-    palabras = tuple(sorted(set(str(nombre_texto or '').upper().replace(',', ' ').split())))
-    return ('N', palabras)
- 
- 
+    return ('N', tuple(sorted(palabras_nombre(nombre_texto))))
+
+
+def _reenlazar_sin_empleado(memoria=None, alias=None, solo_pendientes=False):
+    """
+    Enlaza las lecturas que tienen id_empleado NULL (p. ej. después de registrar a un
+    empleado, corregir su nombre o confirmar un operario). NO hace commit.
+    Devuelve (enlazados, sin_enlazar).
+    """
+    memoria = cargar_memoria_empleados() if memoria is None else memoria
+    alias = cargar_alias() if alias is None else alias
+
+    q = (db.session.query(MatrizValidacion.operador)
+         .filter(MatrizValidacion.id_empleado.is_(None),
+                 MatrizValidacion.operador.isnot(None),
+                 MatrizValidacion.operador != ''))
+    if solo_pendientes:
+        q = q.filter(MatrizValidacion.estado == 'PENDIENTE')
+
+    enlazados, sin_enlazar = [], []
+    for (operador,) in q.distinct().all():
+        id_emp, metodo = resolver_operador(operador, memoria, alias)
+        if not id_emp:
+            sin_enlazar.append(operador)
+            continue
+        filas = (db.session.query(MatrizValidacion)
+                 .filter(MatrizValidacion.operador == operador,
+                         MatrizValidacion.id_empleado.is_(None))
+                 .update({MatrizValidacion.id_empleado: id_emp}, synchronize_session=False))
+        enlazados.append({'operador': operador, 'id_empleado': id_emp,
+                          'metodo': metodo, 'filas_actualizadas': filas})
+    return enlazados, sorted(sin_enlazar)
+
+
+def _operadores_sin_enlazar_con_sugerencias(memoria=None, solo=None):
+    """
+    Operarios con órdenes PENDIENTES sin empleado, con sus sugerencias ordenadas.
+    [{operador, ordenes, sugerencias}]. No se preselecciona ninguna: lo que llega aquí
+    es justo lo dudoso (p. ej. MARIO vs MARIA PEREZ GARCIA), así que decide una persona.
+    """
+    if solo is not None and not solo:
+        return []
+    memoria = cargar_memoria_empleados() if memoria is None else memoria
+
+    q = (db.session.query(MatrizValidacion.operador, func.count(MatrizValidacion.id_matriz))
+         .filter(MatrizValidacion.id_empleado.is_(None),
+                 MatrizValidacion.estado == 'PENDIENTE',
+                 MatrizValidacion.operador.isnot(None),
+                 MatrizValidacion.operador != ''))
+    if solo is not None:
+        q = q.filter(MatrizValidacion.operador.in_(list(solo)))
+
+    resultado = []
+    for operador, ordenes in q.group_by(MatrizValidacion.operador).all():
+        resultado.append({'operador': operador, 'ordenes': ordenes,
+                          'sugerencias': sugerir_empleados(operador, memoria)})
+    resultado.sort(key=lambda r: -r['ordenes'])
+    return resultado
+
+
 # ==========================================================================
 # SECCIÓN C — SUBIR CSV DE LECTURAS (ahora enlaza fecha y empleado)
 # ==========================================================================
@@ -8923,7 +9098,12 @@ def subir_matriz_csv():
         return jsonify({'error': 'El formato debe ser .csv estrictamente.'}), 400
  
     try:
-        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        contenido = file.stream.read()
+        try:
+            texto_csv = contenido.decode("utf-8-sig")   # quita el BOM que agrega Excel
+        except UnicodeDecodeError:
+            texto_csv = contenido.decode("cp1252")      # CSV guardado como ANSI (Ñ, tildes)
+        stream = io.StringIO(texto_csv, newline=None)
  
         primera_linea = stream.readline()
         segunda_linea = stream.readline()
@@ -9003,6 +9183,8 @@ def subir_matriz_csv():
         # 🔥 NUEVO: memoria de empleados y caché de operadores ya resueltos
         memoria_empleados = cargar_memoria_empleados()
         cache_operadores = {}
+        alias_operadores = cargar_alias()
+        operadores_aproximados = {}   # texto del CSV -> id_empleado (se corrigió una letra)
  
         registros_a_insertar = []
         filas_ignoradas_por_duplicidad = 0
@@ -9022,13 +9204,15 @@ def subir_matriz_csv():
             if fila['feclec'] and not fecha_lectura:
                 filas_sin_fecha += 1
  
-            # 🔥 NUEVO: enlazar el operador con un empleado
+            # 🔥 Enlazar el operador con un empleado (alias -> exacto -> parcial -> tipeo de 1 letra)
             operador = fila['operador']
             if operador not in cache_operadores:
-                cache_operadores[operador] = buscar_empleado_por_nombre(operador, memoria_empleados)
-            id_empleado = cache_operadores[operador]
+                cache_operadores[operador] = resolver_operador(operador, memoria_empleados, alias_operadores)
+            id_empleado, metodo_enlace = cache_operadores[operador]
             if operador and not id_empleado:
                 operadores_sin_enlazar.add(operador)
+            elif metodo_enlace == 'aproximado':
+                operadores_aproximados[operador] = id_empleado
  
             # 🗺️ NUEVO: coordenadas del propio CSV.
             # Se reutilizan tus funciones: reparar_coordenada() arregla comas,
@@ -9088,11 +9272,26 @@ def subir_matriz_csv():
         if filas_sin_coordenada:
             mensaje += (f' ⚠️ {filas_sin_coordenada} filas quedaron sin coordenadas válidas '
                         f'(no se verán en el mapa).')
+        if operadores_aproximados:
+            nombres_por_id = {e['id']: e['nombre'] for e in memoria_empleados}
+            corregidos = [f"{op} → {nombres_por_id.get(id_emp, id_emp)}"
+                          for op, id_emp in sorted(operadores_aproximados.items())]
+            mensaje += (f' ℹ️ {len(corregidos)} operadores se enlazaron corrigiendo una letra del nombre: '
+                        f'{"; ".join(corregidos[:5])}{"..." if len(corregidos) > 5 else ""}.')
         if operadores_sin_enlazar:
             mensaje += (f' ⚠️ {len(operadores_sin_enlazar)} operadores no se pudieron enlazar '
                         f'con un empleado: {", ".join(sorted(operadores_sin_enlazar)[:5])}'
-                        f'{"..." if len(operadores_sin_enlazar) > 5 else ""}.')
- 
+                        f'{"..." if len(operadores_sin_enlazar) > 5 else ""}. '
+                        f'Confírmalos en la ventana que se abrirá (no hace falta volver a subir el archivo).')
+
+        # Operarios sin empleado + sugerencias, para confirmarlos con un clic en la web
+        try:
+            pendientes_por_confirmar = _operadores_sin_enlazar_con_sugerencias(
+                memoria_empleados, solo=operadores_sin_enlazar)
+        except Exception:
+            app.logger.exception("[MATRIZ CSV] No se pudieron calcular las sugerencias de operarios")
+            pendientes_por_confirmar = []
+
         return jsonify({
             'success': True,
             'mensaje': mensaje,
@@ -9100,7 +9299,9 @@ def subir_matriz_csv():
             'duplicados': filas_ignoradas_por_duplicidad,
             'sin_fecha': filas_sin_fecha,
             'sin_coordenada': filas_sin_coordenada,
-            'operadores_sin_enlazar': sorted(operadores_sin_enlazar)
+            'operadores_sin_enlazar': sorted(operadores_sin_enlazar),
+            'operadores_aproximados': sorted(operadores_aproximados),
+            'pendientes_por_confirmar': pendientes_por_confirmar
         }), 200
  
     except Exception as e:
@@ -9169,69 +9370,74 @@ def obtener_lecturas():
     })
 
 
+DIAS_REENVIO_MATRIZ = 2   # lo DESCARGADO en estos días se reenvía si la respuesta anterior se perdió
+
+
 @app.route('/api/descargar_matriz/<int:user_id>', methods=['GET'])
 def descargar_matriz(user_id):
+    """
+    Entrega al operario SUS órdenes, buscando por id_empleado (se enlazó al subir el CSV).
+    Ya no compara nombres aquí: el resultado no depende de cómo vino escrito el nombre
+    ese día ni de quién descargó primero.
+    Si una descarga anterior se cortó (mala señal, timeout), lo ya DESCARGADO en los
+    últimos días se vuelve a enviar: la app debe guardarlo por id_matriz sin pisar lo
+    que ya tenga trabajado.
+    """
     try:
-        # 1. Buscar al Usuario y Empleado
         usuario = Usuario.query.get(user_id)
         if not usuario:
             return jsonify({'success': False, 'message': 'Usuario no encontrado.'}), 404
+        if not usuario.id_empleado:
+            return jsonify({'success': False,
+                            'message': 'Tu usuario no tiene un empleado asignado. Avisa al supervisor.'}), 404
 
-        empleado = Empleado.query.get(usuario.id_empleado)
-        if not empleado:
-            return jsonify({'success': False, 'message': 'Empleado no asignado a este usuario.'}), 404
+        # Autocorrección: si el supervisor ya registró al empleado, corrigió su nombre o
+        # confirmó el operario, las órdenes pendientes sin empleado se enlazan aquí mismo.
+        try:
+            hay_sin_enlazar = (db.session.query(MatrizValidacion.id_matriz)
+                               .filter(MatrizValidacion.id_empleado.is_(None),
+                                       MatrizValidacion.estado == 'PENDIENTE')
+                               .first())
+            if hay_sin_enlazar:
+                _reenlazar_sin_empleado(solo_pendientes=True)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("[DESCARGA MATRIZ] No se pudo reenlazar (se continúa con la descarga)")
 
-        # 2. Limpiar el nombre del empleado de la BD
-        nombre_db = empleado.nombres.strip().upper()
+        desde = datetime.now(LIMA_TZ).replace(tzinfo=None) - timedelta(days=DIAS_REENVIO_MATRIZ)
+        registros = (MatrizValidacion.query
+                     .filter(MatrizValidacion.id_empleado == usuario.id_empleado)
+                     .filter(or_(MatrizValidacion.estado == 'PENDIENTE',
+                                 and_(MatrizValidacion.estado == 'DESCARGADO',
+                                      MatrizValidacion.fecha_subida >= desde)))
+                     .order_by(MatrizValidacion.id_matriz)
+                     .all())
 
-        # 3. Traer TODAS las órdenes que estén PENDIENTES
-        # (En lugar de filtrar en SQL, filtramos en Python con Inteligencia)
-        todas_pendientes = MatrizValidacion.query.filter_by(estado='PENDIENTE').all()
-        
-        asignaciones_usuario = []
+        if not registros:
+            # No es un error: simplemente no hay órdenes para este operario.
+            sin_asignar = (MatrizValidacion.query
+                           .filter(MatrizValidacion.id_empleado.is_(None),
+                                   MatrizValidacion.estado == 'PENDIENTE')
+                           .count())
+            mensaje = 'No tienes órdenes pendientes por ahora.'
+            if sin_asignar:
+                mensaje += (f' Hay {sin_asignar} órdenes cargadas sin operario asignado: '
+                            f'si esperabas carga, avisa al supervisor.')
+            app.logger.info(f"[DESCARGA MATRIZ] user={user_id} emp={usuario.id_empleado}: 0 órdenes "
+                            f"(sin asignar en el sistema: {sin_asignar})")
+            return jsonify({'success': True, 'data': [], 'message': mensaje}), 200
 
-        # 4. MOTOR DE BÚSQUEDA DIFUSA (FUZZY MATCHING)
-        for registro in todas_pendientes:
-            nombre_csv = (registro.operador or "").strip().upper()
-            
-            # Si la columna en el CSV vino vacía, la ignoramos
-            if not nombre_csv:
-                continue
-
-            # Calcula el porcentaje de coincidencia (0 a 100)
-            # token_set_ratio ignora palabras extra, desordenadas y tolera typos
-            similitud = fuzz.token_set_ratio(nombre_db, nombre_csv)
-
-            if similitud >= 75:
-                palabras_db = set(nombre_db.split())
-                palabras_csv = set(nombre_csv.split())
-                
-                # Detectamos si en el CSV hay una palabra (nombre) que el empleado NO tiene
-                palabras_ajenas = palabras_csv - palabras_db
-                
-                # Si hay nombres ajenos y la similitud estricta cae por debajo de 85%,
-                # deducimos que es la hermana y anulamos la similitud.
-                if palabras_ajenas and fuzz.token_sort_ratio(nombre_db, nombre_csv) < 85:
-                    similitud = 0
-
-            # Umbral de confianza: 75% suele ser el punto dulce ideal
-            if similitud >= 75:
-                # Opcional: Imprimir en consola para ver cómo funciona el algoritmo
-                print(f"[FUZZY MATCH] BD: '{nombre_db}' | CSV: '{nombre_csv}' | Similitud: {similitud}% -> APROBADO")
-                asignaciones_usuario.append(registro)
-
-        # 5. Si no encontró ninguna, avisamos
-        if not asignaciones_usuario:
-            return jsonify({'success': False, 'message': 'No se encontraron órdenes pendientes para este operador.'}), 404
-
-        # 6. Cambiar estado a las órdenes que hicieron Match
-        for registro in asignaciones_usuario:
-            registro.estado = 'DESCARGADO'
-            
+        nuevas = 0
+        for registro in registros:
+            if registro.estado == 'PENDIENTE':
+                registro.estado = 'DESCARGADO'
+                nuevas += 1
         db.session.commit()
-        print(f"[DEBUG] Se han actualizado {len(asignaciones_usuario)} registros a 'DESCARGADO'.")
 
-        # 7. Formatear los datos para el JSON
+        app.logger.info(f"[DESCARGA MATRIZ] user={user_id} emp={usuario.id_empleado}: "
+                        f"{len(registros)} órdenes ({nuevas} nuevas, {len(registros) - nuevas} reenviadas)")
+
         data = [{
             'id_matriz': a.id_matriz,
             'clicodfac': a.clicodfac or '-',
@@ -9241,18 +9447,19 @@ def descargar_matriz(user_id):
             'estado': a.estado,
             'obs1': a.obs1 or '',
             'newmed': a.newmed or ''
-        } for a in asignaciones_usuario]
+        } for a in registros]
 
         return jsonify({
             'success': True,
             'data': data,
-            'message': f'Se descargaron {len(data)} registros (Fuzzy Match aplicado).'
+            'message': f'Se descargaron {len(data)} órdenes ({nuevas} nuevas).'
         }), 200
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        print(f"[ERROR BACKEND] Error descargando matriz: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
+        app.logger.exception(f"[DESCARGA MATRIZ] Error user={user_id}")
+        return jsonify({'success': False,
+                        'message': 'Error del servidor al descargar. Intenta de nuevo en un momento.'}), 500
 
 
 @app.route('/api/actualizar_revalidacion', methods=['POST'])
