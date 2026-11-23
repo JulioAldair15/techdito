@@ -11101,8 +11101,11 @@ document.addEventListener("DOMContentLoaded", () => {
             // Detectar delimitador: Algunos Excel guardan CSV con ';' en lugar de ','
             const delimiter = text.indexOf(';') !== -1 ? ';' : ',';
             
-            // Separar por saltos de línea y eliminar líneas vacías
-            const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
+            // Separar por saltos de línea y eliminar líneas vacías (también las de puros ";" o "," que deja Excel)
+            const todas = text.split(/\r?\n/).filter(row => row.replace(/[;,\t"\s]/g, '') !== '');
+            // La cabecera puede no estar en la 1ra fila: se empieza desde la fila que trae CLICODFAC
+            const iCabecera = todas.findIndex(row => row.toUpperCase().includes('CLICODFAC'));
+            const rows = iCabecera > 0 ? todas.slice(iCabecera) : todas;
             
             if (rows.length <= 1) {
                 // CAMBIO: colspan="12"
