@@ -9204,12 +9204,39 @@ def subir_matriz_csv():
             if datos_fila['periodo']:
                 periodos_en_csv.add(datos_fila['periodo'])
  
-        # ----- Duplicados ya existentes (clicodfac + periodo) -----
-        registros_existentes = set()
+        # ----- Registros que ya existen (mismo suministro + periodo) -----
+        existentes = defaultdict(list)    # (clicodfac, periodo) -> [(id_matriz, estado), ...]
         if periodos_en_csv:
-            existentes_db = (db.session.query(MatrizValidacion.clicodfac, MatrizValidacion.periodo)
+            existentes_db = (db.session.query(MatrizValidacion.id_matriz, MatrizValidacion.clicodfac,
+                                              MatrizValidacion.periodo, MatrizValidacion.estado)
                              .filter(MatrizValidacion.periodo.in_(periodos_en_csv)).all())
-            registros_existentes = {(r.clicodfac, r.periodo) for r in existentes_db}
+            for r in existentes_db:
+                existentes[(r.clicodfac, r.periodo)].append((r.id_matriz, (r.estado or 'PENDIENTE').upper()))
+
+        # ----- Si el archivo trae registros que ya existen, se pregunta qué hacer -----
+        #   modo='reemplazar' -> actualiza los que siguen PENDIENTES. Los que ya están en el
+        #                        celular o validados NO se tocan, para no perder ese trabajo.
+        #   modo='omitir'     -> solo sube los nuevos.
+        modo = (request.form.get('modo') or '').strip().lower()
+        claves_archivo = list(dict.fromkeys((f['clicodfac'], f['periodo']) for f in filas_csv))
+        claves_existentes = [c for c in claves_archivo if c in existentes]
+        if claves_existentes and modo not in ('reemplazar', 'omitir'):
+            reemplazables = sum(1 for c in claves_existentes
+                                if any(est == 'PENDIENTE' for _, est in existentes[c]))
+            periodos_dup = sorted({c[1] for c in claves_existentes if c[1]})
+            return jsonify({
+                'success': False,
+                'requiere_decision': True,
+                'mensaje': (f'{len(claves_existentes)} registros de este archivo ya están en el sistema '
+                            f'para el periodo {", ".join(periodos_dup) or "-"}. Actualiza la página '
+                            f'(Ctrl+F5) y vuelve a subirlo para elegir si reemplazarlos u omitirlos.'),
+                'total_archivo': len(claves_archivo),
+                'nuevos': len(claves_archivo) - len(claves_existentes),
+                'existentes': len(claves_existentes),
+                'reemplazables': reemplazables,
+                'protegidos': len(claves_existentes) - reemplazables,
+                'periodos': periodos_dup
+            }), 200
  
         # 🔥 NUEVO: memoria de empleados y caché de operadores ya resueltos
         memoria_empleados = cargar_memoria_empleados()
@@ -9218,7 +9245,12 @@ def subir_matriz_csv():
         operadores_aproximados = {}   # texto del CSV -> id_empleado (se corrigió una letra)
  
         registros_a_insertar = []
-        filas_ignoradas_por_duplicidad = 0
+        actualizaciones = []              # filas PENDIENTES que se reemplazan
+        claves_vistas = set()
+        filas_reemplazadas = 0
+        filas_omitidas = 0                # ya existían y se eligió omitir
+        filas_protegidas = 0              # ya existían pero están en el celular o validadas
+        filas_repetidas_archivo = 0       # mismo suministro + periodo dos veces en el CSV
         filas_sin_fecha = 0
         filas_sin_coordenada = 0
         operadores_sin_enlazar = set()
@@ -9226,9 +9258,20 @@ def subir_matriz_csv():
  
         for fila in filas_csv:
             clave = (fila['clicodfac'], fila['periodo'])
-            if clave in registros_existentes:
-                filas_ignoradas_por_duplicidad += 1
+            if clave in claves_vistas:
+                filas_repetidas_archivo += 1
                 continue
+            claves_vistas.add(clave)
+
+            ids_a_reemplazar = []
+            if clave in existentes:
+                if modo != 'reemplazar':
+                    filas_omitidas += 1
+                    continue
+                ids_a_reemplazar = [id_m for id_m, est in existentes[clave] if est == 'PENDIENTE']
+                if not ids_a_reemplazar:
+                    filas_protegidas += 1
+                    continue
  
             # 🔥 NUEVO: fecha real a partir de feclec
             fecha_lectura = parse_fecha_flexible(fila['feclec'])
@@ -9258,7 +9301,7 @@ def subir_matriz_csv():
             if latitud is None or longitud is None:
                 filas_sin_coordenada += 1
  
-            registros_a_insertar.append(MatrizValidacion(
+            datos = dict(
                 clicodfac=fila['clicodfac'],
                 medcodygo=fila['medcodygo'],
                 lectura=fila['lectura'],
@@ -9280,24 +9323,40 @@ def subir_matriz_csv():
                 longitud=longitud,                # 🗺️ NUEVO
                 este=este,                        # 🗺️ NUEVO (si el CSV lo trae)
                 norte=norte,                      # 🗺️ NUEVO (si el CSV lo trae)
-                estado='PENDIENTE',
                 fecha_subida=ahora
-            ))
-            registros_existentes.add(clave)
+            )
+            if ids_a_reemplazar:
+                # Se actualiza la fila que ya existía: conserva su id_matriz y sigue PENDIENTE
+                actualizaciones.extend({'id_matriz': id_m, **datos} for id_m in ids_a_reemplazar)
+                filas_reemplazadas += 1
+            else:
+                registros_a_insertar.append(MatrizValidacion(estado='PENDIENTE', **datos))
  
         cantidad_insertados = len(registros_a_insertar)
-        if cantidad_insertados > 0:
-            db.session.bulk_save_objects(registros_a_insertar)
- 
-            # Bitácora (si ya pegaste la Sección A de almacén; si no, borra estas 5 líneas)
+        if registros_a_insertar or actualizaciones:
+            if registros_a_insertar:
+                db.session.bulk_save_objects(registros_a_insertar)
+            if actualizaciones:
+                db.session.bulk_update_mappings(MatrizValidacion, actualizaciones)
+
             registrar_bitacora('CREAR', 'MATRIZ_LECTURAS', None,
                                f"Subió {file.filename}: {cantidad_insertados} lecturas nuevas, "
-                               f"{filas_ignoradas_por_duplicidad} duplicadas | Periodos: "
+                               f"{filas_reemplazadas} reemplazadas, {filas_omitidas} omitidas, "
+                               f"{filas_protegidas} no reemplazadas (en campo o validadas) | Periodos: "
                                f"{', '.join(sorted(periodos_en_csv)) or '-'}")
             db.session.commit()
- 
-        mensaje = (f'Se guardaron {cantidad_insertados} registros nuevos. '
-                   f'Se ignoraron {filas_ignoradas_por_duplicidad} que ya existían para el mismo periodo.')
+
+        mensaje = f'Se guardaron {cantidad_insertados} registros nuevos.'
+        if filas_reemplazadas:
+            mensaje += f' Se reemplazaron {filas_reemplazadas} que seguían pendientes.'
+        if filas_protegidas:
+            mensaje += (f' {filas_protegidas} no se reemplazaron porque ya fueron descargados '
+                        f'o validados en campo.')
+        if filas_omitidas:
+            mensaje += f' Se omitieron {filas_omitidas} que ya existían para el mismo periodo.'
+        if filas_repetidas_archivo:
+            mensaje += (f' {filas_repetidas_archivo} filas venían repetidas en el archivo '
+                        f'(mismo suministro y periodo); se tomó solo la primera.')
         if filas_sin_fecha:
             mensaje += f' ⚠️ {filas_sin_fecha} filas tienen FECLEC con un formato no reconocido.'
         if filas_sin_coordenada:
@@ -9327,7 +9386,9 @@ def subir_matriz_csv():
             'success': True,
             'mensaje': mensaje,
             'insertados': cantidad_insertados,
-            'duplicados': filas_ignoradas_por_duplicidad,
+            'duplicados': filas_omitidas + filas_repetidas_archivo,
+            'reemplazados': filas_reemplazadas,
+            'protegidos': filas_protegidas,
             'sin_fecha': filas_sin_fecha,
             'sin_coordenada': filas_sin_coordenada,
             'operadores_sin_enlazar': sorted(operadores_sin_enlazar),
