@@ -1,12 +1,12 @@
 import os
 from flask import g, Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CoordenadasCatastro, CargaDiaria, BitacoraAlmacen, Digitacion
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CoordenadasCatastro, CargaDiaria, BitacoraAlmacen, Digitacion, OperadorAlias
 from flask_bcrypt import check_password_hash 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func, case
 from app import app, db
 from datetime import datetime, timedelta, date
-from sqlalchemy import extract, or_, text
+from sqlalchemy import extract, or_, and_, text
 from calendar import monthrange
 import traceback  # Importamos para imprimir detalles de errores
 # from barcode import Code128
@@ -36,6 +36,7 @@ from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
 import json
 from werkzeug.utils import secure_filename
+import unicodedata
 from pdf2image import convert_from_path
 from reportlab.lib.utils import ImageReader
 import barcode
