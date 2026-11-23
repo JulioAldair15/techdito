@@ -11194,6 +11194,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     // CAMBIO: colspan="12"
                     previewBody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-20"><i class="fas fa-file-csv" style="font-size: 2rem; color: #ccc; margin-bottom: 10px; display:block;"></i>La data del CSV aparecerá aquí antes de subir.</td></tr>';
                     
+
+                    // Operarios que no se pudieron enlazar: confirmarlos con un clic (sin volver a subir)
+                    if (result.pendientes_por_confirmar && result.pendientes_por_confirmar.length) {
+                        abrirPanelOperadoresSinEnlazar(result.pendientes_por_confirmar);
+                    }
                 } else {
                     // Error del servidor
                     alert("Error: " + result.error);
@@ -11209,6 +11214,143 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+// ==========================================
+// OPERARIOS DEL CSV SIN EMPLEADO: CONFIRMAR CON UN CLIC
+// (se abre solo al subir la matriz si alguno no se pudo enlazar, o con el
+//  botón "Operarios sin asignar". No hace falta volver a subir el CSV.)
+// ==========================================
+function escaparHtmlMatriz(texto) {
+    return String(texto ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+async function revisarOperadoresSinEnlazar() {
+    try {
+        const response = await fetch('/api/matriz/operadores_sin_enlazar');
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            alert(data.message || data.error || 'No se pudo consultar los operarios sin asignar.');
+            return;
+        }
+        if (!data.operadores.length) {
+            alert('✅ Todas las órdenes pendientes tienen un operario asignado.');
+            return;
+        }
+        abrirPanelOperadoresSinEnlazar(data.operadores);
+    } catch (error) {
+        console.error('Error consultando operarios sin asignar:', error);
+        alert('Ocurrió un error de conexión al consultar los operarios sin asignar.');
+    }
+}
+
+function abrirPanelOperadoresSinEnlazar(operadores) {
+    const anterior = document.getElementById('panel-operadores-sin-enlazar');
+    if (anterior) anterior.remove();
+
+    const filas = operadores.map((op, i) => {
+        const opciones = (op.sugerencias || []).map(s => `
+            <option value="${s.id_empleado}">
+                ${escaparHtmlMatriz(s.nombre)} (${s.puntaje}%)${s.activo ? '' : ' · CESADO'}
+            </option>`).join('');
+        const ayuda = (op.sugerencias || []).length ? '' :
+            `<small style="display:block; margin-top:4px; color:#94a3b8;">
+                Sin parecidos: registra al empleado (o corrige su nombre) y vuelve a revisar.
+             </small>`;
+        return `
+            <tr>
+                <td style="padding:8px; font-weight:600;">${escaparHtmlMatriz(op.operador)}</td>
+                <td style="padding:8px; text-align:center;">${op.ordenes}</td>
+                <td style="padding:8px; min-width:260px;">
+                    <select class="control-pro" data-idx="${i}" style="width:100%;">
+                        <option value="">— Elegir empleado (o dejar sin asignar) —</option>
+                        ${opciones}
+                    </select>
+                    ${ayuda}
+                </td>
+            </tr>`;
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'panel-operadores-sin-enlazar';
+    overlay.className = 'modal-overlay-clean';
+    overlay.style.display = 'flex';
+    overlay.style.zIndex = '10050';
+    overlay.innerHTML = `
+        <div class="modal-dialog-clean" style="max-width:820px; width:95%;">
+            <button class="btn-close-clean" type="button" data-cerrar><i class="fas fa-times"></i></button>
+            <div class="modal-header-clean">
+                <h3>Operarios sin asignar</h3>
+            </div>
+            <p style="margin:0 0 12px; color:#64748b;">
+                Estos nombres del CSV no coinciden con ningún empleado. Elige a quién corresponde cada uno:
+                sus órdenes se le asignan al instante y, desde la próxima carga, ese nombre se enlaza solo.
+            </p>
+            <div class="table-scroll-clean" style="max-height:360px;">
+                <table class="table-pro table-preview" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>Nombre en el CSV</th>
+                            <th style="text-align:center;">Órdenes</th>
+                            <th>Empleado</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filas}</tbody>
+                </table>
+            </div>
+            <div class="modal-footer-clean">
+                <button class="btn-clean-ghost" type="button" data-cerrar>Revisar después</button>
+                <button class="btn-clean-primary" type="button" id="btn-confirmar-operadores">
+                    <i class="fas fa-check"></i> Confirmar
+                </button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    overlay.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', () => overlay.remove()));
+
+    const btnConfirmar = overlay.querySelector('#btn-confirmar-operadores');
+    btnConfirmar.addEventListener('click', async () => {
+        const asignaciones = [...overlay.querySelectorAll('select[data-idx]')]
+            .filter(sel => sel.value)
+            .map(sel => ({
+                operador: operadores[Number(sel.dataset.idx)].operador,
+                id_empleado: Number(sel.value)
+            }));
+
+        if (!asignaciones.length) {
+            overlay.remove();
+            return;
+        }
+
+        const textoOriginal = btnConfirmar.innerHTML;
+        btnConfirmar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+        btnConfirmar.disabled = true;
+
+        try {
+            const response = await fetch('/api/matriz/confirmar_operadores', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ asignaciones })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                alert(data.mensaje);
+                overlay.remove();
+                if (typeof cargarLecturasGestion === 'function') cargarLecturasGestion(1);
+            } else {
+                alert('Error: ' + (data.error || data.message || 'No se pudo confirmar.'));
+            }
+        } catch (error) {
+            console.error('Error confirmando operarios:', error);
+            alert('Ocurrió un error de conexión al confirmar los operarios.');
+        } finally {
+            btnConfirmar.innerHTML = textoOriginal;
+            btnConfirmar.disabled = false;
+        }
+    });
+}
 
 // Variable global
 let paginaActualGestion = 1;
