@@ -650,6 +650,12 @@ class MatrizValidacion(db.Model):
     fecha_lectura = db.Column(db.Date, nullable=True, index=True)   # feclec convertido a fecha real
     id_empleado   = db.Column(db.Integer, db.ForeignKey('empleado.id_empleado'), nullable=True)
 
+class OperadorAlias(db.Model):
+    """Cómo viene escrito un operario en el CSV de lecturas -> su empleado (lo confirma el supervisor)."""
+    __tablename__ = 'operador_alias'
+    clave = db.Column(db.String(190), primary_key=True)    # palabras normalizadas y ordenadas
+    id_empleado = db.Column(db.Integer, nullable=False, index=True)
+    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
 
 class UnidadMedida(db.Model):
     __tablename__ = 'unidad_medida'
