@@ -12019,58 +12019,100 @@ def obtener_filtros_produccion():
 @requiere_login
 def reenlazar_operadores_matriz():
     try:
-        memoria_empleados = cargar_memoria_empleados()
- 
-        # Operadores distintos que aún no tienen empleado asignado
-        pendientes = (db.session.query(MatrizValidacion.operador)
-                      .filter(MatrizValidacion.id_empleado.is_(None),
-                              MatrizValidacion.operador.isnot(None),
-                              MatrizValidacion.operador != '')
-                      .distinct().all())
- 
-        enlazados = []
-        sin_enlazar = []
-        total_filas = 0
- 
-        for (operador,) in pendientes:
-            id_empleado = buscar_empleado_por_nombre(operador, memoria_empleados)
- 
-            if not id_empleado:
-                sin_enlazar.append(operador)
-                continue
- 
-            filas = (db.session.query(MatrizValidacion)
-                     .filter(MatrizValidacion.operador == operador,
-                             MatrizValidacion.id_empleado.is_(None))
-                     .update({MatrizValidacion.id_empleado: id_empleado},
-                             synchronize_session=False))
- 
-            total_filas += filas
-            enlazados.append({
-                "operador": operador,
-                "id_empleado": id_empleado,
-                "filas_actualizadas": filas
-            })
- 
+        enlazados, sin_enlazar = _reenlazar_sin_empleado()
+        total_filas = sum(e['filas_actualizadas'] for e in enlazados)
+
         if total_filas:
             registrar_bitacora('EDITAR', 'MATRIZ_LECTURAS', None,
                                f"Re-enlazó {len(enlazados)} operadores "
                                f"({total_filas} lecturas) con su empleado.")
         db.session.commit()
- 
+
         return jsonify({
             "success": True,
             "mensaje": (f"Se enlazaron {len(enlazados)} operadores "
                         f"({total_filas} lecturas). "
                         f"Quedaron {len(sin_enlazar)} sin coincidencia."),
             "enlazados": enlazados,
-            "sin_enlazar": sorted(sin_enlazar)
+            "sin_enlazar": sin_enlazar
         }), 200
- 
+
     except Exception as e:
         db.session.rollback()
         app.logger.exception(f"[RE-ENLACE] Error: {e}")
         return jsonify({"error": "Error interno al re-enlazar operadores."}), 500
+
+
+@app.route('/api/matriz/operadores_sin_enlazar', methods=['GET'])
+@requiere_login
+def matriz_operadores_sin_enlazar():
+    """Operarios con órdenes pendientes sin empleado, con sugerencias para confirmar con un clic."""
+    try:
+        memoria = cargar_memoria_empleados()
+        _reenlazar_sin_empleado(memoria, cargar_alias(), solo_pendientes=True)   # por si ya se corrigió algo
+        db.session.commit()
+        return jsonify({'success': True,
+                        'operadores': _operadores_sin_enlazar_con_sugerencias(memoria)}), 200
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception(f"[MATRIZ] Error listando operadores sin enlazar: {e}")
+        return jsonify({'success': False, 'error': 'Error interno al consultar operarios sin asignar.'}), 500
+
+
+@app.route('/api/matriz/confirmar_operadores', methods=['POST'])
+@requiere_login
+def matriz_confirmar_operadores():
+    """
+    Body: {"asignaciones": [{"operador": "QISPE MAMANI, PEDRO", "id_empleado": 12}, ...]}
+    Guarda cómo viene escrito cada operario en el CSV (tabla operador_alias) y asigna
+    sus órdenes al instante. No hace falta volver a subir el CSV, y en las próximas
+    cargas ese nombre se enlaza solo.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        ids_validos = {e.id_empleado for e in db.session.query(Empleado.id_empleado).all()}
+
+        guardados = []
+        for a in data.get('asignaciones') or []:
+            clave = clave_nombre(a.get('operador'))
+            try:
+                id_emp = int(a.get('id_empleado'))
+            except (TypeError, ValueError):
+                continue
+            if not clave or id_emp not in ids_validos:
+                continue
+
+            alias = OperadorAlias.query.get(clave)
+            if alias:
+                alias.id_empleado = id_emp
+            else:
+                db.session.add(OperadorAlias(clave=clave, id_empleado=id_emp))
+            guardados.append(f"{a.get('operador')} -> {id_emp}")
+
+        if not guardados:
+            return jsonify({'success': False, 'error': 'No se recibió ninguna asignación válida.'}), 400
+
+        db.session.flush()
+        enlazados, _ = _reenlazar_sin_empleado()
+        filas = sum(e['filas_actualizadas'] for e in enlazados)
+
+        registrar_bitacora('EDITAR', 'MATRIZ_LECTURAS', None,
+                           f"Confirmó {len(guardados)} operarios del CSV ({filas} órdenes asignadas): "
+                           + '; '.join(guardados))
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'mensaje': (f'Se confirmaron {len(guardados)} operarios y se asignaron {filas} órdenes. '
+                        f'Desde la próxima carga se enlazarán solos.'),
+            'filas': filas
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception(f"[MATRIZ] Error confirmando operadores: {e}")
+        return jsonify({'success': False, 'error': 'Error interno al confirmar los operarios.'}), 500
+
 
 @app.route('/api/obtener_detalle_rango_operario', methods=['POST'])
 @requiere_login          # quítalo si este módulo aún no usa la bitácora
