@@ -2909,13 +2909,23 @@
                                 <h2 class="rt-title">Generador de Rutas y Cargas</h2>
                                 <p class="rt-subtitle">Optimización espacial de suministros con franjas horarias</p>
                             </div>
-                            
+                        
                             <div style="display: flex; gap: 10px; align-items: center;">
-                                <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 6px; display: flex; align-items: center; gap: 8px;">
-                                    <span style="font-size: 0.8rem; font-weight: 700; color: #475569;">LÍMITE:</span>
-                                    <input type="number" id="rt-limite-input" value="20" min="5" max="100" style="width: 50px; text-align: center; border: 1px solid #e2e8f0; border-radius: 4px; padding: 2px; font-weight: bold; color: #2563eb;">
-                                </div>
-                                
+                                <button id="rt-btn-ruta-excel" class="rt-btn" onclick="rtApp.generarRutaExcel()"
+                                        style="display: none; background: #059669; align-items: center; gap: 8px;">
+                                    <i class="fas fa-file-download"></i> Generar ruta en Excel
+                                </button>
+                        
+                                <button id="rt-btn-planos" class="rt-btn" onclick="rtApp.imprimirPlanos()"
+                                        style="display: none; background: #0f766e; align-items: center; gap: 8px;">
+                                    <i class="fas fa-print"></i> Imprimir planos
+                                </button>
+
+                                <button id="rt-btn-resumen-excel" class="rt-btn" onclick="rtApp.exportarExcel()"
+                                        style="background: #475569;">
+                                    <i class="fas fa-table"></i> Exportar resumen
+                                </button>
+                        
                                 <button class="rt-btn" onclick="rtApp.abrirModal()">
                                     <i class="fas fa-file-excel"></i> Cargar y Generar
                                 </button>
@@ -2931,7 +2941,13 @@
                                     <span style="font-weight: 700; color: #334155; font-size: 0.9rem;">CARGAS OPTIMIZADAS</span>
                                     <span id="rt-badge-total" style="background: #dbeafe; color: #2563eb; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">0 Total</span>
                                 </div>
+                                <div id="rt-resumen" style="border-bottom: 1px solid #e2e8f0; background: #ffffff;"></div>
+ 
+                                <div id="rt-barra-edicion" style="display: none;"></div>
                                 
+                                <div id="rt-aviso" style="display: none; padding: 8px 14px; background: #ecfdf5;
+                                    border-bottom: 1px solid #a7f3d0; color: #065f46; font-size: 0.74rem;
+                                    font-weight: 600;"></div>
                                 <div class="rt-list-container" id="rt-lista-cargas">
                                     <!-- Estado vacío -->
                                     <div style="padding: 60px 20px; text-align: center; color: #94a3b8;">
@@ -4019,20 +4035,21 @@
     <!-- MODAL INDEPENDIENTE DE RUTAS -->
     <div id="rt-modal-upload" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); z-index: 105000; align-items: center; justify-content: center;">
         <div style="background: #ffffff; width: 90%; max-width: 650px; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; flex-direction: column; max-height: 90vh;">
-            
+
             <div style="padding: 20px 25px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
                 <h3 style="margin: 0; font-size: 1.1rem; color: #1e293b;"><i class="fas fa-cogs" style="color: #2563eb; margin-right: 8px;"></i> Configuración de Importación</h3>
                 <button type="button" onclick="rtApp.cerrarModal()" style="background: transparent; border: none; font-size: 1.2rem; cursor: pointer; color: #94a3b8;">&times;</button>
             </div>
-            
+
             <form id="rt-form-upload" onsubmit="rtApp.procesarArchivo(event)" style="padding: 25px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px;">
-                
-                <!-- 🔥 SELECT DE ACTIVIDAD AL PRINCIPIO 🔥 -->
+
                 <div style="background: #f1f5f9; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0;">
                     <label style="font-size: 0.85rem; font-weight: 700; color: #1e293b; display: block; margin-bottom: 10px;">
-                        <i class="fas fa-clipboard-list" style="color: #64748b; margin-right: 5px;"></i> Seleccione la Actividad <span style="color:red">*</span>
+                        <i class="fas fa-clipboard-list" style="color: #64748b; margin-right: 5px;"></i>
+                        Seleccione la Actividad <span style="color:red">*</span>
                     </label>
-                    <select id="rt-actividad-select" name="actividad" required onchange="rtApp.cambiarActividad()" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 4px; color: #334155; font-size: 0.85rem; background: #ffffff; outline: none; cursor: pointer;">
+                    <select id="rt-actividad-select" name="actividad" required onchange="rtApp.cambiarActividad()"
+                            style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 4px; color: #334155; font-size: 0.85rem; background: #ffffff; outline: none; cursor: pointer;">
                         <option value="" disabled selected>-- Elegir actividad --</option>
                         <option value="INSPECCIONES COMERCIALES">INSPECCIONES COMERCIALES</option>
                         <option value="ACCIONES PERSUASIVAS">ACCIONES PERSUASIVAS</option>
@@ -4040,13 +4057,137 @@
                         <option value="GESTION DE LA MEDICION">GESTION DE LA MEDICION</option>
                         <option value="LECTURAS">LECTURAS</option>
                     </select>
+
+                    <!-- ¿QUIÉN ARMA EL RUTEO? El sistema (como siempre) o el Excel del supervisor,
+                        que ya trae a qué carga va cada suministro y en qué orden. -->
+                    <div id="rt-wrap-modo-ruteo" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: #1e293b; display: block; margin-bottom: 8px;">
+                            <i class="fas fa-route" style="color: #64748b; margin-right: 5px;"></i>
+                            ¿Quién arma el ruteo?
+                        </label>
+                        <label style="display: flex; align-items: flex-start; gap: 8px; background: #fff; padding: 9px 11px; border-radius: 5px; border: 1px solid #cbd5e1; cursor: pointer; margin-bottom: 7px;">
+                            <input type="radio" name="modo_ruteo" value="sistema" checked
+                                onchange="rtApp.cambiarModoRuteo()" style="accent-color: #2563eb; margin-top: 2px;">
+                            <span style="font-size: 0.78rem; color: #334155;">
+                                <strong>El sistema.</strong>
+                                Reparte los suministros en cargas y calcula el orden de visita.
+                            </span>
+                        </label>
+                        <label style="display: flex; align-items: flex-start; gap: 8px; background: #fff; padding: 9px 11px; border-radius: 5px; border: 1px solid #cbd5e1; cursor: pointer;">
+                            <input type="radio" name="modo_ruteo" value="excel"
+                                onchange="rtApp.cambiarModoRuteo()" style="accent-color: #2563eb; margin-top: 2px;">
+                            <span style="font-size: 0.78rem; color: #334155;">
+                                <strong>Mi Excel ya viene ruteado.</strong>
+                                Respeta las cargas y el orden del Excel; solo genera el mapa, los
+                                planos para imprimir y el Excel de ruta.
+                            </span>
+                        </label>
+
+                        <div id="rt-box-ruteo-excel" style="display: none; margin-top: 10px; background: #ecfeff; border: 1px solid #a5f3fc; border-radius: 6px; padding: 12px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="font-size: 0.72rem; color: #155e75; font-weight: bold;">COLUMNA DE CARGA / OPERARIO <span style="color:red">*</span></label>
+                                    <select id="rt-col-carga" class="rt-input" style="padding: 6px; width: 100%;">
+                                        <option value="">-- Sube primero el Excel --</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.72rem; color: #155e75; font-weight: bold;">COLUMNA DE ORDEN (opcional)</label>
+                                    <select id="rt-col-orden" class="rt-input" style="padding: 6px; width: 100%;">
+                                        <option value="">-- Sin columna de orden (el sistema ordena) --</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <p style="font-size: 0.7rem; color: #155e75; margin: 8px 0 0 0; line-height: 1.5;">
+                                Cada valor distinto de la columna de carga es una carga (por ejemplo, el nombre
+                                del operario). Si eliges la columna de orden, se visitan en ese orden; si no, el
+                                sistema ordena solo dentro de cada carga, sin pasar a nadie de una carga a otra.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- TECNICOS DISPONIBLES: aplica a TODAS las actividades y arranca vacío,
+                        porque la cuadrilla de inspecciones no es la misma que la de lecturas
+                        ni la de gestión de la medición. -->
+                    <div id="rt-wrap-tecnicos" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-users" style="color: #64748b;"></i>
+                            Técnicos disponibles <span style="color:red">*</span>
+                            <input type="number" id="rt-tecnicos-input" name="tecnicos" min="1" max="500" placeholder="—"
+                                style="width: 75px; text-align: center; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px; font-weight: bold; color: #2563eb;">
+                        </label>
+                        <p id="rt-tecnicos-ayuda" style="font-size: 0.72rem; color: #64748b; margin: 8px 0 0 0; line-height: 1.5;"></p>
+                    </div>
+
+                    <!-- CRITERIO DE REPARTO: solo en las actividades masivas, donde el límite
+                        de registros y la cantidad de técnicos compiten por decidir cuántas
+                        cargas salen. -->
+                    <div id="rt-wrap-criterio" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: #1e293b; display: block; margin-bottom: 8px;">
+                            <i class="fas fa-balance-scale" style="color: #64748b; margin-right: 5px;"></i>
+                            ¿Cómo reparto el trabajo?
+                        </label>
+
+                        <label style="display: flex; align-items: flex-start; gap: 8px; background: #fff; padding: 9px 11px; border-radius: 5px; border: 1px solid #cbd5e1; cursor: pointer; margin-bottom: 7px;">
+                            <input type="radio" name="criterio_reparto" value="limite" checked
+                                onchange="rtApp.cambiarCriterio()" style="accent-color: #2563eb; margin-top: 2px;">
+                            <span style="font-size: 0.78rem; color: #334155;">
+                                <strong>Por límite de registros.</strong>
+                                Cada carga lleva exactamente los registros que indiques y salen las
+                                cargas que hagan falta.
+                            </span>
+                        </label>
+
+                        <label style="display: flex; align-items: flex-start; gap: 8px; background: #fff; padding: 9px 11px; border-radius: 5px; border: 1px solid #cbd5e1; cursor: pointer;">
+                            <input type="radio" name="criterio_reparto" value="tecnicos"
+                                onchange="rtApp.cambiarCriterio()" style="accent-color: #2563eb; margin-top: 2px;">
+                            <span style="font-size: 0.78rem; color: #334155;">
+                                <strong>Entre los técnicos disponibles.</strong>
+                                Salen tantas cargas como técnicos indiques y el trabajo se reparte
+                                parejo entre ellas.
+                            </span>
+                        </label>
+                    </div>
+
+                    <!-- LIMITE DE REGISTROS POR CARGA. No aparece en INSPECCIONES: ahí la
+                        capacidad la decide el reloj (franja horaria + traslado). -->
+                    <div id="rt-wrap-limite" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-layer-group" style="color: #64748b;"></i>
+                            Límite de registros por carga
+                            <input type="number" id="rt-limite-input" name="limite_carga" value="25" min="1" max="500"
+                                style="width: 75px; text-align: center; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px; font-weight: bold; color: #2563eb;">
+                        </label>
+                        <p id="rt-limite-ayuda" style="font-size: 0.72rem; color: #64748b; margin: 8px 0 0 0; line-height: 1.5;"></p>
+                    </div>
+
+                    <div id="rt-reparto-preview" style="display: none; margin-top: 12px; padding: 8px 11px; background: #ecfeff; border: 1px solid #a5f3fc; border-radius: 5px; font-size: 0.73rem; color: #155e75; font-weight: 600;"></div>
+
+                    <!-- VALIDACION DE COORDENADAS. Va encendida: en catastro hay coordenadas
+                        mal cargadas y una sola de ellas descoloca toda una ruta. Se puede
+                        apagar para una orden puntual en la que el filtro moleste. -->
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1;">
+                        <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="rt-chk-coords" name="validar_coordenadas" value="1" checked
+                                style="accent-color: #2563eb; margin-top: 3px;">
+                            <span style="font-size: 0.78rem; color: #334155;">
+                                <strong>Revisar las coordenadas de catastro antes de rutear.</strong>
+                                <span style="display: block; color: #64748b; font-size: 0.72rem; margin-top: 3px; line-height: 1.5;">
+                                    Compara cada predio con la nube de predios de su misma localidad y
+                                    aparta los que no pueden estar donde dice la base. No consulta
+                                    direcciones salvo para reubicar los que salieron mal, así que casi
+                                    no agrega tiempo al proceso.
+                                </span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
 
                 <!-- 🔥 CAJONES DE ARCHIVOS DINÁMICOS 🔥 -->
                 <div style="display: flex; gap: 15px;">
                     <!-- CAJÓN 1: PRINCIPAL (Siempre visible) -->
                     <div id="rt-box-file-1" style="flex: 1; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 25px; text-align: center; cursor: pointer; background: #f8fafc;" onclick="document.getElementById('rt-file-input-1').click()">
-                        <input type="file" id="rt-file-input-1" name="archivo" accept=".xlsx, .xls, .csv" style="display: none;" onchange="rtApp.actualizarNombreArchivo(this, 'rt-file-name-1')" required>
+                        <input type="file" id="rt-file-input-1" name="archivo" accept=".xlsx, .xls, .csv" style="display: none;" onchange="rtApp.actualizarNombreArchivo(this, 'rt-file-name-1')">
                         <i class="fas fa-file-excel" style="font-size: 2.5rem; color: #10b981; margin-bottom: 10px;"></i>
                         <div id="rt-file-name-1" style="font-weight: 600; color: #334155; font-size: 0.8rem;">Subir Excel Principal</div>
                     </div>
@@ -4055,14 +4196,34 @@
                     <div id="rt-box-file-2" style="display: none; flex: 1; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 25px; text-align: center; cursor: pointer; background: #f8fafc;" onclick="document.getElementById('rt-file-input-2').click()">
                         <input type="file" id="rt-file-input-2" name="archivo_secundario" accept=".xlsx, .xls, .csv" style="display: none;" onchange="rtApp.actualizarNombreArchivo(this, 'rt-file-name-2')">
                         <i class="fas fa-file-excel" style="font-size: 2.5rem; color: #f59e0b; margin-bottom: 10px;"></i>
-                        <div id="rt-file-name-2" style="font-weight: 600; color: #334155; font-size: 0.8rem;">Subir Excel Secundario</div>
+                        <div id="rt-file-name-2" style="font-weight: 600; color: #334155; font-size: 0.8rem;">Subir Excel Secundario (opcional)</div>
                     </div>
+                </div>
+
+                <div id="rt-box-cruce" style="display: none; background: #fffbeb; padding: 15px; border-radius: 6px; border: 1px solid #fde68a;">
+                    <label style="font-size: 0.85rem; font-weight: 700; color: #92400e; display: block; margin-bottom: 8px;">
+                        <i class="fas fa-link" style="margin-right: 5px;"></i>
+                        ¿Con qué columna cruzo los dos archivos? <span style="font-weight: 400;">(solo si subes el segundo archivo)</span>
+                    </label>
+                    <p style="font-size: 0.72rem; color: #92400e; margin: 0 0 10px 0; line-height: 1.5;">
+                        El archivo principal es el <strong>corte (AGUA)</strong> y el secundario la
+                        <strong>obturación (DESAGÜE)</strong>. Los suministros que aparezcan en ambos
+                        se marcarán como <strong>AGUA Y DESAGUE</strong>; el resto, como <strong>AGUA</strong>.
+                        Solo se rutea el archivo principal.
+                    </p>
+                    <select id="rt-col-cruce" name="col_cruce"
+                            style="width: 100%; padding: 9px; border: 1px solid #fcd34d; border-radius: 4px; color: #334155; font-size: 0.85rem; background: #ffffff; cursor: pointer;">
+                        <option value="">-- Elegir columna --</option>
+                    </select>
+                    <p style="font-size: 0.68rem; color: #a16207; margin: 8px 0 0 0;">
+                        La columna debe existir con el mismo nombre en los dos archivos.
+                    </p>
                 </div>
 
                 <!-- PREGUNTA AL USUARIO -->
                 <div style="background: #f1f5f9; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0;">
                     <label style="font-size: 0.85rem; font-weight: 700; color: #1e293b; display: block; margin-bottom: 10px;">¿Cómo deseas identificar las columnas de la Base Principal?</label>
-                    
+
                     <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px;">
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #334155; cursor: pointer; background: white; padding: 10px; border-radius: 4px; border: 1px solid #cbd5e1;">
                             <input type="radio" name="tipo_mapeo" value="auto" checked onchange="rtApp.toggleMapeoManual()" style="accent-color: #2563eb; width: 16px; height: 16px;">
@@ -4077,7 +4238,7 @@
                     <!-- PANEL MANUAL COMPLETO (Se oculta por defecto) -->
                     <div id="panel-mapeo-manual" style="display: none; background: #ffffff; border: 1px solid #cbd5e1; padding: 15px; border-radius: 6px;">
                         <p style="font-size: 0.75rem; color: #64748b; margin-top: 0; margin-bottom: 15px;"><i class="fas fa-info-circle"></i> Solo el Suministro es obligatorio. Los campos opcionales que no selecciones se dejarán en blanco o se agruparán automáticamente.</p>
-                        
+
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                             <div>
                                 <label style="font-size: 0.7rem; color: #1e293b; font-weight: bold;">SUMINISTRO <span style="color:red">*</span></label>
@@ -4108,8 +4269,46 @@
                                 <select name="col_numero" class="rt-input" style="padding: 6px;" data-ideal="NRO"></select>
                             </div>
                         </div>
+
+                        <!-- (Aqui estaba el bloque "¿Qué columnas forman la dirección?".
+                             Se movio afuera, a su propia caja, para que se vea tambien
+                             en modo Automatico.) -->
                     </div>
                 </div>
+
+                <!-- ===================== NUEVO: CAJA DE DIRECCION =====================
+                     Se ve en los dos modos de mapeo. Con ella el sistema comprueba que
+                     cada coordenada corresponda a su direccion. -->
+                <div id="rt-box-direccion" style="background: #f1f5f9; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <label style="font-size: 0.85rem; font-weight: 700; color: #1e293b; display: block;">
+                        <i class="fas fa-map-signs" style="color: #64748b; margin-right: 5px;"></i>
+                        ¿Qué columna tiene la dirección?
+                    </label>
+                    <p style="font-size: 0.72rem; color: #64748b; margin: 5px 0 10px 0; line-height: 1.5;">
+                        Con ella se comprueba que cada coordenada esté donde dice la dirección, y se ubica
+                        a los suministros que no tienen coordenada. Si el Excel trae la dirección completa
+                        en un solo campo (por ejemplo <em>URBA PALERMO CA UNION 192</em>), marca solo ese.
+                        Si viene partida, marca las que correspondan: se unen en el orden del Excel.
+                    </p>
+                    <div id="rt-dir-campos" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 130px; overflow-y: auto; padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px;">
+                        <span style="font-size: 0.7rem; color: #94a3b8;">Sube primero el Excel principal.</span>
+                    </div>
+                    <div id="rt-dir-preview" style="display: none; margin-top: 8px; padding: 7px 10px; background: #ecfeff; border: 1px solid #a5f3fc; border-radius: 5px; font-size: 0.7rem; color: #155e75;"></div>
+
+                    <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; margin-top: 12px;">
+                        <input type="checkbox" id="rt-chk-direcciones" name="validar_direcciones" value="1" checked
+                               style="accent-color: #2563eb; margin-top: 3px;">
+                        <span style="font-size: 0.78rem; color: #334155;">
+                            <strong>Comprobar que cada coordenada corresponda a su dirección.</strong>
+                            <span style="display: block; color: #64748b; font-size: 0.72rem; margin-top: 3px; line-height: 1.5;">
+                                Compara el punto con la calle en el mapa, con su urbanización y con los demás
+                                predios de la misma calle. Corrige sola solo cuando hay certeza; las dudosas
+                                quedan en ámbar en el mapa para que decidas tú.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <!-- =================== FIN NUEVO: CAJA DE DIRECCION =================== -->
 
                 <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 5px;">
                     <button type="button" onclick="rtApp.cerrarModal()" style="background: white; border: 1px solid #cbd5e1; padding: 8px 15px; border-radius: 4px; cursor: pointer; color: #475569; font-weight: 600;">Cancelar</button>
@@ -4286,6 +4485,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/rutas_excel.js') }}"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 </body>

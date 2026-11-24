@@ -16825,202 +16825,441 @@ document.addEventListener("DOMContentLoaded", function() {
 
 
 
-// ==========================================
-// MÓDULO DE RUTAS (LÓGICA ACTUALIZADA MULTI-ARCHIVO)
-// ==========================================
+////////RUTAS///////
+
 const rtApp = {
     datosRutas: [],
+    resumen: null,
+    noProgramados: [],
+    planPersonal: null,
+    asignacion: null,
+    modo: null,
+    archivoPrincipal: null,
+    colCruce: null,
+    coordsObservadas: [],  // coordenadas de catastro que no cuadraban
+    tecnicosDia: 0,        // lo dice el usuario en cada corrida, no hay defecto
+    UMBRAL_CARGAS: 18,     // hasta aqui esta bien; por encima se ofrece editar
+    seleccion: null,       // franja marcada con clic
+    arrastre: null,        // franja que se esta arrastrando
+    historial: [],         // para deshacer
+    vistaMapa: 'carga',    // 'carga' = solo la activa | 'dia' = todas las del dia
+    fechaActiva: null,
+    COLORES: ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#0ea5e9',
+              '#ef4444', '#14b8a6', '#a855f7', '#f97316'],
+
+    // Actividades que van al motor masivo (sin franjas horarias)
+    MASIVAS: ['ACCIONES PERSUASIVAS', 'COMUNICACIONES',
+              'GESTION DE LA MEDICION', 'LECTURAS'],
     columnasExcel: [],
     map: null,
     capaRuta: null,
+    _marcadores: [],
+    _rutaActiva: null,
+    TIMEOUT_MS: 5 * 60 * 1000,
 
-    abrirModal: function() {
-        document.getElementById('rt-modal-upload').style.display = 'flex';
+    // ---------------------------------------------------------------- utils
+    _esc: function (v) {
+        return String(v === null || v === undefined ? '' : v)
+            .replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
     },
 
-    cerrarModal: function() {
-        document.getElementById('rt-modal-upload').style.display = 'none';
-        document.getElementById('rt-form-upload').reset();
-        
-        // Resetear visualmente los cajones
-        document.getElementById('rt-file-name-1').innerHTML = 'Subir Excel Principal';
-        document.getElementById('rt-file-name-1').style.color = '#334155';
-        
-        const fn2 = document.getElementById('rt-file-name-2');
-        if (fn2) {
-            fn2.innerHTML = 'Subir Excel Secundario';
-            fn2.style.color = '#334155';
+    _el: function (tag, attrs, hijos) {
+        const n = document.createElement(tag);
+        if (attrs) {
+            for (const k in attrs) {
+                if (k === 'style') { n.style.cssText = attrs[k]; }
+                else if (k === 'text') { n.textContent = attrs[k]; }
+                else if (k === 'class') { n.className = attrs[k]; }
+                else if (k.indexOf('on') === 0 && typeof attrs[k] === 'function') {
+                    n.addEventListener(k.slice(2), attrs[k]);
+                } else if (attrs[k] !== null && attrs[k] !== undefined) {
+                    n.setAttribute(k, attrs[k]);
+                }
+            }
         }
-        
-        document.getElementById('panel-mapeo-manual').style.display = 'none';
-        this.cambiarActividad(); // Resetea el segundo cajón si aplica
+        (hijos || []).forEach(function (h) {
+            if (h) { n.appendChild(typeof h === 'string' ? document.createTextNode(h) : h); }
+        });
+        return n;
+    },
+
+    _num: function (v) {
+        const n = parseFloat(v);
+        return Number.isFinite(n) ? n : null;
+    },
+
+    // --------------------------------------------------------------- modal
+    abrirModal: function () {
+        const m = document.getElementById('rt-modal-upload');
+        if (m) m.style.display = 'flex';
+    },
+
+    cerrarModal: function () {
+        const m = document.getElementById('rt-modal-upload');
+        if (m) m.style.display = 'none';
+        const form = document.getElementById('rt-form-upload');
+        if (form) form.reset();
+
+        this._resetLabel('rt-file-name-1', 'Subir Excel Principal');
+        this._resetLabel('rt-file-name-2', 'Subir Excel Secundario (opcional)');
+
+        const panel = document.getElementById('panel-mapeo-manual');
+        if (panel) panel.style.display = 'none';
+        this.cambiarActividad();
         this.columnasExcel = [];
     },
 
-    // 🔥 NUEVA FUNCIÓN: Muestra u oculta el 2do archivo según la actividad 🔥
-    cambiarActividad: function() {
-        const select = document.getElementById('rt-actividad-select');
-        if(!select) return;
-        
-        const box2 = document.getElementById('rt-box-file-2');
-        const input2 = document.getElementById('rt-file-input-2');
-        
-        if (select.value === 'ACCIONES PERSUASIVAS') {
-            box2.style.display = 'block';
-            input2.setAttribute('required', 'true');
-        } else {
-            box2.style.display = 'none';
-            input2.removeAttribute('required');
-            input2.value = ''; // Limpiar si había un archivo cargado
-            document.getElementById('rt-file-name-2').innerHTML = 'Subir Excel Secundario';
-            document.getElementById('rt-file-name-2').style.color = '#334155';
-        }
+    _resetLabel: function (id, texto) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = texto;
+        el.style.color = '#334155';
     },
 
-    // Función adaptada para recibir de qué input viene el archivo
-    actualizarNombreArchivo: function(input, labelId) {
-        if(input.files && input.files.length > 0) {
-            const file = input.files[0];
-            document.getElementById(labelId).innerHTML = file.name;
-            document.getElementById(labelId).style.color = '#2563eb';
+    esMasiva: function (actividad) {
+        return this.MASIVAS.indexOf(actividad) !== -1;
+    },
 
-            // Extraer columnas SOLAMENTE si es el archivo principal
-            if (input.id === 'rt-file-input-1') {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, {type: 'array'});
-                    const ws = workbook.Sheets[workbook.SheetNames[0]];
-                    this.columnasExcel = XLSX.utils.sheet_to_json(ws, {header: 1})[0] || [];
-                    
-                    if (document.querySelector('input[name="tipo_mapeo"][value="manual"]').checked) {
-                        this.poblarSelects();
-                    }
-                };
-                reader.readAsArrayBuffer(file);
+    cambiarActividad: function () {
+        const select = document.getElementById('rt-actividad-select');
+        if (!select) return;
+        const act = select.value;
+        const pide2 = act === 'ACCIONES PERSUASIVAS';
+
+        const box2 = document.getElementById('rt-box-file-2');
+        const input2 = document.getElementById('rt-file-input-2');
+        if (box2) box2.style.display = pide2 ? 'block' : 'none';
+        if (input2) {
+            // El segundo archivo (obturacion / desague) es OPCIONAL: con el
+            // principal solo ya se genera el ruteo. Nunca se marca 'required':
+            // el input esta oculto y el navegador bloquearia el envio sin avisar.
+            input2.removeAttribute('required');
+            if (!pide2) {
+                input2.value = '';
+                this._resetLabel('rt-file-name-2', 'Subir Excel Secundario (opcional)');
+            }
+        }
+
+        // Panel de cruce agua / desague: solo persuasivas
+        const boxCruce = document.getElementById('rt-box-cruce');
+        if (boxCruce) {
+            boxCruce.style.display = pide2 ? 'block' : 'none';
+            if (pide2) this.poblarCruce();
+        }
+
+        const masiva = this.esMasiva(act);
+
+        // Tecnicos disponibles: TODAS las actividades. La cuadrilla de
+        // inspecciones no es la misma que la de lecturas ni la de gestion de
+        // la medicion, asi que no hay valor por defecto: se escribe cada vez.
+        const wrapT = document.getElementById('rt-wrap-tecnicos');
+        const ayudaT = document.getElementById('rt-tecnicos-ayuda');
+        if (wrapT) wrapT.style.display = act ? 'block' : 'none';
+        if (ayudaT) {
+            ayudaT.textContent = masiva
+                ? 'Cuantas personas van a ejecutar esta orden de trabajo. Es el techo ' +
+                  'de cargas del dia; si eliges repartir entre los tecnicos, es ademas ' +
+                  'la cantidad exacta de cargas que se generan.'
+                : 'Cuantas personas van a ejecutar esta orden de trabajo. Es un techo, ' +
+                  'no una meta: si el trabajo alcanza para menos cargas, se generan menos.';
+        }
+
+        // Criterio de reparto: solo en masivas, donde el limite de registros y
+        // la cantidad de tecnicos compiten por decidir cuantas cargas salen.
+        const wrapC = document.getElementById('rt-wrap-criterio');
+        if (wrapC) wrapC.style.display = masiva ? 'block' : 'none';
+        if (!masiva) {
+            const rl = document.querySelector('input[name="criterio_reparto"][value="limite"]');
+            if (rl) rl.checked = true;
+        }
+
+        // Limite de registros por carga: SOLO para las actividades masivas.
+        // Inspecciones comerciales no lo usa: su capacidad la decide el reloj
+        // (franja horaria + traslado), igual que siempre.
+        const wrap = document.getElementById('rt-wrap-limite');
+        const input = document.getElementById('rt-limite-input');
+        if (wrap) wrap.style.display = masiva ? 'block' : 'none';
+        if (input && masiva && !input.value) input.value = '25';
+
+        this.cambiarCriterio();
+    },
+
+    criterioActual: function () {
+        const marcado = document.querySelector('input[name="criterio_reparto"]:checked');
+        return marcado ? marcado.value : 'limite';
+    },
+
+    // Deja en claro cual de los dos campos manda: el que no manda se pone gris
+    // y se desactiva, para que nadie escriba un numero que el motor va a ignorar.
+    cambiarCriterio: function () {
+        const select = document.getElementById('rt-actividad-select');
+        const act = select ? select.value : '';
+        const masiva = this.esMasiva(act);
+        const criterio = this.criterioActual();
+        const porTecnicos = masiva && criterio === 'tecnicos';
+
+        const input = document.getElementById('rt-limite-input');
+        const ayuda = document.getElementById('rt-limite-ayuda');
+        const wrap = document.getElementById('rt-wrap-limite');
+
+        if (input) {
+            input.disabled = porTecnicos;
+            input.style.background = porTecnicos ? '#e2e8f0' : '#ffffff';
+            input.style.color = porTecnicos ? '#94a3b8' : '#2563eb';
+        }
+        if (wrap) wrap.style.opacity = porTecnicos ? '0.55' : '1';
+        if (ayuda) {
+            ayuda.textContent = porTecnicos
+                ? 'No se usa con este criterio: el tamano de cada carga sale de dividir ' +
+                  'el trabajo entre los tecnicos.'
+                : 'Tope duro por carga. Manda sobre la jornada: si el limite deja la ' +
+                  'carga en menos de 6 h, se genera igual y se avisa.';
+        }
+
+        const prev = document.getElementById('rt-reparto-preview');
+        if (prev) {
+            if (!masiva) {
+                prev.style.display = 'none';
+            } else {
+                prev.style.display = 'block';
+                prev.textContent = porTecnicos
+                    ? 'Saldran tantas cargas como tecnicos indiques, con los registros ' +
+                      'repartidos parejo entre ellas.'
+                    : 'Saldran las cargas que hagan falta para respetar el limite, sin ' +
+                      'pasar de la cantidad de tecnicos.';
             }
         }
     },
 
-    toggleMapeoManual: function() {
-        const esManual = document.querySelector('input[name="tipo_mapeo"][value="manual"]').checked;
+    poblarCruce: function () {
+        const sel = document.getElementById('rt-col-cruce');
+        if (!sel) return;
+        const previo = sel.value;
+        sel.innerHTML = '';
+        sel.appendChild(this._el('option', { value: '', text: '-- Elegir columna --' }));
+        this.columnasExcel.forEach((col) => {
+            const opt = this._el('option', { value: col, text: String(col) });
+            const cu = String(col).toUpperCase();
+            if (col === previo ||
+                (!previo && (cu.indexOf('SUMINISTRO') !== -1 || cu.indexOf('CLICOD') !== -1))) {
+                opt.selected = true;
+            }
+            sel.appendChild(opt);
+        });
+    },
+
+    actualizarNombreArchivo: function (input, labelId) {
+        if (!input || !input.files || !input.files.length) return;
+        const file = input.files[0];
+        const label = document.getElementById(labelId);
+        if (label) {
+            label.textContent = file.name;
+            label.style.color = '#2563eb';
+        }
+        if (input.id !== 'rt-file-input-1' || typeof XLSX === 'undefined') return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                // sheetRows: 1 -> solo se parsea la cabecera, no el archivo entero
+                const wb = XLSX.read(new Uint8Array(e.target.result),
+                                     { type: 'array', sheetRows: 1 });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                this.columnasExcel = (XLSX.utils.sheet_to_json(ws, { header: 1 })[0] || [])
+                    .filter(Boolean);
+                const manual = document.querySelector('input[name="tipo_mapeo"][value="manual"]');
+                if (manual && manual.checked) this.poblarSelects();
+                this.poblarCamposDireccion();
+                const boxCruce = document.getElementById('rt-box-cruce');
+                if (boxCruce && boxCruce.style.display !== 'none') this.poblarCruce();
+            } catch (err) {
+                console.warn('No se pudieron leer las cabeceras del Excel', err);
+                this.columnasExcel = [];
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    },
+
+    toggleMapeoManual: function () {
+        const radio = document.querySelector('input[name="tipo_mapeo"][value="manual"]');
+        const esManual = !!(radio && radio.checked);
         const panel = document.getElementById('panel-mapeo-manual');
         if (panel) panel.style.display = esManual ? 'block' : 'none';
-        
-        if (esManual && this.columnasExcel.length > 0) {
+        if (esManual && this.columnasExcel.length) {
             this.poblarSelects();
+            this.poblarCamposDireccion();
         }
     },
 
-    poblarSelects: function() {
-        const selects = document.querySelectorAll('#panel-mapeo-manual select');
-        selects.forEach(select => {
-            const valorIdeal = select.getAttribute('data-ideal');
-            select.innerHTML = '<option value="">-- No usar (Vacío) --</option>';
-            
-            this.columnasExcel.forEach(columna => {
-                if(columna) {
-                    const opt = document.createElement('option');
-                    opt.value = columna;
-                    opt.textContent = columna;
-                    if(valorIdeal && columna.toUpperCase().includes(valorIdeal)) {
-                        opt.selected = true;
-                    }
-                    select.appendChild(opt);
+
+    _camposDireccion: function () {
+        const cont = document.getElementById('rt-dir-campos');
+        if (!cont) return [];
+        const marcadas = [];
+        // se respeta el orden del Excel, no el orden en que se hizo clic
+        this.columnasExcel.forEach((col) => {
+            const inputs = cont.querySelectorAll('input[type="checkbox"]');
+            for (let i = 0; i < inputs.length; i++) {
+                if (inputs[i].value === String(col) && inputs[i].checked) {
+                    marcadas.push(String(col));
+                    break;
                 }
+            }
+        });
+        return marcadas;
+    },
+
+    _previewDireccion: function () {
+        const box = document.getElementById('rt-dir-preview');
+        if (!box) return;
+        const campos = this._camposDireccion();
+        if (!campos.length) {
+            box.style.display = 'none';
+            return;
+        }
+        box.style.display = 'block';
+        box.textContent = 'Se buscará así:  ' + campos.join(' + ') +
+                          '  +  distrito  +  "La Libertad, Perú"';
+    },
+
+    poblarSelects: function () {
+        document.querySelectorAll('#panel-mapeo-manual select').forEach((select) => {
+            const ideal = (select.getAttribute('data-ideal') || '').toUpperCase();
+            select.innerHTML = '';
+            select.appendChild(this._el('option', { value: '', text: '-- No usar (Vacio) --' }));
+            this.columnasExcel.forEach((col) => {
+                const opt = this._el('option', { value: col, text: String(col) });
+                if (ideal && String(col).toUpperCase().indexOf(ideal) !== -1) opt.selected = true;
+                select.appendChild(opt);
             });
         });
     },
 
-    cerrarDetalle: function() {
-        const layout = document.getElementById('rt-layout');
-        if (layout) layout.classList.remove('rt-open');
-        
-        const panelIzq = document.querySelector('.rt-panel-izq') || document.getElementById('rt-panel-izq');
-        const panelDer = document.querySelector('.rt-panel-der') || document.getElementById('rt-panel-der');
-        
-        if (panelIzq) {
-            panelIzq.style.width = '100%';
-            panelIzq.style.borderRight = '1px solid transparent';
-        }
-        if (panelDer) {
-            panelDer.style.width = '0%';
-            panelDer.style.opacity = '0';
-        }
-        
-        document.querySelectorAll('.rt-row-hover').forEach(el => el.classList.remove('rt-row-active'));
-        if(this.capaRuta) this.capaRuta.clearLayers();
-    },
-
-    procesarArchivo: async function(e) {
+    // ------------------------------------------------------------ procesar
+    procesarArchivo: async function (e) {
         e.preventDefault();
-        const btn = document.getElementById('rt-btn-submit');
-        const limite = document.getElementById('rt-limite-input').value;
         const form = e.target;
-        
-        const esManual = document.querySelector('input[name="tipo_mapeo"][value="manual"]').checked;
-        if (esManual) {
-            const sum = form.querySelector('select[name="col_suministro"]').value;
-            if(!sum) return alert("⚠️ ERROR: Debes seleccionar obligatoriamente la columna de Suministro.");
+        const btn = document.getElementById('rt-btn-submit');
+
+        const radioManual = document.querySelector('input[name="tipo_mapeo"][value="manual"]');
+        if (radioManual && radioManual.checked) {
+            const sel = form.querySelector('select[name="col_suministro"]');
+            if (!sel || !sel.value) {
+                alert('Debes seleccionar la columna de Suministro.');
+                return;
+            }
         }
 
-        // FormData agarrará automáticamente 'archivo' y 'archivo_secundario' (si está visible)
+        // El Excel principal se valida aqui y no con 'required': el input esta
+        // oculto y el navegador cancelaria el envio sin mostrar ningun aviso.
+        const inputPrincipal = document.getElementById('rt-file-input-1');
+        if (!(inputPrincipal && inputPrincipal.files && inputPrincipal.files.length)) {
+            alert('Sube el Excel principal.');
+            return;
+        }
+
+        const selAct = document.getElementById('rt-actividad-select');
+        const actividad = selAct ? selAct.value : '';
+        if (!actividad) { alert('Selecciona la actividad.'); return; }
+
+        const masiva = this.esMasiva(actividad);
+
+        // Tecnicos: obligatorio en todas las actividades y sin valor por defecto.
+        const inputTec = document.getElementById('rt-tecnicos-input');
+        const tecnicos = inputTec ? parseInt(inputTec.value, 10) : 0;
+        if (!(tecnicos > 0)) {
+            alert('Indica cuantos tecnicos hay disponibles para esta orden de trabajo.');
+            if (inputTec) inputTec.focus();
+            return;
+        }
+
+        const criterio = masiva ? this.criterioActual() : 'limite';
+        const inputLimite = document.getElementById('rt-limite-input');
+        const limite = inputLimite ? parseInt(inputLimite.value, 10) : 0;
+        if (masiva && criterio === 'limite' && !(limite > 0)) {
+            alert('Indica el limite de registros por carga, o cambia el criterio a ' +
+                  'repartir entre los tecnicos disponibles.');
+            if (inputLimite) inputLimite.focus();
+            return;
+        }
+
+        const selCruce = document.getElementById('rt-col-cruce');
+        const colCruce = (actividad === 'ACCIONES PERSUASIVAS' && selCruce)
+            ? selCruce.value : '';
+        const input2 = document.getElementById('rt-file-input-2');
+        const hay2 = !!(input2 && input2.files && input2.files.length);
+        if (actividad === 'ACCIONES PERSUASIVAS' && hay2 && !colCruce) {
+            alert('Selecciona la columna de cruce entre los dos archivos.');
+            return;
+        }
+
         const formData = new FormData(form);
-        formData.append('limite_carga', limite);
+        formData.set('tecnicos', String(tecnicos));
+        formData.set('criterio_reparto', criterio);
+        // El campo deshabilitado no viaja solo; y si manda el criterio de
+        // tecnicos, el limite no se manda en absoluto para que no confunda.
+        if (masiva && criterio === 'limite' && limite > 0) {
+            formData.set('limite_carga', String(limite));
+        } else if (criterio !== 'limite') {
+            formData.delete('limite_carga');
+        }
+        // Una casilla sin marcar NO viaja en el FormData, y aqui la ausencia
+        // significa "usa el valor por defecto", que es encendido. Asi que se
+        // manda siempre explicito.
+        const chkCoords = document.getElementById('rt-chk-coords');
+        formData.set('validar_coordenadas',
+                     (!chkCoords || chkCoords.checked) ? '1' : '0');
+        const chkDir = document.getElementById('rt-chk-direcciones');
+        formData.set('validar_direcciones', (!chkDir || chkDir.checked) ? '1' : '0');
+        if (!formData.has('actividad')) formData.append('actividad', actividad);
+        if (colCruce) formData.set('col_cruce', colCruce);
+
+        // columnas que forman la direccion (una sola o varias, en orden)
+        const camposDir = this._camposDireccion();
+        if (camposDir.length) formData.set('cols_direccion', camposDir.join('|'));
+
+        const input1 = document.getElementById('rt-file-input-1');
+        this.archivoPrincipal = (input1 && input1.files && input1.files[0]) || null;
+        this.colCruce = colCruce;
+        this.actividad = actividad;
+
+        const url = masiva ? '/api/generar_rutas_masivas' : '/api/generar_rutas';
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), this.TIMEOUT_MS);
 
         try {
             if (btn) {
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
                 btn.disabled = true;
             }
+            const resp = await fetch(url,
+                                     { method: 'POST', body: formData, signal: ctrl.signal });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data.error || ('Error ' + resp.status));
 
-            const response = await fetch('/api/generar_rutas', { method: 'POST', body: formData });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Error en el servidor');
-
+            this.datosRutas = Array.isArray(data.rutas) ? data.rutas : [];
+            this.resumen = data.resumen || null;
+            this.noProgramados = Array.isArray(data.no_programados) ? data.no_programados : [];
+            this.planPersonal = data.plan_personal || null;
+            this.asignacion = data.asignacion || null;
+            this.modo = (data.config || {}).modo || (masiva ? 'masiva' : 'inspecciones');
+            this.tecnicosDia = (data.config || {}).tecnicos_por_dia || tecnicos;
+            this.historial = [];
+            this.seleccion = null;
+            this._toggleBotonExport();
             this.cerrarModal();
-            let rutasGeneradas = data.rutas;
-            
-            // 🔥 ORDENAMIENTO CRONOLÓGICO ASCENDENTE INFALIBLE 🔥
-            rutasGeneradas.sort((a, b) => {
-                const obtenerMinutos = (horaStr) => {
-                    if (!horaStr) return 9999;
-                    const s = horaStr.toString().toUpperCase();
-                    if (s.includes('SIN') || s.includes('JORNADA')) return 9999; 
-                    
-                    const match = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/);
-                    if (match) {
-                        let h = parseInt(match[1], 10);
-                        let m = parseInt(match[2], 10);
-                        let ampm = match[3]; 
-
-                        if (ampm === 'PM' && h < 12) h += 12;
-                        if (ampm === 'AM' && h === 12) h = 0;
-                        
-                        return (h * 60) + m;
-                    }
-                    return 9999;
-                };
-
-                const fechaA = (a.fecha || "").toString().trim();
-                const fechaB = (b.fecha || "").toString().trim();
-                
-                if (fechaA !== fechaB) {
-                    return fechaA.localeCompare(fechaB);
-                }
-                return obtenerMinutos(a.hora) - obtenerMinutos(b.hora);
-            });
-
-            rutasGeneradas.forEach((ruta, index) => {
-                ruta.id = index + 1;
-            });
-
-            this.datosRutas = rutasGeneradas; 
+            this.renderizarResumen(data);
+            this.renderizarBarraEdicion();
             this.renderizarListaCargas();
-            
-        } catch (error) {
-            alert("Error al procesar: " + error.message);
+            this.cerrarDetalle();
+        } catch (err) {
+            alert(err.name === 'AbortError'
+                ? 'El proceso tardo demasiado. Reduce el archivo o revisa el servidor.'
+                : ('Error al procesar: ' + err.message));
         } finally {
+            clearTimeout(t);
             if (btn) {
                 btn.innerHTML = '<i class="fas fa-magic"></i> Procesar Data';
                 btn.disabled = false;
@@ -17028,184 +17267,2212 @@ const rtApp = {
         }
     },
 
-    renderizarListaCargas: function() {
-        const contenedor = document.getElementById('rt-lista-cargas');
-        if (!contenedor) return;
-        
-        contenedor.innerHTML = '';
-        const badge = document.getElementById('rt-badge-total');
-        if (badge) badge.textContent = `${this.datosRutas.length} Cargas`;
+    // ------------------------------------------------------------- resumen
+    renderizarResumen: function (data) {
+        const cont = document.getElementById('rt-resumen');
+        if (!cont) return;
+        cont.innerHTML = '';
+        const r = data.resumen || {};
+        const cfg = data.config || {};
+        const chips = [
+            ['Filas en Excel', r.total_excel, false],
+            ['Duplicados quitados', r.duplicados_eliminados, false],
+            ['Programados', r.programados, false],
+            ['Geocodificados', r.geocodificados, false],
+            ['Sin coordenada', r.sin_coordenadas, r.sin_coordenadas > 0],
+            ['Enganchados por direccion', r.sin_coordenada_enganchados, false],
+            ['No programados', r.no_programados, r.no_programados > 0],
+            ['Cargas', r.total_cargas_generadas, false],
+            ['Nombres absorbidos', (r.absorcion_localidades || {}).nombres || null, false],
+            ['Tecnicos/dia', cfg.tecnicos_por_dia, false],
+            ['Reparto', cfg.criterio_reparto === 'tecnicos'
+                ? 'entre los tecnicos'
+                : (cfg.criterio_reparto ? 'por limite de registros' : null), false]
+        ];
+        const fila = this._el('div', {
+            style: 'display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px;'
+        });
+        chips.forEach(([k, v, alerta]) => {
+            if (v === undefined || v === null) return;
+            fila.appendChild(this._el('div', {
+                style: 'background:' + (alerta ? '#fef2f2' : '#f1f5f9') +
+                       ';border:1px solid ' + (alerta ? '#fecaca' : '#e2e8f0') +
+                       ';color:' + (alerta ? '#b91c1c' : '#475569') +
+                       ';border-radius:6px;padding:4px 10px;font-size:0.72rem;font-weight:600;'
+            }, [k + ': ' + v]));
+        });
+        cont.appendChild(fila);
 
-        const colores = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#0ea5e9'];
+        const vdir = r.validacion_direcciones || {};
+        if (vdir.activa) cont.appendChild(this._resumenDirecciones(vdir));
+        const gis = r.gis_sedalib || {};
+        if (gis.activo || gis.error) cont.appendChild(this._resumenGis(gis));
+
+        // Plan de personal por dia: cuantos pidio cada localidad y cuantos recibio
+        const plan = data.plan_personal || {};
+        Object.keys(plan).forEach((fecha) => {
+            const p = plan[fecha];
+            const falta = p.tecnicos_requeridos > p.tecnicos_disponibles;
+            const caja = this._el('div', {
+                style: 'margin:0 14px 8px;padding:8px 10px;border-radius:6px;font-size:0.72rem;' +
+                       'background:' + (falta ? '#fffbeb' : '#f8fafc') +
+                       ';border:1px solid ' + (falta ? '#fde68a' : '#e2e8f0') + ';'
+            });
+            const libres = p.tecnicos_libres;
+            const faltan = p.tecnicos_faltantes || 0;
+            caja.appendChild(this._el('div', {
+                style: 'font-weight:700;color:' + (falta ? '#92400e' : '#334155') + ';',
+                text: fecha + ' — ' + (p.tecnicos_usados !== undefined
+                            ? p.tecnicos_usados + ' cargas'
+                            : p.tecnicos_requeridos + ' necesarias') +
+                      ' de ' + p.tecnicos_disponibles + ' tecnicos' +
+                      (faltan
+                        ? '   ⚠ faltan ' + faltan + ' tecnico' + (faltan > 1 ? 's' : '') +
+                          ' (ninguna orden se descarto)'
+                        : (libres ? '   ✓ ' + libres + ' tecnico' + (libres > 1 ? 's' : '') +
+                                    ' sin carga' : '   ✓ todos con carga'))
+            }));
+            // El desglose por localidad puede tener cientos de entradas. Volcarlo
+            // entero tapa las cargas, que es lo que el supervisor vino a mirar:
+            // se muestran las de mas peso y el resto queda a un clic.
+            const items = Object.keys(p.asignacion || {}).map((b) => {
+                const a = p.asignacion[b];
+                return { nom: b, txt: b + ' ' + a.recibe +
+                                      (a.recibe < a.pide ? '/' + a.pide : ''),
+                         n: a.recibe };
+            }).sort((x, y) => y.n - x.n || x.nom.localeCompare(y.nom));
+
+            if (items.length) {
+                const TOPE = 10;
+                const cabeza = items.slice(0, TOPE);
+                const resto = items.slice(TOPE);
+                const linea = this._el('div', {
+                    style: 'margin-top:4px;color:#64748b;',
+                    text: cabeza.map((x) => x.txt).join('   ·   ')
+                });
+                caja.appendChild(linea);
+
+                if (resto.length) {
+                    const sueltas = resto.filter((x) => x.n === 1).length;
+                    const det = this._el('details', { style: 'margin-top:4px;' });
+                    det.appendChild(this._el('summary', {
+                        style: 'cursor:pointer;color:#475569;font-weight:700;',
+                        text: 'y ' + resto.length + ' localidades mas' +
+                              (sueltas ? ' (' + sueltas + ' con una sola carga)' : '')
+                    }));
+                    det.appendChild(this._el('div', {
+                        style: 'margin-top:4px;color:#64748b;max-height:150px;' +
+                               'overflow-y:auto;line-height:1.7;',
+                        text: resto.map((x) => x.txt).join('   ·   ')
+                    }));
+                    caja.appendChild(det);
+                }
+            }
+            cont.appendChild(caja);
+        });
+
+        // Suministros que no se pudieron ubicar, CON el motivo de cada uno:
+        // el supervisor necesita saber si fue por falta de direccion en el
+        // Excel, porque el geocodificador no la encontro, o porque devolvio
+        // un punto sospechoso que se descarto.
+        const sc = r.suministros_sin_coordenada;
+        if (r.sin_coordenadas > 0 && Array.isArray(sc) && sc.length) {
+            if (typeof sc[0] === 'string') {
+                cont.appendChild(this._detalle(
+                    'Ver suministros sin coordenada (' + r.sin_coordenadas + ')',
+                    sc.join(', ')));
+            } else {
+                cont.appendChild(this._tablaSinCoordenada(sc, r.sin_coordenadas));
+            }
+        }
+
+        // Nombres sueltos (AAHH, urbanizaciones, sectores) que se absorbieron en
+        // su distrito. Se deja a la vista porque toca la regla de localidades y
+        // el supervisor tiene derecho a revisar cada fusion.
+        const abs = r.absorcion_localidades || {};
+        if (abs.nombres > 0) {
+            cont.appendChild(this._panelAbsorcion(abs));
+        }
+
+        // Coordenadas de catastro que no podian ser ciertas
+        this.coordsObservadas = Array.isArray(data.coordenadas_observadas)
+            ? data.coordenadas_observadas : [];
+        const aud = r.auditoria_coordenadas || {};
+        if ((aud.activa || vdir.activa) && this.coordsObservadas.length) {
+            cont.appendChild(this._panelCoordenadas(aud, this.coordsObservadas));
+        }
+        this._toggleBotonCoords();
+
+        const np = Array.isArray(data.no_programados) ? data.no_programados : [];
+        if (np.length) {
+            const det = this._el('details', {
+                style: 'padding:0 14px 12px;font-size:0.72rem;color:#64748b;'
+            });
+            det.appendChild(this._el('summary', {
+                style: 'cursor:pointer;font-weight:700;color:#b91c1c;',
+                text: 'Ver ' + np.length + ' registros que NO entraron con el personal disponible'
+            }));
+            const tabla = this._el('table', {
+                style: 'width:100%;margin-top:8px;border-collapse:collapse;font-size:0.68rem;'
+            });
+            const thead = this._el('tr', {});
+            ['Suministro', 'Fecha', 'Localidad', 'Franja', 'Motivo'].forEach((h) => {
+                thead.appendChild(this._el('th', {
+                    style: 'text-align:left;padding:4px 6px;border-bottom:1px solid #e2e8f0;' +
+                           'color:#475569;font-weight:700;', text: h
+                }));
+            });
+            tabla.appendChild(thead);
+            np.slice(0, 400).forEach((x) => {
+                const tr = this._el('tr', {});
+                [x.suministro, x.fecha, x.localidad, x.franja_horaria, x.motivo].forEach((v) => {
+                    tr.appendChild(this._el('td', {
+                        style: 'padding:3px 6px;border-bottom:1px solid #f1f5f9;',
+                        text: v || ''
+                    }));
+                });
+                tabla.appendChild(tr);
+            });
+            det.appendChild(tabla);
+            if (np.length > 400) {
+                det.appendChild(this._el('div', {
+                    style: 'margin-top:6px;font-style:italic;',
+                    text: 'Se muestran los primeros 400. Descarga el Excel para verlos todos.'
+                }));
+            }
+            cont.appendChild(det);
+        }
+    },
+
+    /**
+     * Panel de coordenadas observadas. No es una lista de errores del sistema:
+     * es una lista de errores DE LA BASE que el sistema esquivo, y por eso
+     * arranca con lo que se hizo con cada uno.
+     */
+    _panelAbsorcion: function (abs) {
+        const det = this._el('details', {
+            style: 'padding:0 14px 12px;font-size:0.72rem;color:#64748b;'
+        });
+        det.appendChild(this._el('summary', {
+            style: 'cursor:pointer;font-weight:700;color:#0369a1;',
+            text: 'Ver ' + abs.nombres + ' nombres (AAHH, urbanizaciones, sectores) ' +
+                  'que se rutearon dentro de su distrito'
+        }));
+        det.appendChild(this._el('p', {
+            style: 'margin:6px 0 8px 0;font-size:0.68rem;line-height:1.5;',
+            text: 'Son ' + abs.registros + ' registros. Un AAHH no es un distrito: ' +
+                  'esta dentro de uno. Si cada nombre arma su propia localidad, ' +
+                  'termina cerrando una carga suelta de dos o tres registros. Cada ' +
+                  'nombre se midio con la mediana de sus predios y entro al distrito ' +
+                  'reconocido mas cercano. Los distritos de verdad no se tocan: ' +
+                  'SALAVERRY sigue sin poder mezclarse con TRUJILLO.' +
+                  (abs.sin_absorber
+                    ? ' Quedaron ' + abs.sin_absorber + ' nombres sin absorber, por ' +
+                      'estar lejos de todo distrito conocido: esos se rutean aparte.'
+                    : '')
+        }));
+
+        const tabla = this._el('table', {
+            style: 'width:100%;border-collapse:collapse;font-size:0.68rem;'
+        });
+        const th = this._el('tr', {});
+        ['Nombre en el Excel', 'Se ruteo dentro de', 'Distancia', 'Registros']
+            .forEach((h) => {
+                th.appendChild(this._el('th', {
+                    style: 'text-align:left;padding:4px 6px;border-bottom:1px solid ' +
+                           '#e2e8f0;color:#475569;font-weight:700;', text: h
+                }));
+            });
+        tabla.appendChild(th);
+        (abs.detalle || []).forEach((x) => {
+            const tr = this._el('tr', {});
+            [[x.origen, '#334155', true], [x.destino, '#0369a1', true],
+             [x.km + ' km', '#64748b', false],
+             [String(x.registros), '#64748b', false]].forEach(([v, col, fuerte]) => {
+                tr.appendChild(this._el('td', {
+                    style: 'padding:4px 6px;border-bottom:1px solid #f1f5f9;color:' +
+                           col + ';' + (fuerte ? 'font-weight:700;' : ''),
+                    text: String(v === undefined || v === null ? '' : v)
+                }));
+            });
+            tabla.appendChild(tr);
+        });
+        const caja = this._el('div', {
+            style: 'max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;' +
+                   'border-radius:5px;'
+        });
+        caja.appendChild(tabla);
+        det.appendChild(caja);
+        return det;
+    },
+
+    _panelCoordenadas: function (aud, filas) {
+        const ETIQUETA = {
+            corregida: ['Corregidas solas (ejes invertidos)', '#065f46', '#ecfdf5', '#a7f3d0'],
+            reemplazada: ['Reubicadas por su direccion', '#065f46', '#ecfdf5', '#a7f3d0'],
+            sin_reemplazo: ['Sin ubicacion: van al final de su carga', '#b91c1c', '#fef2f2', '#fecaca'],
+            descartada: ['Descartadas', '#b91c1c', '#fef2f2', '#fecaca'],
+            corregida_direccion: ['Corregidas: no correspondían a su dirección', '#065f46', '#ecfdf5', '#a7f3d0'],
+            ubicada_direccion: ['Ubicadas por su dirección', '#065f46', '#ecfdf5', '#a7f3d0'],
+            revisar_direccion: ['No cuadran con su dirección: revisar', '#b45309', '#fffbeb', '#fde68a'],
+            corregida_supervisor: ['Corregidas por el supervisor', '#065f46', '#ecfdf5', '#a7f3d0'],
+            mantenida_supervisor: ['El supervisor mantuvo la original', '#475569', '#f1f5f9', '#e2e8f0'],
+        };
+        const det = this._el('details', {
+            style: 'padding:0 14px 12px;font-size:0.72rem;color:#64748b;'
+        });
+        det.appendChild(this._el('summary', {
+            style: 'cursor:pointer;font-weight:700;color:#b45309;',
+            text: 'Ver ' + filas.length + ' coordenadas de catastro que no cuadran ' +
+                  '(ninguna se quedo sin programar)'
+        }));
+
+        const conteo = {};
+        filas.forEach((f) => {
+            const e = f.estado || 'descartada';
+            conteo[e] = (conteo[e] || 0) + 1;
+        });
+        const chips = this._el('div', {
+            style: 'display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;'
+        });
+        Object.keys(conteo).forEach((e) => {
+            const m = ETIQUETA[e] || [e, '#475569', '#f1f5f9', '#e2e8f0'];
+            chips.appendChild(this._el('span', {
+                style: 'background:' + m[2] + ';border:1px solid ' + m[3] + ';color:' +
+                       m[1] + ';border-radius:4px;padding:2px 8px;font-size:0.68rem;' +
+                       'font-weight:700;',
+                text: conteo[e] + ' · ' + m[0]
+            }));
+        });
+        det.appendChild(chips);
+
+        const nota = this._el('p', {
+            style: 'margin:0 0 8px 0;font-size:0.68rem;color:#64748b;line-height:1.5;'
+        });
+        nota.textContent = 'Se comparo cada coordenada con la nube de predios de su ' +
+            'misma localidad; no se consulto ninguna direccion salvo para las que hubo ' +
+            'que reubicar. Revisadas: ' + (aud.revisadas || 0) + '. Fuera de la region: ' +
+            (aud.fuera_region || 0) + '. De relleno: ' + (aud.relleno || 0) +
+            '. Lejos de su localidad: ' + (aud.lejos || 0) + '.';
+        det.appendChild(nota);
+
+        const tabla = this._el('table', {
+            style: 'width:100%;border-collapse:collapse;font-size:0.68rem;'
+        });
+        const th = this._el('tr', {});
+        ['Suministro', 'Localidad', 'Que se hizo', 'Por que'].forEach((h) => {
+            th.appendChild(this._el('th', {
+                style: 'text-align:left;padding:4px 6px;border-bottom:1px solid #e2e8f0;' +
+                       'color:#475569;font-weight:700;', text: h
+            }));
+        });
+        tabla.appendChild(th);
+        filas.slice(0, 300).forEach((f) => {
+            const m = ETIQUETA[f.estado || 'descartada'] ||
+                      [f.estado, '#475569', '#f1f5f9', '#e2e8f0'];
+            const tr = this._el('tr', {});
+            [[f.suministro, '#334155', true], [f.localidad, '#64748b', false],
+             [m[0], m[1], true], [f.motivo, '#64748b', false]].forEach(([v, col, fuerte]) => {
+                tr.appendChild(this._el('td', {
+                    style: 'padding:4px 6px;border-bottom:1px solid #f1f5f9;color:' + col +
+                           ';' + (fuerte ? 'font-weight:700;' : ''),
+                    text: v === undefined || v === null ? '' : String(v)
+                }));
+            });
+            tabla.appendChild(tr);
+        });
+        det.appendChild(tabla);
+        if (filas.length > 300) {
+            det.appendChild(this._el('p', {
+                style: 'margin:6px 0 0 0;font-size:0.66rem;color:#94a3b8;',
+                text: 'Se muestran las primeras 300. El Excel las trae todas.'
+            }));
+        }
+        return det;
+    },
+
+    _toggleBotonCoords: function () {
+        const b = document.getElementById('rt-btn-coords-excel');
+        if (b) {
+            b.style.display = (this.coordsObservadas && this.coordsObservadas.length)
+                ? 'inline-flex' : 'none';
+            b.innerHTML = '<i class="fas fa-map-pin"></i> Coordenadas a corregir (' +
+                          (this.coordsObservadas || []).length + ')';
+        }
+    },
+
+    /**
+     * Excel para el area que mantiene catastro. El ruteo del dia ya se arreglo
+     * solo, pero mientras nadie corrija la base el problema vuelve en la
+     * siguiente orden.
+     */
+    exportarCoordenadas: async function () {
+        if (!this.coordsObservadas || !this.coordsObservadas.length) {
+            alert('No hay coordenadas observadas en esta corrida.');
+            return;
+        }
+        const btn = document.getElementById('rt-btn-coords-excel');
+        const previo = btn ? btn.innerHTML : '';
+        try {
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...';
+                btn.disabled = true;
+            }
+            const fd = new FormData();
+            fd.append('coordenadas', JSON.stringify(this.coordsObservadas));
+            const resp = await fetch('/api/exportar_coordenadas_catastro',
+                                     { method: 'POST', body: fd });
+            if (!resp.ok) {
+                const e = await resp.json().catch(() => ({}));
+                throw new Error(e.error || ('Error ' + resp.status));
+            }
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'coordenadas_catastro.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
+        } catch (err) {
+            alert('No se pudo generar el Excel: ' + err.message);
+        } finally {
+            if (btn) { btn.innerHTML = previo; btn.disabled = false; }
+            this._toggleBotonCoords();
+        }
+    },
+
+    _tablaSinCoordenada: function (filas, total) {
+        const det = this._el('details', {
+            style: 'padding:0 14px 12px;font-size:0.72rem;color:#64748b;'
+        });
+        det.appendChild(this._el('summary', {
+            style: 'cursor:pointer;font-weight:700;color:#b45309;',
+            text: 'Ver los ' + total + ' suministros sin ubicacion y por que ' +
+                  '(igual salen en las cargas, por direccion)'
+        }));
+
+        // resumen por motivo: lo primero que quiere saber el supervisor es si
+        // el problema es del Excel o del geocodificador
+        const conteo = {};
+        filas.forEach((f) => {
+            const m = (f.motivo || 'sin motivo').split(':')[0].split('(')[0].trim();
+            conteo[m] = (conteo[m] || 0) + 1;
+        });
+        const chips = this._el('div', {
+            style: 'display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;'
+        });
+        Object.keys(conteo).sort((a, b) => conteo[b] - conteo[a]).forEach((m) => {
+            chips.appendChild(this._el('span', {
+                style: 'background:#fffbeb;border:1px solid #fde68a;color:#92400e;' +
+                       'border-radius:4px;padding:2px 8px;font-size:0.68rem;font-weight:700;',
+                text: conteo[m] + ' · ' + m
+            }));
+        });
+        det.appendChild(chips);
+
+        const tabla = this._el('table', {
+            style: 'width:100%;border-collapse:collapse;font-size:0.68rem;'
+        });
+        const th = this._el('tr', {});
+        ['Suministro', 'Localidad', 'Direccion que se intento', 'Motivo'].forEach((h) => {
+            th.appendChild(this._el('th', {
+                style: 'text-align:left;padding:4px 6px;border-bottom:1px solid #e2e8f0;' +
+                       'color:#475569;font-weight:700;', text: h
+            }));
+        });
+        tabla.appendChild(th);
+        filas.slice(0, 400).forEach((f) => {
+            const tr = this._el('tr', {});
+            [f.suministro, f.localidad, f.direccion || '—', f.motivo].forEach((v, i) => {
+                tr.appendChild(this._el('td', {
+                    style: 'padding:3px 6px;border-bottom:1px solid #f1f5f9;' +
+                           (i === 3 ? 'color:#92400e;' : ''),
+                    text: v || ''
+                }));
+            });
+            tabla.appendChild(tr);
+        });
+        det.appendChild(tabla);
+        if (total > filas.length) {
+            det.appendChild(this._el('div', {
+                style: 'margin-top:6px;font-style:italic;',
+                text: 'Se listan los primeros ' + filas.length + ' de ' + total + '.'
+            }));
+        }
+        return det;
+    },
+
+    _detalle: function (titulo, texto) {
+        const det = this._el('details', {
+            style: 'padding:0 14px 10px;font-size:0.72rem;color:#64748b;'
+        });
+        det.appendChild(this._el('summary', { style: 'cursor:pointer;font-weight:600;', text: titulo }));
+        det.appendChild(this._el('div', {
+            style: 'margin-top:6px;line-height:1.6;word-break:break-all;', text: texto
+        }));
+        return det;
+    },
+
+    // -------------------------------------------------------------- lista
+    renderizarListaCargas: function () {
+        const cont = document.getElementById('rt-lista-cargas');
+        if (!cont) return;
+        cont.innerHTML = '';
+
+        const badge = document.getElementById('rt-badge-total');
+        if (badge) badge.textContent = this.datosRutas.length + ' Cargas';
+
+        if (!this.datosRutas.length) {
+            cont.appendChild(this._el('div', {
+                style: 'padding:30px;text-align:center;color:#94a3b8;font-size:0.85rem;',
+                text: 'No se genero ninguna carga.'
+            }));
+            return;
+        }
+
+        const frag = document.createDocumentFragment();
+        let fechaPrevia = null;
 
         this.datosRutas.forEach((ruta, i) => {
-            const colorRuta = colores[i % colores.length];
-
-            const row = document.createElement('div');
-            row.className = 'rt-row-hover'; 
-            row.id = `rt-row-${ruta.id}`;
-            row.style.display = 'flex';
-            row.style.alignItems = 'center';
-            row.style.padding = '12px 15px';
-            row.style.borderBottom = '1px solid #e2e8f0';
-            row.style.cursor = 'pointer';
-            
-            row.onclick = () => this.abrirDetalleMapa(ruta.id, ruta.hora, colorRuta);
-
-            row.innerHTML = `
-                <div style="width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; font-size: 1.1rem; background: ${colorRuta}15; color: ${colorRuta}; flex-shrink: 0;">
-                    C${ruta.id}
-                </div>
-                <div style="flex: 1; overflow: hidden;">
-                    <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem;">${ruta.cantidad} Suministros</div>
-                    <div style="color: #64748b; font-size: 0.75rem; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
-                        <i class="fas fa-clock"></i> ${ruta.hora} | <i class="fas fa-calendar-alt"></i> ${ruta.fecha}
-                    </div>
-                </div>
-                <i class="fas fa-chevron-right" style="color: #cbd5e1; font-size: 0.9rem;"></i>
-            `;
-            contenedor.appendChild(row);
-        });
-    },
-
-    inicializarMapa: function() {
-        const contenedorMapa = document.getElementById('mapa-visor');
-        if (!contenedorMapa) return;
-
-        if (!this.map) {
-            proj4.defs("EPSG:32717","+proj=utm +zone=17 +south +datum=WGS84 +units=m +no_defs");
-
-            this.map = L.map('mapa-visor').setView([-8.11599, -79.02998], 13);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap'
-            }).addTo(this.map);
-            
-            this.capaRuta = L.featureGroup().addTo(this.map);
-        }
-        
-        setTimeout(() => {
-            this.map.invalidateSize();
-        }, 350);
-    },
-
-    abrirDetalleMapa: function(id, hora, colorHex) {
-        const layout = document.getElementById('rt-layout');
-        if (layout) layout.classList.add('rt-open');
-        
-        const panelIzq = document.querySelector('.rt-panel-izq') || document.getElementById('rt-panel-izq');
-        const panelDer = document.querySelector('.rt-panel-der') || document.getElementById('rt-panel-der');
-        
-        if (panelIzq) {
-            panelIzq.style.width = '35%';
-            panelIzq.style.borderRight = '3px solid #cbd5e1';
-        }
-        if (panelDer) {
-            panelDer.style.width = '65%';
-            panelDer.style.opacity = '1';
-        }
-        
-        document.querySelectorAll('.rt-row-hover').forEach(el => el.classList.remove('rt-row-active'));
-        const filaActiva = document.getElementById(`rt-row-${id}`);
-        if (filaActiva) filaActiva.classList.add('rt-row-active');
-
-        const titulo = document.getElementById('rt-detalle-titulo');
-        const subtitulo = document.getElementById('rt-detalle-sub');
-        if (titulo) titulo.innerHTML = `<i class="fas fa-route" style="color:${colorHex}"></i> Carga N° ${id}`;
-        if (subtitulo) subtitulo.textContent = `${hora.includes('Inicia') ? 'Ruta Cronológica: ' + hora : 'Horario: ' + hora}`;
-
-        this.inicializarMapa();
-        this.capaRuta.clearLayers();
-        
-        const dataRuta = this.datosRutas.find(r => r.id === id);
-        if (!dataRuta) return;
-
-        const tarjetas = document.getElementById('rt-scroll-tarjetas');
-        if (tarjetas) tarjetas.innerHTML = '';
-        
-        let latlngs = [];
-
-        dataRuta.registros.forEach((item, index) => {
-            const numOrden = index + 1;
-            const dirCompleta = `${item.via} ${item.numero !== 'S/N' ? item.numero : ''}`.trim();
-            
-            const badgeHora = item.franja_horaria 
-                ? `<div style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; font-weight: 600;"><i class="fas fa-clock"></i> ${item.franja_horaria}</div>` 
-                : '';
-
-            if (tarjetas) {
-                tarjetas.innerHTML += `
-                    <div class="rt-card-hover" style="min-width: 220px; max-width: 250px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; flex-shrink: 0;" onclick="rtApp.centrarMapaEnPunto(${index})">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span style="font-weight: 800; font-size: 0.85rem; color: #1e293b;">${item.suministro}</span>
-                            <span style="background: ${colorHex}; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.7rem;">#${numOrden}</span>
-                        </div>
-                        <div style="font-size: 0.7rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px;" title="${dirCompleta}">
-                            <i class="fas fa-map-marker-alt"></i> ${dirCompleta || 'Sin dirección'}
-                        </div>
-                        <div style="font-size: 0.65rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                            <i class="fas fa-city"></i> ${item.urbanizacion || item.distrito || 'Sin distrito'}
-                        </div>
-                        ${badgeHora}
-                    </div>
-                `;
+            if (ruta.fecha !== fechaPrevia) {
+                fechaPrevia = ruta.fecha;
+                frag.appendChild(this._el('div', {
+                    style: 'background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:6px 15px;' +
+                           'font-size:0.7rem;font-weight:800;color:#64748b;letter-spacing:.04em;',
+                    text: String(ruta.fecha || 'Sin fecha').toUpperCase()
+                }));
             }
 
-            try {
-                let puntoLatLng;
-                const coordX = parseFloat(item.coord_x);
-                const coordY = parseFloat(item.coord_y);
-
-                if (coordY < 0 && coordY > -20) {
-                    puntoLatLng = [coordY, coordX]; 
-                } else {
-                    const coordsConvertidas = proj4("EPSG:32717", "EPSG:4326", [coordX, coordY]);
-                    puntoLatLng = [coordsConvertidas[1], coordsConvertidas[0]];
+            const color = this.COLORES[i % this.COLORES.length];
+            const activa = !!(this._rutaActiva && this._rutaActiva.id === ruta.id);
+            const row = this._el('div', {
+                class: 'rt-row-hover',
+                id: 'rt-row-' + ruta.id,
+                style: 'display:flex;align-items:center;padding:12px 15px;' +
+                       'border-bottom:1px solid #e2e8f0;cursor:pointer;' +
+                       (activa ? 'background:#f0f9ff;box-shadow:inset 4px 0 0 ' + color + ';'
+                               : (ruta.excede_personal ? 'background:#fffbeb;' : '')),
+                onclick: () => {
+                    // si hay un rango seleccionado, este clic es el destino
+                    if (this.seleccion && this.seleccion.cargaId !== ruta.id) {
+                        this.moverFranja(this.seleccion.cargaId,
+                                         this.seleccion.franja, ruta.id);
+                        return;
+                    }
+                    if (this.seleccion) {
+                        this.seleccion = null;
+                        this.renderizarListaCargas();
+                        this.renderizarBarraEdicion();
+                        this.pintarMapa(false);
+                        return;
+                    }
+                    this.abrirDetalleMapa(ruta.id);
                 }
+            });
 
-                if (puntoLatLng[0] > 0 || puntoLatLng[0] < -20 || puntoLatLng[1] > -65 || puntoLatLng[1] < -85) {
-                    return; 
-                }
-
-                latlngs.push(puntoLatLng);
-
-                const marcador = L.circleMarker(puntoLatLng, {
-                    radius: 9, fillColor: colorHex, color: "#ffffff", weight: 2, fillOpacity: 1
+            if (this.modo === 'inspecciones') {
+                row.addEventListener('dragover', (ev) => {
+                    if (!this.arrastre || this.arrastre.cargaId === ruta.id) return;
+                    ev.preventDefault();
+                    ev.dataTransfer.dropEffect = 'move';
+                    row.style.outline = '2px dashed #2563eb';
+                    row.style.outlineOffset = '-3px';
                 });
-
-                marcador.bindTooltip(`${numOrden}`, {
-                    permanent: true, direction: 'center', className: 'map-label-orden'
+                row.addEventListener('dragleave', () => { row.style.outline = 'none'; });
+                row.addEventListener('drop', (ev) => {
+                    ev.preventDefault();
+                    row.style.outline = 'none';
+                    if (!this.arrastre || this.arrastre.cargaId === ruta.id) return;
+                    const mov = this.arrastre;
+                    this.arrastre = null;
+                    this.moverFranja(mov.cargaId, mov.franja, ruta.id);
                 });
+            }
 
-                marcador.bindPopup(`
-                    <div style="text-align: center;">
-                        <b style="color: ${colorHex}; font-size: 1.1rem;">Orden #${numOrden}</b><br>
-                        <strong>SUM: ${item.suministro}</strong><br>
-                        <span style="color: #64748b; display: block; margin-bottom: 5px;">${dirCompleta}</span>
-                        ${item.franja_horaria ? `<b><i class="fas fa-clock"></i> ${item.franja_horaria}</b>` : ''}
-                    </div>
-                `);
-                
-                this.capaRuta.addLayer(marcador);
-            } catch(e) {}
+            row.appendChild(this._el('div', {
+                style: 'width:40px;height:40px;border-radius:8px;display:flex;align-items:center;' +
+                       'justify-content:center;font-weight:bold;margin-right:15px;font-size:1rem;' +
+                       'background:' + color + '15;color:' + color + ';flex-shrink:0;',
+                text: 'C' + ruta.id
+            }));
+
+            const medio = this._el('div', { style: 'flex:1;overflow:hidden;min-width:0;' });
+            medio.appendChild(this._el('div', {
+                style: 'font-weight:700;color:#1e293b;font-size:0.88rem;',
+                text: ruta.cantidad + ' suministros · ' + (ruta.localidad || ruta.zona || '')
+            }));
+            medio.appendChild(this._el('div', {
+                style: 'color:#64748b;font-size:0.74rem;white-space:nowrap;overflow:hidden;' +
+                       'text-overflow:ellipsis;margin-top:2px;',
+                text: '⏱ ' + (ruta.hora || '') +
+                      '   ·   ' + (ruta.km_total !== undefined ? ruta.km_total + ' km' : '') +
+                      (ruta.duracion_min ? '   ·   ' +
+                          (Math.round(ruta.duracion_min / 60 * 10) / 10) + ' h' : '')
+            }));
+            const cinta = this._cintaFranjas(ruta);
+            if (cinta) medio.appendChild(cinta);
+            if (ruta.alertas && ruta.alertas.length) {
+                medio.appendChild(this._el('div', {
+                    style: 'color:#b45309;font-size:0.66rem;margin-top:4px;',
+                    text: '⚠ ' + ruta.alertas.join(' · ')
+                }));
+            }
+            row.appendChild(medio);
+            row.appendChild(this._el('i', {
+                class: 'fas fa-chevron-right',
+                style: 'color:#cbd5e1;font-size:0.85rem;margin-left:8px;'
+            }));
+            frag.appendChild(row);
         });
 
-        if (latlngs.length > 1) {
-            L.polyline(latlngs, {color: colorHex, weight: 3, opacity: 0.7, dashArray: '8, 8'}).addTo(this.capaRuta);
-            this.map.fitBounds(this.capaRuta.getBounds(), {padding: [50, 50]});
-        } else if (latlngs.length === 1) {
-            this.map.setView(latlngs[0], 17);
+        cont.appendChild(frag);
+    },
+
+    // ============================================================ CINTA
+    // Las franjas llegan del backend ya ordenadas por hora real (lista, no
+    // objeto: un objeto JSON se ordena alfabeticamente y "02:00 PM" salia
+    // antes que "07:00 AM"). Aqui se reordena igual por si acaso.
+    _franjasOrdenadas: function (ruta) {
+        const f = ruta.franjas;
+        if (!f) return [];
+        const lista = Array.isArray(f)
+            ? f.slice()
+            : Object.keys(f).map((k) => ({ franja: k, cantidad: f[k],
+                                           inicio_min: this._minutos(k) }));
+        return lista.sort((a, b) =>
+            (a.inicio_min - b.inicio_min) || String(a.franja).localeCompare(b.franja));
+    },
+
+    _minutos: function (txt) {
+        const m = String(txt || '').toUpperCase()
+            .match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(A\.?M\.?|P\.?M\.?)?/);
+        if (!m) return 9999;
+        let h = parseInt(m[1], 10);
+        const mn = parseInt(m[2], 10);
+        const mer = (m[3] || '').replace(/[.\s]/g, '');
+        if (mer === 'PM' && h < 12) h += 12;
+        else if (mer === 'AM' && h === 12) h = 0;
+        else if (!mer && h < 7) h += 12;
+        return h * 60 + mn;
+    },
+
+    _cintaFranjas: function (ruta) {
+        const lista = this._franjasOrdenadas(ruta);
+        if (!lista.length) return null;
+        const editable = this.modo === 'inspecciones';
+        const cinta = this._el('div', {
+            style: 'display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;'
+        });
+
+        lista.forEach((f) => {
+            const sel = this.seleccion &&
+                        this.seleccion.cargaId === ruta.id &&
+                        this.seleccion.franja === f.franja;
+            const chip = this._el('span', {
+                'data-franja': f.franja,
+                'data-carga': ruta.id,
+                title: editable ? 'Arrastra este rango a otra carga, o haz clic '
+                                  + 'para seleccionarlo y luego clic en la carga destino'
+                                : '',
+                style: 'display:inline-flex;align-items:center;gap:4px;font-size:0.64rem;' +
+                       'padding:2px 7px;border-radius:4px;font-weight:700;' +
+                       'border:1px solid ' + (sel ? '#2563eb' : '#e2e8f0') + ';' +
+                       'background:' + (sel ? '#dbeafe' : '#f1f5f9') + ';' +
+                       'color:' + (sel ? '#1d4ed8' : '#475569') + ';' +
+                       (editable ? 'cursor:grab;' : ''),
+                text: (editable ? '⠿ ' : '') + f.franja + ' ×' + f.cantidad
+            });
+
+            if (editable) {
+                chip.setAttribute('draggable', 'true');
+                chip.addEventListener('dragstart', (ev) => {
+                    ev.stopPropagation();
+                    this.arrastre = { cargaId: ruta.id, franja: f.franja };
+                    try {
+                        ev.dataTransfer.effectAllowed = 'move';
+                        ev.dataTransfer.setData('text/plain', f.franja);
+                    } catch (e) { /* navegadores quisquillosos */ }
+                });
+                chip.addEventListener('dragend', () => { this.arrastre = null; });
+                chip.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    this.seleccionarFranja(ruta.id, f.franja);
+                });
+            }
+            cinta.appendChild(chip);
+        });
+        return cinta;
+    },
+
+    seleccionarFranja: function (cargaId, franja) {
+        if (this.seleccion && this.seleccion.cargaId === cargaId &&
+            this.seleccion.franja === franja) {
+            this.seleccion = null;
+        } else {
+            this.seleccion = { cargaId: cargaId, franja: franja };
+            // al marcar un rango se abre el mapa en vista de dia: es el momento
+            // en que el supervisor necesita ver donde esta todo lo demas
+            const ruta = this.datosRutas.find((r) => r.id === cargaId);
+            if (ruta) {
+                this._rutaActiva = ruta;
+                this.fechaActiva = ruta.fecha_iso;
+                this.vistaMapa = 'dia';
+                this._abrirPanel();
+                this.pintarMapa(true);
+            }
+        }
+        this.renderizarListaCargas();
+        this.renderizarBarraEdicion();
+    },
+
+    // ---- distancia aproximada en km entre dos lat/lon (suficiente para rankear)
+    _km: function (a, b) {
+        const R = 111.32;
+        const dy = (a[0] - b[0]) * R;
+        const dx = (a[1] - b[1]) * R * Math.cos(a[0] * Math.PI / 180);
+        return Math.sqrt(dx * dx + dy * dy);
+    },
+
+    _centroide: function (registros) {
+        let sx = 0, sy = 0, n = 0;
+        registros.forEach((r) => {
+            const p = this._latLng(r);
+            if (p) { sx += p[0]; sy += p[1]; n += 1; }
+        });
+        return n ? [sx / n, sy / n] : null;
+    },
+
+    /**
+     * Para el rango seleccionado, ordena las demas cargas del mismo dia por
+     * cercania real. Responde la pregunta que importa: "¿a donde conviene
+     * mover esto?" en vez de dejar que el supervisor adivine.
+     */
+    _sugerenciasDestino: function (cargaId, franja) {
+        const origen = this.datosRutas.find((r) => r.id === cargaId);
+        if (!origen) return [];
+        const mueven = origen.registros.filter((r) => r.franja_horaria === franja);
+        const centro = this._centroide(mueven);
+        if (!centro) return [];
+
+        return this.datosRutas
+            .filter((r) => r.id !== cargaId && r.fecha_iso === origen.fecha_iso)
+            .map((r) => {
+                const c = this._centroide(r.registros);
+                const locs = [];
+                r.registros.forEach((x) => {
+                    if (x.localidad && locs.indexOf(x.localidad) === -1) locs.push(x.localidad);
+                });
+                return {
+                    ruta: r,
+                    km: c ? this._km(centro, c) : 9999,
+                    mismaLocalidad: locs.length === 1 &&
+                                    mueven.length && locs[0] === mueven[0].localidad,
+                    enFranja: r.registros.filter((x) => x.franja_horaria === franja).length
+                };
+            })
+            .sort((a, b) => a.km - b.km)
+            .slice(0, 4);
+    },
+
+    /**
+     * Mueve un rango horario COMPLETO (con todos sus registros) de una carga a
+     * otra. El servidor revalida el muro de localidades y recalcula orden,
+     * horas y km. Si rechaza el movimiento, se revierte.
+     */
+    moverFranja: async function (origenId, franja, destinoId) {
+        if (!origenId || !destinoId || origenId === destinoId) return;
+        const origen = this.datosRutas.find((r) => r.id === origenId);
+        const destino = this.datosRutas.find((r) => r.id === destinoId);
+        if (!origen || !destino) return;
+
+        if (origen.fecha_iso !== destino.fecha_iso) {
+            alert('No se puede mover trabajo entre dias distintos ('
+                  + origen.fecha + ' → ' + destino.fecha + ').');
+            return;
+        }
+
+        const mueven = origen.registros.filter((r) => r.franja_horaria === franja);
+        if (!mueven.length) return;
+
+        const respaldo = JSON.parse(JSON.stringify(this.datosRutas));
+        origen.registros = origen.registros.filter((r) => r.franja_horaria !== franja);
+        destino.registros = destino.registros.concat(mueven);
+        this.seleccion = null;
+
+        await this._recalcular(respaldo,
+            mueven.length + ' predios de ' + franja + ' movidos a la carga ' + destinoId);
+    },
+
+
+    _localidadesDe: function (estado, cargaId) {
+        const c = (estado || []).find((x) => x.id === cargaId);
+        if (!c) return [];
+        const s = [];
+        c.registros.forEach((r) => {
+            if (r.localidad && s.indexOf(r.localidad) === -1) s.push(r.localidad);
+        });
+        return s;
+    },
+
+    /**
+     * Pregunta antes de juntar localidades distintas, nombrando la localidad
+     * que se esta agregando y el costo real (km y minutos). Solo aparece por
+     * mezclas NUEVAS: una que ya aprobaste no se vuelve a preguntar.
+     */
+    _confirmarMezcla: function (consultas) {
+        if (!consultas.length) return true;
+        const rank = { aviso: 1, riesgo: 2, inviable: 3 };
+        const peor = consultas.reduce(
+            (a, b) => ((rank[b.nivel] || 0) > (rank[a.nivel] || 0) ? b : a));
+
+        const encabezado = {
+            aviso: 'Este movimiento junta localidades distintas.',
+            riesgo: 'ATENCION: las zonas que estas juntando quedan lejos.',
+            inviable: 'ESTE MOVIMIENTO NO SE PUEDE EJECUTAR EN UNA JORNADA.'
+        }[peor.nivel] || 'Este movimiento junta localidades distintas.';
+
+        const detalle = consultas.map((c) => {
+            const nuevas = (c.nuevas && c.nuevas.length)
+                ? c.nuevas.join(' y ') : (c.localidades || []).join(' y ');
+            const previas = (c.existentes && c.existentes.length)
+                ? ' a una carga de ' + c.existentes.join(' y ') : '';
+            const marca = { aviso: '', riesgo: '⚠ ', inviable: '⛔ ' }[c.nivel] || '';
+            return marca + 'Carga ' + c.carga + ': agregas ' + nuevas + previas +
+                   '.\n   ' + c.mensaje;
+        }).join('\n\n');
+
+        const cierre = peor.nivel === 'inviable'
+            ? '\n\n¿Aun asi quieres aplicarlo? La carga quedara marcada como inviable.'
+            : '\n\n¿Aplico el movimiento?';
+
+        return window.confirm(encabezado + '\n\n' + detalle + cierre);
+    },
+
+    /**
+     * Tras recalcular, los ids se renumeran. Se vuelve a enganchar la carga
+     * activa por contenido: la que se quedo con mas predios de la anterior.
+     */
+    _reanclarActiva: function (previa) {
+        if (!previa) return null;
+        const sums = {};
+        previa.registros.forEach((r) => { sums[r.suministro] = 1; });
+        let mejor = null, mejorN = 0;
+        this.datosRutas.forEach((c) => {
+            let n = 0;
+            c.registros.forEach((r) => { if (sums[r.suministro]) n += 1; });
+            if (n > mejorN) { mejorN = n; mejor = c; }
+        });
+        return mejor || this.datosRutas[0] || null;
+    },
+
+
+    // Tras cada edicion se rehace el mapa suministro -> carga/orden, para que
+    // el Excel que descargues refleje exactamente lo que ves en pantalla.
+    _reconstruirAsignacion: function () {
+        const a = {};
+        this.datosRutas.forEach((c) => {
+            c.registros.forEach((r) => {
+                a[r.suministro] = { carga: c.id, orden: r.orden,
+                                    tipo: r.tipo_servicio || '' };
+            });
+        });
+        this.asignacion = a;
+        this._toggleBotonExport();
+    },
+
+    _aviso: function (texto) {
+        const cont = document.getElementById('rt-aviso');
+        if (!cont) return;
+        cont.textContent = '✓ ' + texto;
+        cont.style.display = 'block';
+        clearTimeout(this._avisoTimer);
+        this._avisoTimer = setTimeout(() => { cont.style.display = 'none'; }, 4000);
+    },
+
+
+        // Clave gratuita de CARTO. Vacía = se usa OpenStreetMap, que no pide clave.
+    CARTO_KEY: '',
+
+    _capasBase: function () {
+        const capas = {};
+        const osm = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+        const key = this.CARTO_KEY || window.RT_CARTO_KEY || '';
+        if (key) {
+            capas['Calles (CARTO)'] = L.tileLayer(
+                'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=' +
+                    encodeURIComponent(key),
+                { maxZoom: 19, attribution: osm + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' });
+        }
+        capas['Calles (OpenStreetMap)'] = L.tileLayer(
+            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            { maxZoom: 19, attribution: osm });
+        return capas;
+    },
+
+    inicializarMapa: function () {
+        const div = document.getElementById('mapa-visor');
+        if (!div || typeof L === 'undefined') return false;
+
+        if (!this.map) {
+            if (typeof proj4 !== 'undefined') {
+                proj4.defs('EPSG:32717', '+proj=utm +zone=17 +south +datum=WGS84 +units=m +no_defs');
+            }
+            // preferCanvas: los círculos se dibujan en canvas; con cientos de puntos va más fluido
+            this.map = L.map('mapa-visor', { preferCanvas: true, maxZoom: 19 })
+                .setView([-8.11599, -79.02998], 13);
+
+            const capas = this._capasBase();
+            const nombres = Object.keys(capas);
+            let elegida = nombres[0];
+            try {
+                const guardada = localStorage.getItem('rt-capa-base');
+                if (guardada && capas[guardada]) elegida = guardada;
+            } catch (e) { /* sin almacenamiento: se usa la primera */ }
+            capas[elegida].addTo(this.map);
+
+            if (nombres.length > 1) {
+                L.control.layers(capas, null, { position: 'topright' }).addTo(this.map);
+                this.map.on('baselayerchange', (ev) => {
+                    try { localStorage.setItem('rt-capa-base', ev.name); } catch (e) { }
+                });
+            }
+            this.capaRuta = L.featureGroup().addTo(this.map);
+        }
+        setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 350);
+        return true;
+    },
+
+    // Devuelve [lat, lon] o null. Prioriza lo que ya manda el backend.
+    _latLng: function (item) {
+        let lat = this._num(item.lat);
+        let lon = this._num(item.lon);
+
+        if (lat === null || lon === null) {
+            const x = this._num(item.coord_x);
+            const y = this._num(item.coord_y);
+            if (x === null || y === null) return null;
+            if (y < 0 && y > -20) { lat = y; lon = x; }
+            else if (typeof proj4 !== 'undefined') {
+                const c = proj4('EPSG:32717', 'EPSG:4326', [x, y]);
+                lon = this._num(c[0]); lat = this._num(c[1]);
+            } else { return null; }
+        }
+        if (lat === null || lon === null) return null;
+        if (lat > 0 || lat < -20 || lon > -65 || lon < -85) return null;   // fuera de Peru
+        return [lat, lon];
+    },
+
+    _colorDe: function (ruta) {
+        const i = this.datosRutas.findIndex((r) => r.id === ruta.id);
+        return this.COLORES[(i < 0 ? 0 : i) % this.COLORES.length];
+    },
+
+    abrirDetalleMapa: function (id) {
+        const ruta = this.datosRutas.find((r) => r.id === id);
+        if (!ruta) return;
+        this.cancelarMovimiento();
+        this._rutaActiva = ruta;
+        this.fechaActiva = ruta.fecha_iso;
+        this._abrirPanel();
+        this.pintarMapa(true);
+    },
+
+    _abrirPanel: function () {
+        const layout = document.getElementById('rt-layout');
+        if (layout) layout.classList.add('rt-open');
+        const izq = document.querySelector('.rt-panel-izq') || document.getElementById('rt-panel-izq');
+        const der = document.querySelector('.rt-panel-der') || document.getElementById('rt-panel-der');
+        if (izq) { izq.style.width = '38%'; izq.style.borderRight = '3px solid #cbd5e1'; }
+        if (der) { der.style.width = '62%'; der.style.opacity = '1'; }
+    },
+
+    cambiarVistaMapa: function (modo) {
+        this.vistaMapa = modo;
+        this.pintarMapa(true);
+    },
+
+    /**
+     * Dibuja el mapa segun la vista activa.
+     *   'carga' -> solo la carga seleccionada, con numeros de orden
+     *   'dia'   -> TODAS las cargas del dia, cada una en su color. Es la vista
+     *              util para decidir fusiones: dos nubes de puntos que se
+     *              entrelazan son candidatas obvias a juntarse.
+     * Nunca reencuadra salvo que se pida (ajustar=true), para no marear al
+     * usuario en cada movimiento.
+     */
+    // 'catastro' es la posicion tal cual la trajo la base. Cualquier otra cosa
+    // (geocodificada, corregida o con los ejes dados vuelta) es una posicion
+    // que dedujo el sistema y conviene que se vea distinta en el mapa.
+    _coordDeducida: function (item) {
+        const o = String((item && item.origen_coord) || '').toLowerCase();
+        return !!o && o !== 'catastro' && o !== 'catastro_v2' && o !== 'desconocido' &&
+               o !== 'manual' && o !== 'gis_sedalib';
+    },
+
+    pintarMapa: function (ajustar) {
+        if (!this.inicializarMapa() || !this.capaRuta) return;
+        this.capaRuta.clearLayers();
+        this._marcadores = [];
+
+        const activa = this._rutaActiva;
+        const dia = this.fechaActiva || (activa && activa.fecha_iso);
+        const verDia = this.vistaMapa === 'dia';
+        const lista = verDia
+            ? this.datosRutas.filter((r) => r.fecha_iso === dia)
+            : (activa ? [activa] : []);
+
+        this._cabeceraDetalle(lista, verDia, dia);
+
+        const sel = this.seleccion;
+        const bounds = [];
+
+        lista.forEach((ruta) => {
+            const esActiva = !!(activa && ruta.id === activa.id);
+            const color = this._colorDe(ruta);
+            const puntos = [];
+
+            (ruta.registros || []).forEach((item) => {
+                const pos = this._latLng(item);
+                if (!pos) return;
+                puntos.push(pos);
+                bounds.push(pos);
+
+                const marcado = !!(sel && sel.cargaId === ruta.id &&
+                                   sel.franja === item.franja_horaria);
+                const destacar = esActiva || !verDia;
+
+                // Un punto que NO viene tal cual de catastro se dibuja con
+                // borde punteado oscuro: el supervisor tiene que poder mirar el
+                // mapa y saber de un vistazo cuales posiciones son deducidas y
+                // cuales salieron de la base.
+                                
+                const deducida = this._coordDeducida(item);
+                const revisar = item.estado_direccion === 'revisar';
+                const manual = item.origen_coord === 'manual';      // fijada por el supervisor
+                const m = L.circleMarker(pos, {
+                    radius: marcado ? 11 : (destacar ? 8 : 5),
+                    fillColor: color,
+                    color: marcado ? '#1d4ed8' : (revisar ? '#d97706' :
+                           (manual ? '#1d4ed8' : (deducida ? '#0f172a' : '#ffffff'))),
+                    weight: (marcado || revisar || manual) ? 3 : 2,
+                    dashArray: deducida && !marcado && !revisar ? '3, 3' : null,
+                    fillOpacity: destacar ? 1 : 0.55
+                });
+                if (destacar) this._pintarCorreccion(item, pos);
+
+                if (destacar) {
+                    m.bindTooltip(String(item.orden || ''), {
+                        permanent: true, direction: 'center', className: 'map-label-orden'
+                    });
+                }
+                m.bindPopup(this._popup(item, ruta, color));
+                if (esActiva) this._marcadores.push(m);
+                this.capaRuta.addLayer(m);
+            });
+
+            if (puntos.length > 1) {
+                L.polyline(puntos, {
+                    color: color,
+                    weight: esActiva || !verDia ? 3 : 1.5,
+                    opacity: esActiva || !verDia ? 0.8 : 0.35,
+                    dashArray: '8, 8'
+                }).addTo(this.capaRuta);
+            }
+        });
+
+        this._tiraInferior(lista, verDia);
+
+        if (ajustar && bounds.length > 1) {
+            this.map.fitBounds(L.latLngBounds(bounds), { padding: [45, 45] });
+        } else if (ajustar && bounds.length === 1) {
+            this.map.setView(bounds[0], 17);
         }
     },
 
-    centrarMapaEnPunto: function(index) {
-        if (!this.capaRuta || !this.map) return;
-        const capas = this.capaRuta.getLayers();
-        const marcadores = capas.filter(c => c instanceof L.CircleMarker);
-        
-        if (marcadores[index]) {
-            const latLng = marcadores[index].getLatLng();
-            this.map.setView(latLng, 18, {animate: true, duration: 0.5});
-            marcadores[index].openPopup();
+
+    _cabeceraDetalle: function (lista, verDia, dia) {
+        const titulo = document.getElementById('rt-detalle-titulo');
+        const sub = document.getElementById('rt-detalle-sub');
+        const activa = this._rutaActiva;
+
+        if (titulo) {
+            titulo.innerHTML = '';
+            const fila = this._el('div', {
+                style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;'
+            });
+            fila.appendChild(this._el('span', {
+                style: 'font-size:1.05rem;font-weight:700;color:#1e293b;',
+                text: verDia
+                    ? 'Día completo · ' + lista.length + ' cargas'
+                    : 'Carga N° ' + (activa ? activa.id : '') +
+                      ' · ' + (activa ? activa.localidad : '')
+            }));
+
+            const grupo = this._el('div', {
+                style: 'display:flex;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;'
+            });
+            [['carga', 'Esta carga'], ['dia', 'Todo el día']].forEach(([modo, txt]) => {
+                const on = (this.vistaMapa === modo);
+                grupo.appendChild(this._el('button', {
+                    style: 'border:none;padding:4px 10px;font-size:0.7rem;font-weight:700;' +
+                           'cursor:pointer;background:' + (on ? '#2563eb' : '#ffffff') +
+                           ';color:' + (on ? '#ffffff' : '#475569') + ';',
+                    text: txt,
+                    onclick: () => this.cambiarVistaMapa(modo)
+                }));
+            });
+            fila.appendChild(grupo);
+            titulo.appendChild(fila);
         }
+
+        if (sub) {
+            if (verDia) {
+                const n = lista.reduce((a, r) => a + r.cantidad, 0);
+                const km = lista.reduce((a, r) => a + (r.km_total || 0), 0);
+                sub.textContent = (lista[0] ? lista[0].fecha : dia) + '  ·  ' + n +
+                    ' predios  ·  ' + km.toFixed(1) + ' km en total  ·  ' +
+                    'clic en un color para ver esa carga';
+            } else if (activa) {
+                sub.textContent = (activa.hora || '') + '  ·  ' + activa.cantidad +
+                    ' predios  ·  ' + (activa.km_total || 0) + ' km  ·  ' + (activa.fecha || '');
+            }
+        }
+    },
+
+    // Franja inferior: en vista de carga son las tarjetas de predios; en vista
+    // de dia es la leyenda de colores para saber cual es cual.
+    _tiraInferior: function (lista, verDia) {
+        const cont = document.getElementById('rt-scroll-tarjetas');
+        if (!cont) return;
+        cont.innerHTML = '';
+        const frag = document.createDocumentFragment();
+
+        if (verDia) {
+            lista.forEach((ruta) => {
+                const color = this._colorDe(ruta);
+                const on = !!(this._rutaActiva && this._rutaActiva.id === ruta.id);
+                frag.appendChild(this._el('div', {
+                    style: 'display:flex;align-items:center;gap:8px;flex-shrink:0;cursor:pointer;' +
+                           'padding:7px 11px;border-radius:6px;background:#fff;' +
+                           'border:2px solid ' + (on ? color : '#e2e8f0') + ';',
+                    onclick: () => { this._rutaActiva = ruta; this.pintarMapa(false);
+                                     this.renderizarListaCargas(); }
+                }, [
+                    this._el('span', {
+                        style: 'width:12px;height:12px;border-radius:50%;background:' + color + ';'
+                    }),
+                    this._el('span', {
+                        style: 'font-size:0.72rem;font-weight:800;color:#1e293b;',
+                        text: 'C' + ruta.id
+                    }),
+                    this._el('span', {
+                        style: 'font-size:0.68rem;color:#64748b;white-space:nowrap;',
+                        text: ruta.cantidad + ' pred · ' + (ruta.localidad || '').slice(0, 18)
+                    })
+                ]));
+            });
+        } else if (this._rutaActiva) {
+            const color = this._colorDe(this._rutaActiva);
+            let idx = 0;
+            (this._rutaActiva.registros || []).forEach((item, i) => {
+                const pintable = !!this._latLng(item);
+                frag.appendChild(this._tarjeta(item, item.orden || (i + 1), color,
+                                               pintable ? idx : -1));
+                if (pintable) idx += 1;
+            });
+        }
+        cont.appendChild(frag);
+    },
+
+    _direccion: function (item) {
+        const num = (item.numero && item.numero !== 'S/N') ? item.numero : '';
+        return ((item.via || '') + ' ' + num).trim() || 'Sin direccion';
+    },
+
+    _tarjeta: function (item, orden, color, idxMarcador) {
+        const pintable = idxMarcador >= 0;
+        const card = this._el('div', {
+            class: 'rt-card-hover',
+            style: 'min-width:225px;max-width:250px;background:#fff;border:1px solid ' +
+                   (pintable ? '#cbd5e1' : '#fecaca') + ';border-radius:6px;padding:12px;' +
+                   'flex-shrink:0;cursor:' + (pintable ? 'pointer' : 'default') + ';',
+            onclick: pintable ? () => this.centrarMapaEnPunto(idxMarcador) : null
+        });
+
+        const top = this._el('div', {
+            style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;'
+        });
+        top.appendChild(this._el('span', {
+            style: 'font-weight:800;font-size:0.85rem;color:#1e293b;',
+            text: item.suministro || ''
+        }));
+        top.appendChild(this._el('span', {
+            style: 'background:' + color + ';color:#fff;padding:2px 6px;border-radius:4px;' +
+                   'font-weight:bold;font-size:0.7rem;flex-shrink:0;',
+            text: '#' + orden
+        }));
+        card.appendChild(top);
+
+        if (item.hora_estimada) {
+            card.appendChild(this._el('div', {
+                style: 'font-size:0.78rem;font-weight:700;color:#0f766e;margin-bottom:4px;',
+                text: '⏱ ' + item.hora_estimada +
+                      (item.km_desde_anterior ? '   (+' + item.km_desde_anterior + ' km)' : '')
+            }));
+        }
+
+        const dir = this._direccion(item);
+        card.appendChild(this._el('div', {
+            title: dir,
+            style: 'font-size:0.7rem;color:#64748b;white-space:nowrap;overflow:hidden;' +
+                   'text-overflow:ellipsis;margin-bottom:3px;',
+            text: '📍 ' + dir
+        }));
+        card.appendChild(this._el('div', {
+            style: 'font-size:0.65rem;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+            text: '🏙 ' + (item.urbanizacion || '') + (item.localidad ? ' · ' + item.localidad : '')
+        }));
+        const etiquetas = this._el('div', {
+            style: 'display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;'
+        });
+        if (item.franja_horaria) {
+            etiquetas.appendChild(this._el('span', {
+                style: 'background:#f1f5f9;border:1px solid #cbd5e1;color:#475569;font-size:0.62rem;' +
+                       'padding:2px 6px;border-radius:4px;font-weight:600;',
+                text: item.franja_horaria
+            }));
+        }
+        if (item.tipo_servicio) {
+            const dual = item.tipo_servicio === 'AGUA Y DESAGUE';
+            etiquetas.appendChild(this._el('span', {
+                style: 'background:' + (dual ? '#eef2ff' : '#ecfeff') +
+                       ';border:1px solid ' + (dual ? '#c7d2fe' : '#a5f3fc') +
+                       ';color:' + (dual ? '#3730a3' : '#155e75') +
+                       ';font-size:0.62rem;padding:2px 6px;border-radius:4px;font-weight:700;',
+                text: item.tipo_servicio
+            }));
+        }
+                const metaDir = this.ESTADOS_DIR[item.estado_direccion];
+        if (metaDir) {
+            etiquetas.appendChild(this._el('span', {
+                title: item.nota_direccion || '',
+                style: 'background:' + metaDir.fondo + ';border:1px solid ' + metaDir.borde +
+                       ';color:' + metaDir.texto + ';font-size:0.62rem;padding:2px 6px;' +
+                       'border-radius:4px;font-weight:700;',
+                text: metaDir.chip
+            }));
+        }
+        if (etiquetas.childNodes.length) card.appendChild(etiquetas);
+        if (!pintable) {
+            card.appendChild(this._el('div', {
+                style: 'color:#b91c1c;font-size:0.62rem;margin-top:5px;font-weight:700;',
+                text: '⚠ Sin ubicacion en el mapa'
+            }));
+            card.appendChild(this._el('button', {
+                type: 'button',
+                style: 'margin-top:6px;width:100%;padding:5px 8px;border-radius:5px;cursor:pointer;' +
+                       'font-size:0.7rem;font-weight:700;background:#1d4ed8;color:#fff;border:1px solid #1d4ed8;',
+                text: '📍 Ubicar en el mapa',
+                onclick: (ev) => {
+                    ev.stopPropagation();
+                    if (this._rutaActiva) this.iniciarMovimiento(this._rutaActiva.id, item.suministro);
+                }
+            }));
+        }
+        return card;
+    },
+
+    centrarMapaEnPunto: function (idx) {
+        const m = this._marcadores[idx];
+        if (!m || !this.map) return;
+        this.map.setView(m.getLatLng(), 18, { animate: true, duration: 0.5 });
+        m.openPopup();
+    },
+
+    cerrarDetalle: function () {
+        this.cancelarMovimiento();
+        const layout = document.getElementById('rt-layout');
+        if (layout) layout.classList.remove('rt-open');
+        const izq = document.querySelector('.rt-panel-izq') || document.getElementById('rt-panel-izq');
+        const der = document.querySelector('.rt-panel-der') || document.getElementById('rt-panel-der');
+        if (izq) { izq.style.width = '100%'; izq.style.borderRight = '1px solid transparent'; }
+        if (der) { der.style.width = '0%'; der.style.opacity = '0'; }
+        document.querySelectorAll('.rt-row-hover').forEach((el) => el.classList.remove('rt-row-active'));
+        if (this.capaRuta) this.capaRuta.clearLayers();
+        this._marcadores = [];
+        this._rutaActiva = null;
+    },
+
+    // ------------------------------------------- exportar la ruta al Excel
+    // El Excel de ruta aplica a TODAS las actividades, inspecciones incluida.
+    _toggleBotonExport: function () {
+        const b = document.getElementById('rt-btn-ruta-excel');
+        if (b) b.style.display = (this.asignacion && this.archivoPrincipal)
+            ? 'inline-flex' : 'none';
+    },
+
+    /**
+     * Devuelve el MISMO Excel que subiste, con 'tecnico' (vacia), 'carga' y
+     * 'orden' al inicio y 'tipo' (AGUA / AGUA Y DESAGUE) al final.
+     * Se reenvia el archivo original para no depender de estado en el servidor.
+     */
+    generarRutaExcel: async function () {
+        if (!this.asignacion || !this.archivoPrincipal) {
+            alert('Primero genera las cargas.');
+            return;
+        }
+        const btn = document.getElementById('rt-btn-ruta-excel');
+        const html = btn ? btn.innerHTML : '';
+        const fd = new FormData();
+        fd.append('archivo', this.archivoPrincipal);
+        fd.append('asignacion', JSON.stringify(this.asignacion));
+        if (this.colCruce) fd.append('col_cruce', this.colCruce);
+
+        try {
+            if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...'; btn.disabled = true; }
+            const resp = await fetch('/api/exportar_ruta_excel', { method: 'POST', body: fd });
+            if (!resp.ok) {
+                const e = await resp.json().catch(() => ({}));
+                throw new Error(e.error || ('Error ' + resp.status));
+            }
+            const blob = await resp.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'ruta_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+        } catch (err) {
+            alert('No se pudo generar el Excel de ruta: ' + err.message);
+        } finally {
+            if (btn) { btn.innerHTML = html; btn.disabled = false; }
+        }
+    },
+
+    // =====================================================================
+    //  DIRECCIÓN ↔ COORDENADA
+    //  Pegar estos miembros dentro de `const rtApp = { ... }`. Los que ya
+    //  existen (_popup, poblarCamposDireccion, _recalcular, deshacer,
+    //  renderizarBarraEdicion) se REEMPLAZAN por estas versiones.
+    // =====================================================================
+
+    // Cómo se muestra cada estado que devuelve el validador.
+    ESTADOS_DIR: {
+        corregida: { titulo: 'Coordenada corregida por la dirección',
+                     chip: '✓ Corregida por dirección',
+                     fondo: '#ecfdf5', borde: '#a7f3d0', texto: '#065f46' },
+        ubicada:   { titulo: 'Ubicada por la dirección (no tenía coordenada)',
+                     chip: '✓ Ubicada por dirección',
+                     fondo: '#ecfdf5', borde: '#a7f3d0', texto: '#065f46' },
+        revisar:   { titulo: 'La coordenada no cuadra con la dirección',
+                     chip: '⚠ Revisar dirección',
+                     fondo: '#fffbeb', borde: '#fde68a', texto: '#92400e' },
+        manual:    { titulo: 'Ubicación fijada por el supervisor',
+                     chip: '📌 Fijada por supervisor',
+                     fondo: '#eff6ff', borde: '#bfdbfe', texto: '#1d4ed8' },
+        gis:       { titulo: 'Ubicado con el GIS de Sedalib',
+                     chip: '🎯 GIS Sedalib',
+                     fondo: '#f0fdfa', borde: '#99f6e4', texto: '#0f766e' }
+    },
+    actividad: '',
+    _ocupado: false,
+
+    _par: function (lat, lon) {
+        const a = this._num(lat), b = this._num(lon);
+        return (a === null || b === null) ? null : [a, b];
+    },
+
+    // En el mapa, la coordenada descartada (gris) o la propuesta (ámbar), unida
+    // con una línea punteada a la posición con la que se rutea el predio.
+    _pintarCorreccion: function (item, pos) {
+        const est = item.estado_direccion;
+        let otro = null, color = null, texto = '';
+        if (est === 'corregida' || est === 'manual' || est === 'gis') {
+            otro = this._par(item.lat_original, item.lon_original);
+            color = '#94a3b8';
+            texto = est === 'manual' ? 'Donde estaba antes de moverlo'
+                  : (est === 'gis' ? 'Coordenada anterior (catastro)' : 'Coordenada original (descartada)');
+        } else if (est === 'revisar') {
+            otro = this._par(item.lat_propuesta, item.lon_propuesta);
+            color = '#d97706';
+            texto = 'Ubicación propuesta por la dirección';
+        }
+        if (!otro) return;
+        L.polyline([otro, pos], {
+            color: color, weight: 2, dashArray: '4, 6', opacity: 0.9, interactive: false
+        }).addTo(this.capaRuta);
+        L.circleMarker(otro, {
+            radius: 6, color: color, weight: 2, fillColor: '#ffffff', fillOpacity: 1
+        }).bindTooltip(texto + ' · ' + (item.suministro || '')).addTo(this.capaRuta);
+    },
+
+    // REEMPLAZA a _popup: ahora se arma con nodos (sin innerHTML) y trae los
+    // botones para que el supervisor decida sobre las coordenadas dudosas.
+    _popup: function (item, ruta, color) {
+        const caja = this._el('div', { style: 'text-align:center;min-width:190px;max-width:270px;' });
+        caja.appendChild(this._el('div', {
+            style: 'color:' + color + ';font-size:1.05rem;font-weight:700;',
+            text: 'Carga ' + ruta.id + ' · Orden #' + (item.orden || '')
+        }));
+        caja.appendChild(this._el('div', { style: 'font-weight:700;', text: 'SUM: ' + (item.suministro || '') }));
+        caja.appendChild(this._el('div', { style: 'color:#64748b;margin:4px 0;', text: this._direccion(item) }));
+        if (item.hora_estimada) {
+            caja.appendChild(this._el('div', { style: 'font-weight:700;', text: 'Llega ~ ' + item.hora_estimada }));
+        }
+        if (item.franja_horaria) {
+            caja.appendChild(this._el('div', { style: 'font-size:.8em;color:#475569;', text: item.franja_horaria }));
+        }
+
+        const meta = this.ESTADOS_DIR[item.estado_direccion];
+        if (meta) {
+            caja.appendChild(this._el('div', {
+                style: 'margin-top:7px;padding:6px 8px;border-radius:5px;text-align:left;' +
+                       'font-size:.75em;line-height:1.45;background:' + meta.fondo +
+                       ';border:1px solid ' + meta.borde + ';color:' + meta.texto + ';'
+            }, [this._el('strong', { text: meta.titulo }), this._el('br'),
+                item.nota_direccion || '']));
+        }
+        const boton = (txt, fn, principal) => this._el('button', {
+            type: 'button',
+            style: 'margin-top:6px;width:100%;padding:5px 8px;border-radius:5px;cursor:pointer;' +
+                   'font-size:.75em;font-weight:700;' +
+                   (principal ? 'background:#2563eb;color:#fff;border:1px solid #2563eb;'
+                              : 'background:#fff;color:#475569;border:1px solid #cbd5e1;'),
+            text: txt,
+            onclick: fn
+        });
+        if (item.estado_direccion === 'revisar' && this._par(item.lat_propuesta, item.lon_propuesta)) {
+            caja.appendChild(boton('Usar la ubicación propuesta',
+                () => this.aplicarPropuesta(ruta.id, item.suministro, false), true));
+        }
+        if (item.estado_direccion === 'corregida' && this._par(item.lat_original, item.lon_original)) {
+            caja.appendChild(boton('Volver a la coordenada original',
+                () => this.aplicarPropuesta(ruta.id, item.suministro, true), false));
+        }
+        // Mover el punto a mano (queda guardado para los próximos ruteos)
+        const hayPropuesta = item.estado_direccion === 'revisar' &&
+                             !!this._par(item.lat_propuesta, item.lon_propuesta);
+        caja.appendChild(boton('📍 Mover este punto',
+            () => this.iniciarMovimiento(ruta.id, item.suministro), !hayPropuesta));
+        if (item.estado_direccion !== 'gis') {
+            caja.appendChild(boton('🎯 Buscar en el GIS de Sedalib',
+                () => this.iniciarMovimiento(ruta.id, item.suministro, true), false));
+        }
+        const pos = this._par(item.lat, item.lon);
+        const enlaces = this._el('div', {
+            style: 'margin-top:6px;font-size:.72em;display:flex;justify-content:center;gap:10px;flex-wrap:wrap;'
+        });
+        enlaces.appendChild(this._el('a', {
+            href: this._urlGoogleMaps(item), target: '_blank', rel: 'noopener',
+            text: 'Dirección en Google Maps ↗'
+        }));
+        if (pos) {
+            enlaces.appendChild(this._el('a', {
+                href: this._urlGoogleMapsPunto(pos[0], pos[1]), target: '_blank', rel: 'noopener',
+                text: 'Este punto en Google Maps ↗'
+            }));
+        }
+        caja.appendChild(enlaces);
+        return caja;
+    },
+
+    /**
+     * El supervisor decide sobre una coordenada: usa la ubicación que propuso
+     * la dirección, o vuelve a la original si la corrección automática no le
+     * convence. La carga se recalcula en el servidor (orden, horas y km), y la
+     * decisión queda en el Excel de coordenadas para catastro.
+     */
+    aplicarPropuesta: async function (cargaId, suministro, revertir) {
+        if (this._ocupado) return;
+        const carga = this.datosRutas.find((r) => r.id === cargaId);
+        const reg = carga && (carga.registros || [])
+            .find((x) => String(x.suministro) === String(suministro));
+        if (!reg) return;
+        const destino = revertir ? this._par(reg.lat_original, reg.lon_original)
+                                 : this._par(reg.lat_propuesta, reg.lon_propuesta);
+        if (!destino) return;
+
+        const respaldo = JSON.parse(JSON.stringify(this.datosRutas));
+        const obsPrevias = JSON.parse(JSON.stringify(this.coordsObservadas || []));
+        respaldo._observadas = obsPrevias;          // para que "Deshacer" también las vuelva
+        const actual = this._par(reg.lat, reg.lon);
+        const notaBase = String(reg.nota_direccion || '').replace(/^El supervisor [^.]*\.\s*/, '');
+        const previaManual = reg.origen_coord === 'manual' ? actual : null;
+        const origenAntes = reg.origen_coord || '';
+
+        reg.lat = destino[0];
+        reg.lon = destino[1];
+        reg.coord_x = destino[1];
+        reg.coord_y = destino[0];
+        if (revertir) {
+            reg.estado_direccion = 'revisar';
+            reg.lat_propuesta = actual ? actual[0] : null;
+            reg.lon_propuesta = actual ? actual[1] : null;
+            reg.lat_original = null;
+            reg.lon_original = null;
+            reg.origen_coord = reg.origen_original || 'catastro';
+            reg.nota_direccion = 'El supervisor mantuvo la coordenada original. ' + notaBase;
+            this._marcarObservada(suministro, 'mantenida_supervisor', null);
+        } else {
+            reg.estado_direccion = 'corregida';
+            reg.lat_original = actual ? actual[0] : null;
+            reg.lon_original = actual ? actual[1] : null;
+            reg.lat_propuesta = null;
+            reg.lon_propuesta = null;
+            reg.origen_coord = 'corregida por el supervisor';
+            reg.nota_direccion = 'El supervisor aceptó la ubicación propuesta. ' + notaBase;
+            this._marcarObservada(suministro, 'corregida_supervisor', destino);
+        }
+        if (this.map) this.map.closePopup();
+
+        this._ocupado = true;
+        let ok = false;
+        try {
+            // La decisión del supervisor se guarda: en el próximo ruteo este
+            // suministro sale directo en esta ubicación.
+            respaldo._coordManual = { suministro: String(suministro), previa: previaManual };
+            const guardado = await this._guardarCoordenadaManual({
+                accion: 'guardar', suministro: String(suministro),
+                lat: destino[0], lon: destino[1],
+                lat_anterior: actual ? actual[0] : null, lon_anterior: actual ? actual[1] : null,
+                origen_anterior: origenAntes, direccion: this._direccion(reg),
+                localidad: reg.localidad || ''
+            });
+            if (!guardado) {
+                this._restaurar(respaldo);
+                return;
+            }
+            ok = await this._recalcular(respaldo,
+                (revertir ? 'Se restauró la coordenada original de ' : 'Se reubicó ') +
+                suministro + ' y se recalculó la carga');
+            if (!ok) await this._revertirCoordManual(respaldo._coordManual);
+        } finally {
+            this._ocupado = false;
+            if (!ok) {
+                this.coordsObservadas = obsPrevias;
+                this._toggleBotonCoords();
+            }
+        }
+    },
+
+    // Deja registrada la decisión del supervisor en la lista que va a catastro.
+    _marcarObservada: function (suministro, estado, destino) {
+        const lista = this.coordsObservadas || [];
+        for (let i = lista.length - 1; i >= 0; i--) {
+            if (String(lista[i].suministro) !== String(suministro)) continue;
+            lista[i].estado = estado;
+            if (destino) {
+                lista[i].lat_corregida = destino[0];
+                lista[i].lon_corregida = destino[1];
+            }
+            break;
+        }
+        this._toggleBotonCoords();
+    },
+
+    // Vuelve al estado anterior a un movimiento rechazado o fallido, sin
+    // dejar el mapa ni la barra mostrando el cambio que no se aplicó.
+    _restaurar: function (respaldo) {
+        const id = this._rutaActiva && this._rutaActiva.id;
+        this.datosRutas = respaldo;
+        this._rutaActiva = this.datosRutas.find((r) => r.id === id) || null;
+        this.renderizarListaCargas();
+        this.renderizarBarraEdicion();
+        if (this._rutaActiva) this.pintarMapa(false);
+    },
+
+    // REEMPLAZA a _recalcular: manda modo y actividad (las masivas se
+    // recalculan con su propio tiempo por registro) y restaura bien si falla.
+    _recalcular: async function (respaldo, mensajeOk, confirmado) {
+        const btnBar = document.getElementById('rt-barra-edicion');
+        try {
+            if (btnBar) btnBar.style.opacity = '0.5';
+            const resp = await fetch('/api/recalcular_cargas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tecnicos: this.tecnicosDia,
+                    confirmado: !!confirmado,
+                    modo: this.modo,
+                    actividad: this.actividad || '',
+                    cargas: this.datosRutas.map((r) => ({
+                        id: r.id, fecha: r.fecha, fecha_iso: r.fecha_iso,
+                        localidad: r.localidad, registros: r.registros,
+                        localidades_previas: this._localidadesDe(respaldo, r.id)
+                    }))
+                })
+            });
+            const data = await resp.json().catch(() => ({}));
+
+            if (resp.status === 409 && data.status === 'requiere_confirmacion') {
+                if (btnBar) btnBar.style.opacity = '1';
+                if (this._confirmarMezcla(data.confirmaciones || [])) {
+                    return await this._recalcular(respaldo, mensajeOk, true);
+                }
+                this._restaurar(respaldo);
+                return false;
+            }
+            if (!resp.ok) throw new Error(data.error || ('Error ' + resp.status));
+
+            this.historial.push(respaldo);
+            if (this.historial.length > 30) this.historial.shift();
+            const previaActiva = this._rutaActiva;
+            this.datosRutas = data.rutas;
+            this.planPersonal = data.plan_personal || this.planPersonal;
+            this._reconstruirAsignacion();
+            this._rutaActiva = this._reanclarActiva(previaActiva);
+            this.renderizarListaCargas();
+            this.renderizarBarraEdicion();
+            if (this._rutaActiva) this.pintarMapa(false);
+            if (mensajeOk) this._aviso(mensajeOk);
+            return true;
+        } catch (err) {
+            alert('No se pudo recalcular: ' + err.message);
+            this._restaurar(respaldo);
+            return false;
+        } finally {
+            if (btnBar) btnBar.style.opacity = '1';
+        }
+    },
+
+    // REEMPLAZA a deshacer: no corre mientras hay un recálculo en curso y
+    // también devuelve la lista de coordenadas observadas a como estaba.
+    deshacer: function () {
+        if (this._ocupado || !this.historial.length) return;
+        const previaActiva = this._rutaActiva;
+        const previo = this.historial.pop();
+        // Si el paso que se deshace guardó una ubicación, la base vuelve también.
+        if (previo._coordManual) this._revertirCoordManual(previo._coordManual);
+        if (previo._observadas) {
+            this.coordsObservadas = previo._observadas;
+            this._toggleBotonCoords();
+        }
+        this.datosRutas = previo;
+        this.seleccion = null;
+        this._reconstruirAsignacion();
+        this._rutaActiva = this._reanclarActiva(previaActiva);
+        this.renderizarListaCargas();
+        this.renderizarBarraEdicion();
+        if (this._rutaActiva) this.pintarMapa(false);
+    },
+
+    // REEMPLAZA a renderizarBarraEdicion: "Deshacer" aparece siempre que haya
+    // algo que deshacer, en cualquier actividad, no solo con más de 18 cargas.
+    renderizarBarraEdicion: function () {
+        const cont = document.getElementById('rt-barra-edicion');
+        if (!cont) return;
+        cont.innerHTML = '';
+
+        const insp = this.modo === 'inspecciones';
+        const porDia = {};
+        this.datosRutas.forEach((c) => { porDia[c.fecha] = (porDia[c.fecha] || 0) + 1; });
+        const excedidos = insp
+            ? Object.keys(porDia).filter((f) => porDia[f] > this.UMBRAL_CARGAS) : [];
+        const haySeleccion = !!(this.seleccion && insp);
+        const hayHistorial = this.historial.length > 0;
+
+        if (!excedidos.length && !haySeleccion && !hayHistorial) {
+            cont.style.display = 'none';
+            return;
+        }
+        cont.style.display = 'block';
+
+        // --- panel del rango seleccionado, con los destinos más cercanos ----
+        if (haySeleccion) {
+            const sel = this.seleccion;
+            const origen = this.datosRutas.find((r) => r.id === sel.cargaId);
+            const n = origen
+                ? origen.registros.filter((r) => r.franja_horaria === sel.franja).length : 0;
+            const panel = this._el('div', {
+                style: 'padding:10px 14px;background:#eff6ff;border-bottom:1px solid #bfdbfe;'
+            });
+            panel.appendChild(this._el('div', {
+                style: 'font-weight:700;color:#1d4ed8;font-size:0.78rem;',
+                text: 'Seleccionado: ' + sel.franja + ' de la carga ' + sel.cargaId +
+                      '  (' + n + ' predios, resaltados en el mapa)'
+            }));
+            panel.appendChild(this._el('div', {
+                style: 'color:#1e40af;font-size:0.71rem;margin:4px 0 7px;',
+                text: 'Destinos más cercanos — clic para mover, o clic en cualquier ' +
+                      'carga de la lista:'
+            }));
+            const fila = this._el('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;' });
+            this._sugerenciasDestino(sel.cargaId, sel.franja).forEach((s) => {
+                const color = this._colorDe(s.ruta);
+                fila.appendChild(this._el('button', {
+                    type: 'button',
+                    title: s.ruta.localidad + ' · ' + s.ruta.cantidad + ' predios · ' + s.ruta.hora,
+                    style: 'display:flex;align-items:center;gap:6px;background:#fff;' +
+                           'border:1px solid ' + (s.mismaLocalidad ? color : '#cbd5e1') +
+                           ';border-left:4px solid ' + color + ';border-radius:5px;' +
+                           'padding:4px 9px;font-size:0.71rem;font-weight:700;' +
+                           'color:#1e293b;cursor:pointer;',
+                    text: '→ C' + s.ruta.id + '  ' + s.km.toFixed(1) + ' km' +
+                          (s.enFranja ? '  (ya tiene ' + s.enFranja + ' en ese rango)' : '') +
+                          (s.mismaLocalidad ? '  ✓ misma localidad' : ''),
+                    onclick: () => this.moverFranja(sel.cargaId, sel.franja, s.ruta.id)
+                }));
+            });
+            fila.appendChild(this._el('button', {
+                type: 'button',
+                style: 'background:#fff;border:1px solid #cbd5e1;color:#64748b;' +
+                       'border-radius:5px;padding:4px 9px;font-size:0.71rem;cursor:pointer;',
+                text: '✕ Cancelar',
+                onclick: () => this.seleccionarFranja(sel.cargaId, sel.franja)
+            }));
+            panel.appendChild(fila);
+            cont.appendChild(panel);
+        }
+
+        if (excedidos.length) {
+            const caja = this._el('div', {
+                style: 'padding:10px 14px;background:#fffbeb;border-bottom:1px solid #fde68a;'
+            });
+            caja.appendChild(this._el('div', {
+                style: 'font-weight:700;color:#92400e;font-size:0.78rem;',
+                text: '⚠ ' + excedidos.map((f) => f + ': ' + porDia[f] + ' cargas').join('  ·  ') +
+                      '  (deseado: hasta ' + this.UMBRAL_CARGAS + ')'
+            }));
+            caja.appendChild(this._el('div', {
+                style: 'color:#a16207;font-size:0.72rem;margin-top:4px;line-height:1.5;',
+                text: 'Arrastra un rango horario de una carga a otra para juntarlos, o ' +
+                      'haz clic en el rango y luego en la carga destino. Cuando una carga ' +
+                      'queda vacía desaparece sola.'
+            }));
+            cont.appendChild(caja);
+        }
+
+        if (hayHistorial) {
+            const fila = this._el('div', {
+                style: 'display:flex;gap:8px;padding:8px 14px;background:#f8fafc;' +
+                       'border-bottom:1px solid #e2e8f0;'
+            });
+            fila.appendChild(this._el('button', {
+                type: 'button',
+                style: 'background:#fff;border:1px solid #d97706;color:#b45309;padding:4px 10px;' +
+                       'border-radius:4px;font-size:0.72rem;font-weight:700;cursor:pointer;',
+                text: '↶ Deshacer (' + this.historial.length + ')',
+                onclick: () => this.deshacer()
+            }));
+            cont.appendChild(fila);
+        }
+    },
+
+    // Resumen de la validación, debajo de los chips del resumen general.
+    // =====================================================================
+    //  UBICAR / MOVER UN PUNTO A MANO
+    //  El supervisor arrastra el pin (o hace clic en el mapa) hasta donde
+    //  está el predio. La ubicación se guarda en el servidor por suministro y
+    //  manda sobre catastro en los próximos ruteos.
+    // =====================================================================
+    _mov: null,
+
+    // Texto de búsqueda: dirección + urbanización + localidad, sin repetir.
+    _textoBusqueda: function (item) {
+        const loc = String(item.localidad || item.distrito || '').replace(/^OTRA:\s*/i, '');
+        const partes = [];
+        [this._direccion(item), item.urbanizacion, loc].forEach((p) => {
+            p = String(p || '').trim();
+            if (!p || /^(sin direccion|direccion no especificada|sin localidad)$/i.test(p)) return;
+            if (partes.some((q) => q.toUpperCase().indexOf(p.toUpperCase()) >= 0)) return;
+            partes.push(p);
+        });
+        partes.push('La Libertad', 'Perú');
+        return partes.join(', ');
+    },
+
+    // Enlaces de Google Maps (solo se abre Google Maps para mirar; no se
+    // traen datos de Google al sistema).
+    _urlGoogleMaps: function (item) {
+        return 'https://www.google.com/maps/search/?api=1&query=' +
+               encodeURIComponent(this._textoBusqueda(item));
+    },
+
+    _urlGoogleMapsPunto: function (lat, lon) {
+        return 'https://www.google.com/maps/search/?api=1&query=' +
+               encodeURIComponent(Number(lat).toFixed(6) + ',' + Number(lon).toFixed(6));
+    },
+
+    _buscarRegistro: function (cargaId, suministro) {
+        const carga = this.datosRutas.find((r) => r.id === cargaId) || null;
+        const reg = carga && (carga.registros || [])
+            .find((x) => String(x.suministro) === String(suministro));
+        return { carga: carga, reg: reg || null };
+    },
+
+    iniciarMovimiento: function (cargaId, suministro, conGis) {
+        if (this._ocupado || !this.inicializarMapa()) return;
+        this.cancelarMovimiento();
+        const { carga, reg } = this._buscarRegistro(cargaId, suministro);
+        if (!reg) return;
+        this.map.closePopup();
+
+        const actual = this._latLng(reg);              // null si no tenía ubicación
+        const c = this.map.getCenter();
+        const inicio = actual || this._centroide(carga.registros || []) || [c.lat, c.lng];
+        const icono = L.divIcon({
+            className: 'rt-pin-mover',
+            html: '<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;' +
+                  'transform:rotate(-45deg);background:#1d4ed8;border:3px solid #fff;' +
+                  'box-shadow:0 2px 7px rgba(0,0,0,.5);"></div>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 30]
+        });
+        const marker = L.marker(inicio, {
+            draggable: true, autoPan: true, icon: icono, zIndexOffset: 2000,
+            title: 'Arrástrame hasta el predio'
+        }).addTo(this.map);
+        const linea = actual
+            ? L.polyline([actual, inicio], {
+                color: '#1d4ed8', weight: 2, dashArray: '4, 6', interactive: false
+            }).addTo(this.map)
+            : null;
+
+        const alClic = (ev) => { marker.setLatLng(ev.latlng); this._actualizarMovimiento(); };
+        // Mientras se mueve un punto, los popups de los otros estorban.
+        const sinPopups = () => { setTimeout(() => { if (this.map) this.map.closePopup(); }, 0); };
+        marker.on('drag dragend', () => this._actualizarMovimiento());
+        this.map.on('click', alClic);
+        this.map.on('popupopen', sinPopups);
+
+        const barra = this._barraMovimiento(reg, !actual);
+        this._mov = {
+            cargaId: cargaId, suministro: String(reg.suministro), marker: marker,
+            linea: linea, actual: actual, alClic: alClic, sinPopups: sinPopups, barra: barra
+        };
+        this._actualizarMovimiento();
+        this.map.setView(inicio, Math.max(this.map.getZoom(), 17));
+        if (conGis) this.buscarEnGisSedalib();
+    },
+
+    // Pide al servidor el punto del lote en el GIS de Sedalib y lleva el pin
+    // ahí. No guarda nada: el supervisor lo mira y decide con "Guardar".
+    buscarEnGisSedalib: async function () {
+        const mov = this._mov;
+        if (!mov || mov.buscandoGis) return;
+        const aviso = document.getElementById('rt-mover-gis-msg');
+        const btn = document.getElementById('rt-mover-gis');
+        const decir = (txt, color) => {
+            if (aviso) { aviso.textContent = txt; aviso.style.color = color || '#475569'; }
+        };
+        mov.buscandoGis = true;
+        if (btn) btn.disabled = true;
+        decir('Buscando el suministro ' + mov.suministro + ' en el GIS de Sedalib…');
+        try {
+            const resp = await fetch('/api/rutas/gis_sedalib', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ suministro: mov.suministro })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (this._mov !== mov) return;                  // se canceló mientras buscaba
+            if (resp.status === 401) { decir('Tu sesión expiró. Inicia sesión otra vez.', '#b91c1c'); return; }
+            const lat = this._num(data.lat), lon = this._num(data.lon);
+            if (!resp.ok || !data.success || lat === null || lon === null) {
+                decir(data.error || ('No se pudo consultar el GIS de Sedalib (error ' + resp.status + ').'),
+                      '#b45309');
+                return;
+            }
+            mov.marker.setLatLng([lat, lon]);
+            this._actualizarMovimiento();
+            this.map.setView([lat, lon], Math.max(this.map.getZoom(), 18));
+            decir('✓ El GIS de Sedalib ubica el lote aquí. Revísalo y pulsa "Guardar ubicación".',
+                  '#0f766e');
+        } catch (err) {
+            if (this._mov === mov) decir('No hay conexión con el servidor.', '#b91c1c');
+        } finally {
+            mov.buscandoGis = false;
+            if (btn) btn.disabled = false;
+        }
+    },
+
+    _barraMovimiento: function (reg, sinUbicacion) {
+        const barra = this._el('div', {
+            id: 'rt-barra-mover',
+            style: 'position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1000;' +
+                   'background:#fff;border:2px solid #1d4ed8;border-radius:8px;padding:10px 12px;' +
+                   'box-shadow:0 4px 14px rgba(0,0,0,.25);width:min(560px,92%);' +
+                   'font-size:.78rem;color:#1e293b;cursor:default;'
+        });
+        barra.appendChild(this._el('div', {
+            style: 'font-weight:800;color:#1d4ed8;margin-bottom:3px;',
+            text: '📍 ' + (sinUbicacion ? 'Ubicar' : 'Mover') + ' el suministro ' + reg.suministro
+        }));
+        barra.appendChild(this._el('div', { style: 'color:#475569;', text: this._textoBusqueda(reg) }));
+        barra.appendChild(this._el('div', {
+            style: 'margin-top:4px;color:#64748b;',
+            text: 'Arrastra el pin azul o haz clic en el mapa donde está el predio. ' +
+                  'Si dudas, compáralo en Google Maps.'
+        }));
+        barra.appendChild(this._el('div', {
+            id: 'rt-mover-coords',
+            style: 'margin-top:4px;font-family:monospace;font-size:.72rem;color:#334155;'
+        }));
+        barra.appendChild(this._el('div', {
+            id: 'rt-mover-gis-msg',
+            style: 'margin-top:3px;font-size:.72rem;font-weight:600;'
+        }));
+
+        const fila = this._el('div', {
+            style: 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;'
+        });
+        const enlace = (id, href, txt) => this._el('a', {
+            id: id, href: href, target: '_blank', rel: 'noopener',
+            style: 'color:#1d4ed8;font-weight:700;font-size:.72rem;text-decoration:underline;',
+            text: txt
+        });
+        fila.appendChild(enlace('rt-mover-gmaps-dir', this._urlGoogleMaps(reg),
+                                'Buscar la dirección en Google Maps ↗'));
+        fila.appendChild(enlace('rt-mover-gmaps-punto', '#', 'Ver el pin en Google Maps ↗'));
+        fila.appendChild(this._el('span', { style: 'flex:1;' }));
+        const boton = (txt, estilo, fn) => this._el('button', {
+            type: 'button', text: txt, onclick: fn,
+            style: 'padding:6px 12px;border-radius:5px;cursor:pointer;font-weight:700;' +
+                   'font-size:.75rem;' + estilo
+        });
+        const btnGis = boton('🎯 GIS Sedalib', 'background:#f0fdfa;color:#0f766e;border:1px solid #5eead4;',
+                             () => this.buscarEnGisSedalib());
+        btnGis.id = 'rt-mover-gis';
+        btnGis.title = 'Lleva el pin al lote del suministro según el GIS de Sedalib';
+        fila.appendChild(btnGis);
+        fila.appendChild(boton('Cancelar', 'background:#fff;color:#475569;border:1px solid #cbd5e1;',
+                               () => this.cancelarMovimiento()));
+        fila.appendChild(boton('Guardar ubicación', 'background:#1d4ed8;color:#fff;border:1px solid #1d4ed8;',
+                               () => this.guardarMovimiento()));
+        barra.appendChild(fila);
+
+        const cont = document.getElementById('mapa-visor');
+        if (cont) cont.appendChild(barra);
+        if (typeof L !== 'undefined' && L.DomEvent) {
+            L.DomEvent.disableClickPropagation(barra);
+            L.DomEvent.disableScrollPropagation(barra);
+        }
+        return barra;
+    },
+
+    _actualizarMovimiento: function () {
+        const mov = this._mov;
+        if (!mov) return;
+        const ll = mov.marker.getLatLng();
+        if (mov.linea && mov.actual) mov.linea.setLatLngs([mov.actual, ll]);
+        const txt = document.getElementById('rt-mover-coords');
+        if (txt) {
+            let t = 'Nueva ubicación: ' + ll.lat.toFixed(6) + ', ' + ll.lng.toFixed(6);
+            if (mov.actual) {
+                t += '  ·  a ' + Math.round(this._km(mov.actual, [ll.lat, ll.lng]) * 1000) +
+                     ' m de donde estaba';
+            }
+            txt.textContent = t;
+        }
+        const link = document.getElementById('rt-mover-gmaps-punto');
+        if (link) link.href = this._urlGoogleMapsPunto(ll.lat, ll.lng);
+    },
+
+    _quitarMovimiento: function () {
+        const mov = this._mov;
+        if (!mov) return;
+        if (this.map) {
+            this.map.off('click', mov.alClic);
+            this.map.off('popupopen', mov.sinPopups);
+            this.map.removeLayer(mov.marker);
+            if (mov.linea) this.map.removeLayer(mov.linea);
+        }
+        if (mov.barra && mov.barra.parentNode) mov.barra.parentNode.removeChild(mov.barra);
+        this._mov = null;
+    },
+
+    cancelarMovimiento: function () {
+        this._quitarMovimiento();
+    },
+
+    guardarMovimiento: async function () {
+        const mov = this._mov;
+        if (!mov || this._ocupado) return;
+        const { reg } = this._buscarRegistro(mov.cargaId, mov.suministro);
+        if (!reg) { this._quitarMovimiento(); return; }
+
+        const ll = mov.marker.getLatLng();
+        const nuevo = [Math.round(ll.lat * 1e7) / 1e7, Math.round(ll.lng * 1e7) / 1e7];
+        const actual = this._latLng(reg);
+        const respaldo = JSON.parse(JSON.stringify(this.datosRutas));
+        const obsPrevias = JSON.parse(JSON.stringify(this.coordsObservadas || []));
+        respaldo._observadas = obsPrevias;
+        // Para "Deshacer": si ya estaba fijada a mano se vuelve a esa; si no, se borra.
+        respaldo._coordManual = {
+            suministro: String(reg.suministro),
+            previa: reg.origen_coord === 'manual' ? actual : null
+        };
+
+        this._ocupado = true;
+        try {
+            const guardado = await this._guardarCoordenadaManual({
+                accion: 'guardar', suministro: String(reg.suministro),
+                lat: nuevo[0], lon: nuevo[1],
+                lat_anterior: actual ? actual[0] : null, lon_anterior: actual ? actual[1] : null,
+                origen_anterior: reg.origen_coord || '',
+                direccion: this._direccion(reg), localidad: reg.localidad || ''
+            });
+            if (!guardado) return;          // el pin queda para reintentar
+
+            this._quitarMovimiento();
+            if (reg.origen_coord !== 'manual') reg.origen_original = reg.origen_coord || '';
+            reg.lat = nuevo[0];
+            reg.lon = nuevo[1];
+            reg.coord_x = nuevo[1];
+            reg.coord_y = nuevo[0];
+            reg.sin_ubicacion = false;
+            reg.origen_coord = 'manual';
+            reg.estado_direccion = 'manual';
+            reg.lat_original = actual ? actual[0] : null;
+            reg.lon_original = actual ? actual[1] : null;
+            reg.lat_propuesta = null;
+            reg.lon_propuesta = null;
+            reg.nota_direccion = 'Ubicación fijada por el supervisor: se usará en los próximos ruteos.';
+            this._registrarObservada(reg, actual, nuevo);
+
+            const ok = await this._recalcular(respaldo, 'Se guardó la ubicación de ' +
+                                              reg.suministro + ' y se recalculó la carga');
+            if (!ok) {
+                // La pantalla volvió atrás: la base también, para que no queden distintas.
+                this.coordsObservadas = obsPrevias;
+                this._toggleBotonCoords();
+                await this._revertirCoordManual(respaldo._coordManual);
+            }
+        } finally {
+            this._ocupado = false;
+        }
+    },
+
+    _guardarCoordenadaManual: async function (datos) {
+        try {
+            const resp = await fetch('/api/rutas/coordenada_manual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos)
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.status === 401) {
+                alert('Tu sesión expiró. Inicia sesión otra vez para guardar ubicaciones.');
+                return false;
+            }
+            if (!resp.ok || !data.success) {
+                alert('No se pudo guardar la ubicación: ' + (data.error || ('error ' + resp.status)));
+                return false;
+            }
+            return true;
+        } catch (err) {
+            alert('No se pudo guardar la ubicación: no hay conexión con el servidor.');
+            return false;
+        }
+    },
+
+    _revertirCoordManual: function (info) {
+        if (!info || !info.suministro) return Promise.resolve(true);
+        const datos = info.previa
+            ? { accion: 'guardar', suministro: info.suministro, lat: info.previa[0],
+                lon: info.previa[1], origen_anterior: 'deshacer' }
+            : { accion: 'eliminar', suministro: info.suministro };
+        return this._guardarCoordenadaManual(datos);
+    },
+
+    // Deja la corrección en la lista "Coordenadas a corregir" que va a catastro.
+    _registrarObservada: function (reg, actual, nuevo) {
+        if (!this.coordsObservadas) this.coordsObservadas = [];
+        const lista = this.coordsObservadas;
+        let fila = null;
+        for (let i = lista.length - 1; i >= 0; i--) {
+            if (String(lista[i].suministro) === String(reg.suministro)) { fila = lista[i]; break; }
+        }
+        if (!fila) {
+            fila = {
+                suministro: String(reg.suministro), localidad: reg.localidad || '',
+                direccion: this._direccion(reg),
+                lon_registrada: actual ? actual[1] : null, lat_registrada: actual ? actual[0] : null
+            };
+            lista.push(fila);
+        }
+        fila.estado = 'corregida_supervisor';
+        fila.lon_corregida = nuevo[1];
+        fila.lat_corregida = nuevo[0];
+        fila.motivo = 'Ubicado a mano por el supervisor en el mapa de Rutas';
+        this._toggleBotonCoords();
+    },
+
+    // Qué hizo el GIS de Sedalib en este proceso (o por qué no se usó).
+    _resumenGis: function (g) {
+        const falla = !!g.error;
+        const caja = this._el('div', {
+            style: 'margin:0 14px 8px;padding:8px 10px;border-radius:6px;font-size:0.72rem;' +
+                   'background:' + (falla ? '#fffbeb' : '#f0fdfa') + ';border:1px solid ' +
+                   (falla ? '#fde68a' : '#99f6e4') + ';color:' + (falla ? '#92400e' : '#0f766e') + ';'
+        });
+        caja.appendChild(this._el('div', { style: 'font-weight:700;', text: '🎯 GIS de Sedalib' }));
+        const partes = [];
+        if (g.activo) {
+            partes.push((g.ubicados || 0) + ' predios ubicados en su lote exacto');
+            if (g.desde_cache) partes.push(g.desde_cache + ' ya estaban consultados');
+            if (g.consultados) partes.push(g.consultados + ' consultados ahora');
+            if (g.pendientes) partes.push(g.pendientes + ' quedaron para el próximo proceso');
+        }
+        if (partes.length) caja.appendChild(this._el('div', { text: partes.join(' · ') }));
+        if (falla) {
+            caja.appendChild(this._el('div', {
+                text: (g.activo ? 'No se pudo usar del todo: ' : 'No se usó: ') + g.error
+            }));
+        }
+        return caja;
+    },
+
+    _resumenDirecciones: function (vd) {
+        const caja = this._el('div', {
+            style: 'margin:0 14px 8px;padding:8px 10px;border-radius:6px;font-size:0.72rem;' +
+                   'background:#f8fafc;border:1px solid #e2e8f0;'
+        });
+        caja.appendChild(this._el('div', {
+            style: 'font-weight:700;color:#334155;', text: 'Dirección vs. coordenada'
+        }));
+        const fila = this._el('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-top:4px;' });
+        [
+            [(vd.verificadas || 0) + (vd.aproximadas || 0), 'coinciden', '#065f46'],
+            [vd.corregidas || 0, 'corregidas', '#065f46'],
+            [vd.ubicadas || 0, 'ubicadas por dirección', '#065f46'],
+            [vd.revisar || 0, 'por revisar (en ámbar en el mapa)', '#b45309'],
+            [vd.fuera_de_localidad || 0, 'propuestas fuera de su localidad (no se movieron)', '#b45309'],
+            [vd.fijadas_supervisor || 0, 'fijadas por el supervisor', '#1d4ed8'],
+            [vd.gis_sedalib || 0, 'ubicadas con el GIS de Sedalib', '#0f766e'],
+            [vd.sin_verificar || 0, 'sin con qué comparar', '#64748b']
+        ].filter((p) => p[0] > 0).forEach(([n, txt, col]) => {
+            fila.appendChild(this._el('span', {
+                style: 'color:' + col + ';font-weight:700;', text: n + ' ' + txt
+            }));
+        });
+        caja.appendChild(fila);
+
+        const mapa = vd.mapa || {};
+        let nota = '', colorNota = '#94a3b8';
+        if (!mapa.disponible) {
+            nota = 'Falta el mapa de calles en el servidor (ejecuta descargar_calles_osm.py): ' +
+                   'solo se comparó cada predio con los de su misma calle.';
+            colorNota = '#b45309';
+        } else if (mapa.generado) {
+            const dias = Math.floor((Date.now() - Date.parse(mapa.generado)) / 86400000);
+            nota = 'Calles de OpenStreetMap del ' + String(mapa.generado).slice(0, 10) +
+                   (dias > 60 ? ' (tiene ' + dias + ' días: conviene actualizarlo).' : '.') +
+                   ' Haz clic en un punto para moverlo; los ámbar traen una ubicación propuesta.';
+            if (dias > 60) colorNota = '#b45309';
+        }
+        if (nota) {
+            caja.appendChild(this._el('div', { style: 'margin-top:4px;color:' + colorNota + ';', text: nota }));
+        }
+        return caja;
+    },
+
+    // REEMPLAZA a poblarCamposDireccion: sugiere UNA columna de dirección
+    // completa si existe; si no, solo las de urbanización, vía y número
+    // municipal. Nunca medidor, recibo, documento, ruta, etc.
+    poblarCamposDireccion: function () {
+        const cont = document.getElementById('rt-dir-campos');
+        if (!cont) return;
+        cont.innerHTML = '';
+        if (!this.columnasExcel.length) {
+            cont.appendChild(this._el('span', {
+                style: 'font-size:0.7rem;color:#94a3b8;',
+                text: 'Sube primero el Excel principal.'
+            }));
+            this._previewDireccion();
+            return;
+        }
+
+        const U = (c) => String(c).toUpperCase().normalize('NFD')
+            .replace(/[̀-ͯ]/g, '').replace(/[_\.\s]+/g, ' ').trim();
+        const NO = /MEDIDOR|RECIBO|SUMINISTRO|DOC|TELEF|CELUL|ORDEN|FECHA|CORREO|EMAIL|RUTA|CICLO|LECTUR|REFEREN/;
+        const cols = this.columnasExcel.map(String);
+        const completas = cols.filter((c) => /DIRECC|DOMICILIO/.test(U(c)) && !NO.test(U(c)));
+        const partes = cols.filter((c) => !NO.test(U(c)) &&
+            /^(URB|URBANIZ|HABILIT|VIA|NOMBRE VIA|TIPO VIA|CALLE|AVENIDA|JIRON|NRO MUNIC|NUM MUNIC|NUMERO MUNIC|N MUNICIPAL|MUNICIPAL)/.test(U(c)));
+        const sugeridas = new Set(completas.length ? completas.slice(0, 1) : partes);
+
+        cols.forEach((col, k) => {
+            const sugerida = sugeridas.has(col);
+            const id = 'rt-dir-' + k;
+            const chk = this._el('input', {
+                type: 'checkbox', id: id, value: col,
+                style: 'accent-color:#2563eb;cursor:pointer;'
+            });
+            if (sugerida) chk.checked = true;
+            chk.addEventListener('change', () => this._previewDireccion());
+            const lab = this._el('label', {
+                for: id,
+                style: 'display:inline-flex;align-items:center;gap:5px;background:#fff;' +
+                       'border:1px solid ' + (sugerida ? '#93c5fd' : '#e2e8f0') + ';' +
+                       'border-radius:5px;padding:3px 8px;font-size:0.7rem;' +
+                       'color:#334155;cursor:pointer;font-weight:600;'
+            });
+            lab.appendChild(chk);
+            lab.appendChild(document.createTextNode(col));
+            cont.appendChild(lab);
+        });
+        this._previewDireccion();
+    },
+
+    // ------------------------------------- exportar el resumen de trabajo
+    exportarExcel: function () {
+        if (!this.datosRutas.length) { alert('No hay cargas que exportar.'); return; }
+        if (typeof XLSX === 'undefined') { alert('Falta la libreria XLSX.'); return; }
+
+        const filas = [];
+        this.datosRutas.forEach((r) => {
+            (r.registros || []).forEach((it) => {
+                filas.push({
+                    CARGA: r.id,
+                    FECHA: r.fecha,
+                    LOCALIDAD: r.localidad,
+                    HORARIO_CARGA: r.hora,
+                    ORDEN: it.orden,
+                    SUMINISTRO: it.suministro,
+                    FRANJA: it.franja_horaria,
+                    HORA_ESTIMADA: it.hora_estimada,
+                    DISTRITO: it.distrito,
+                    URBANIZACION: it.urbanizacion,
+                    VIA: it.via,
+                    NUMERO: it.numero,
+                    TIPO: it.tipo_servicio || '',
+                    LATITUD: it.lat,
+                    LONGITUD: it.lon,
+                    KM_DESDE_ANTERIOR: it.km_desde_anterior,
+                    ORIGEN_COORDENADA: it.origen_coord
+                });
+            });
+        });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Cargas');
+
+        if (this.noProgramados.length) {
+            XLSX.utils.book_append_sheet(wb,
+                XLSX.utils.json_to_sheet(this.noProgramados.map((x) => ({
+                    SUMINISTRO: x.suministro, FECHA: x.fecha, LOCALIDAD: x.localidad,
+                    FRANJA: x.franja_horaria, DISTRITO: x.distrito,
+                    VIA: x.via, NUMERO: x.numero, MOTIVO: x.motivo
+                }))), 'No programados');
+        }
+        if (this.planPersonal) {
+            const plan = [];
+            Object.keys(this.planPersonal).forEach((f) => {
+                const p = this.planPersonal[f];
+                Object.keys(p.asignacion || {}).forEach((b) => {
+                    plan.push({
+                        FECHA: f, LOCALIDAD: b,
+                        TECNICOS_NECESARIOS: p.asignacion[b].pide,
+                        TECNICOS_ASIGNADOS: p.asignacion[b].recibe,
+                        DISPONIBLES_DIA: p.tecnicos_disponibles,
+                        REQUERIDOS_DIA: p.tecnicos_requeridos
+                    });
+                });
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(plan), 'Personal');
+        }
+        XLSX.writeFile(wb, 'cargas_' + new Date().toISOString().slice(0, 10) + '.xlsx');
     }
 };

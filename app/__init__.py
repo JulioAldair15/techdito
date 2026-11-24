@@ -16,3 +16,7 @@ db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 
 from . import routes
+
+# Ruteo que ya viene armado en el Excel (solo genera cargas y planos)
+from .rutas_excel import registrar as _registrar_rutas_excel
+_registrar_rutas_excel(app)

@@ -12,3 +12,5 @@ indexador-lecturas.spec
 indexador-ordenes.spec
 
 errores_api.txt
+# El mapa de calles del ruteo si se sube (es informacion publica de OpenStreetMap)
+!app/data/calles_osm.json

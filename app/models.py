@@ -657,6 +657,34 @@ class OperadorAlias(db.Model):
     id_empleado = db.Column(db.Integer, nullable=False, index=True)
     fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
 
+class CoordenadaManual(db.Model):
+    """Ubicacion de un suministro fijada a mano por el supervisor en el mapa de Rutas.
+    Manda sobre catastro en los siguientes ruteos."""
+    __tablename__ = 'coordenada_manual'
+    suministro = db.Column(db.String(50), primary_key=True)
+    lat = db.Column(db.Numeric(11, 8), nullable=False)
+    lon = db.Column(db.Numeric(11, 8), nullable=False)
+    lat_anterior = db.Column(db.Numeric(11, 8), nullable=True)
+    lon_anterior = db.Column(db.Numeric(11, 8), nullable=True)
+    origen_anterior = db.Column(db.String(60), nullable=True)
+    direccion = db.Column(db.String(300), nullable=True)
+    localidad = db.Column(db.String(100), nullable=True)
+    id_usuario = db.Column(db.Integer, nullable=True)
+    usuario = db.Column(db.String(150), nullable=True)
+    fecha = db.Column(db.DateTime, nullable=True)
+
+
+class CoordenadaGisSedalib(db.Model):
+    """Lo que respondio el GIS de Sedalib por suministro (centro del lote, UTM 17S).
+    Es una cache: evita volver a consultar a Sedalib en cada ruteo."""
+    __tablename__ = 'coordenada_gis_sedalib'
+    suministro = db.Column(db.String(50), primary_key=True)
+    este = db.Column(db.Numeric(12, 3), nullable=True)
+    norte = db.Column(db.Numeric(12, 3), nullable=True)
+    encontrado = db.Column(db.Boolean, nullable=False, default=False)
+    fecha = db.Column(db.DateTime, nullable=False)
+
+
 class UnidadMedida(db.Model):
     __tablename__ = 'unidad_medida'
     id_unidad = db.Column(db.Integer, primary_key=True)

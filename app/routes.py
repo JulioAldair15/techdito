@@ -1,6 +1,6 @@
 import os
 from flask import g, Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CoordenadasCatastro, CargaDiaria, BitacoraAlmacen, Digitacion, OperadorAlias
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CoordenadasCatastro, CargaDiaria, BitacoraAlmacen, Digitacion, OperadorAlias, CoordenadaManual, CoordenadaGisSedalib
 from flask_bcrypt import check_password_hash 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func, case
@@ -12855,558 +12855,3853 @@ def api_detalle_alerta():
 
 
 ########## RUTAS ###########
-@app.route('/api/generar_rutas', methods=['POST'])
-def generar_rutas():
-    import re
-    import math
-    import unicodedata
-    import pandas as pd
-    import numpy as np
-    from sklearn.cluster import KMeans
-    
-    try:
-        if 'archivo' not in request.files:
-            return jsonify({'error': 'No se encontró ningún archivo excel.'}), 400
-            
-        archivo = request.files['archivo']
-        
-        limite_input_web = int(request.form.get('limite_carga', 20))
-        actividad = request.form.get('actividad', 'INSPECCIONES COMERCIALES').strip().upper()
-        tipo_mapeo = request.form.get('tipo_mapeo', 'auto')
-        
-        df = pd.read_excel(archivo, dtype=str)
-        columnas_reales = df.columns.astype(str).tolist()
-        print("\n" + "="*50)
-        print(f"📋 ACTIVIDAD SELECCIONADA: {actividad}")
-        print(f"📊 1. TOTAL FILAS EN EXCEL ORIGINAL: {len(df)}")
-        
-        if tipo_mapeo == 'manual':
-            col_sum = request.form.get('col_suministro')
-            col_fec = request.form.get('col_fecha')
-            col_hor = request.form.get('col_hora')
-            col_dis = request.form.get('col_distrito')
-            col_urb = request.form.get('col_urb')
-            col_via = request.form.get('col_via')
-            col_num = request.form.get('col_numero')
-        else:
-            col_sum = next((c for c in columnas_reales if 'SUMINISTRO' in c.upper() or 'CLICOD' in c.upper()), None)
-            col_fec = next((c for c in columnas_reales if 'FECHA' in c.upper()), None)
-            col_hor = next((c for c in columnas_reales if 'HORA' in c.upper()), None)
-            col_dis = next((c for c in columnas_reales if 'DISTRIT' in c.upper()), None)
-            col_urb = next((c for c in columnas_reales if 'URBANI' in c.upper() or 'URBA' in c.upper()), None)
-            col_via = next((c for c in columnas_reales if 'VIA' in c.upper() or 'VÍA' in c.upper() or 'CALLE' in c.upper()), None)
-            col_num = next((c for c in columnas_reales if 'MUNICIPAL' in c.upper() or 'NRO' in c.upper() or 'NUMERO' in c.upper()), None)
-            
-        if not col_sum:
-            return jsonify({'error': 'No se detectó la columna Suministro.'}), 400
-            
-        df = df.dropna(subset=[col_sum])
-        df[col_sum] = df[col_sum].astype(str).str.strip()
-        print(f"📉 2. Tras quitar filas con Suministro vacío: {len(df)}")
-        
-        if col_hor and col_hor in df.columns:
-            df = df.drop_duplicates(subset=[col_sum], keep='first')
-            print(f"✂️ 3. Tras eliminar inspecciones dobles (Suministros Únicos): {len(df)}")
-            
-        suministros_unicos = df[col_sum].unique().tolist()
-        
-        # ========================================================
-        # BÚSQUEDA 1: BASE DE DATOS (CATASTRO)
-        # ========================================================
-        res_primarios = db.session.query(
-            CoordenadasCatastro.clicodfac, CoordenadasCatastro.coord_x, CoordenadasCatastro.coord_y
-        ).filter(CoordenadasCatastro.clicodfac.in_(suministros_unicos)).all()
-        df_coords1 = pd.DataFrame(res_primarios, columns=['sum_db', 'lat_x', 'lon_y'])
-        encontrados = df_coords1['sum_db'].tolist()
-        faltantes = list(set(suministros_unicos) - set(encontrados))
-        df_coords2 = pd.DataFrame()
-        
-        if faltantes:
-            res_secundarios = db.session.query(
-                DataCatastroV2.agrupado, DataCatastroV2.suministro_p, DataCatastroV2.este, DataCatastroV2.norte
-            ).filter(or_(DataCatastroV2.agrupado.in_(faltantes), DataCatastroV2.suministro_p.in_(faltantes))).all()
-            datos_sec = []
-            for r in res_secundarios:
-                match_sum = r.agrupado if r.agrupado in faltantes else r.suministro_p
-                datos_sec.append({'sum_db': match_sum, 'lat_x': r.este, 'lon_y': r.norte})
-            df_coords2 = pd.DataFrame(datos_sec)
-            
-        df_todas_coords = pd.concat([df_coords1, df_coords2]).drop_duplicates(subset=['sum_db'])
-        df = df.merge(df_todas_coords, left_on=col_sum, right_on='sum_db', how='left')
-        
-        def es_coordenada_logica(row):
-            try:
-                x, y = float(row['lat_x']), float(row['lon_y'])
-                if math.isnan(x) or math.isnan(y): return False
-                if (-83 <= x <= -68) and (-20 <= y <= 0): return True
-                if (100000 <= x <= 900000) and (7500000 <= y <= 10000000): return True
-                return False
-            except:
-                return False
-                
-        df['coordenada_valida'] = df.apply(es_coordenada_logica, axis=1)
-        df.loc[df['coordenada_valida'] == False, ['lat_x', 'lon_y']] = np.nan
-        
-        # ========================================================
-        # BÚSQUEDA 2: IA GEOCODIFICADORA POR DIRECCIÓN
-        # ========================================================
-        df_sin_coords = df[df['lat_x'].isnull()].copy()
-        if not df_sin_coords.empty and col_via:
-            from geopy.geocoders import ArcGIS
-            geolocator = ArcGIS(timeout=5)
-            direcciones_cacheadas = {}
-            for idx, row in df_sin_coords.iterrows():
-                via = str(row.get(col_via, '')).strip()
-                if not via or via.lower() == 'nan': continue
-                num = str(row.get(col_num, '')).strip()
-                num = num if num.lower() != 'nan' and num != 's/n' else ''
-                urb = str(row.get(col_urb, '')).strip()
-                urb = urb if urb.lower() != 'nan' else ''
-                dis = str(row.get(col_dis, '')).strip()
-                dis = dis if dis.lower() != 'nan' else ''
-                direccion_completa = f"{via} {num}, {urb}, {dis}, Trujillo, La Libertad, Peru".replace(" ,", ",").replace("  ", " ").strip()
-                
-                if direccion_completa in direcciones_cacheadas:
-                    if direcciones_cacheadas[direccion_completa]:
-                        df.at[idx, 'lat_x'] = direcciones_cacheadas[direccion_completa]['lat']
-                        df.at[idx, 'lon_y'] = direcciones_cacheadas[direccion_completa]['lon']
-                    continue
-                try:
-                    location = geolocator.geocode(direccion_completa)
-                    if location:
-                        df.at[idx, 'lat_x'] = location.longitude
-                        df.at[idx, 'lon_y'] = location.latitude
-                        direcciones_cacheadas[direccion_completa] = {'lat': location.longitude, 'lon': location.latitude}
-                    else:
-                        direcciones_cacheadas[direccion_completa] = None
-                except Exception:
-                    direcciones_cacheadas[direccion_completa] = None
-                    
-        # ========================================================
-        # IDENTIFICACIÓN DE ZONAS Y SECTORES
-        # ========================================================
-        def normalizar_texto_zona(valor):
-            texto = '' if valor is None else str(valor)
-            texto = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('ascii')
-            return ' '.join(texto.upper().strip().split())
-            
-        def identificar_zona(row):
-            zonas = {
-                'EL MILAGRO': ['EL MILAGRO', 'MILAGRO'],
-                'HUANCHACO': ['HUANCHACO', 'HUANCHAQUITO'],
-                'MOCHE': ['MOCHE'],
-                'SALAVERRY': ['SALAVERRY'],
-                'CHEPEN': ['CHEPEN'],
-                'PAIJAN': ['PAIJAN'],
-                'CHOCOPE': ['CHOCOPE'],
-                'PUERTO MALABRIGO': ['PUERTO MALABRIGO', 'MALABRIGO'],
-                'PACANGUILLA': ['PACANGUILLA'],
-                'TRUJILLO': ['TRUJILLO'],
-                'EL PORVENIR': ['EL PORVENIR', 'PORVENIR'],
-                'LA ESPERANZA': ['LA ESPERANZA', 'ESPERANZA'],
-                'VICTOR LARCO HERRERA': ['VICTOR LARCO', 'LARCO', 'BUENOS AIRES'],
-                'FLORENCIA DE MORA': ['FLORENCIA DE MORA', 'FLORENCIA']
-            }
-            campos_zona = []
-            for col in [col_dis, col_urb, col_via]:
-                if col and col in row.index:
-                    valor = normalizar_texto_zona(row.get(col, ''))
-                    if valor and valor != 'NAN':
-                        campos_zona.append(valor)
-            for zona, aliases in zonas.items():
-                if zona == 'TRUJILLO': continue
-                for campo in campos_zona:
-                    if campo in aliases: return zona
-            texto_completo = ' | '.join(campos_zona)
-            for zona, aliases in zonas.items():
-                if zona == 'TRUJILLO': continue
-                for alias in aliases:
-                    if re.search(rf'\b{re.escape(alias)}\b', texto_completo): return zona
-            for campo in campos_zona:
-                if campo == 'TRUJILLO': return 'TRUJILLO'
-            if re.search(r'\bTRUJILLO\b', texto_completo): return 'TRUJILLO'
-            if campos_zona: return f'OTRA ZONA - {campos_zona[0]}'
-            return 'SIN ZONA'
-            
-        df['__zona__'] = df.apply(identificar_zona, axis=1)
-        
-        def clasificar_eje_base(zona_str):
-            z = str(zona_str).upper()
-            if z in ['LA ESPERANZA', 'HUANCHACO', 'EL MILAGRO']: return 'SECTOR_NORTE'
-            if z in ['EL PORVENIR', 'FLORENCIA DE MORA']: return 'SECTOR_ESTE'
-            if z in ['MOCHE', 'SALAVERRY']: return 'SECTOR_SUR'
-            if z in ['VICTOR LARCO HERRERA', 'BUENOS AIRES', 'LARCO']: return 'SECTOR_OESTE'
-            if z in ['TRUJILLO']: return 'TRUJILLO_CENTRO'
-            return 'AISLADA'
+import io
+import os
+import json
+import time
+import math
+import re
+import logging
+import unicodedata
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 
-        df['__placa__'] = df['__zona__'].apply(clasificar_eje_base)
-        
-        if not col_fec or col_fec not in df.columns or df[col_fec].isnull().all():
-            df['__fecha_generica__'] = 'Sin Fecha'
-            col_fec = '__fecha_generica__'
-        else:
-            df[col_fec] = df[col_fec].astype(str).str.strip()
-            
-        tiene_horas = col_hor and col_hor in df.columns and not df[col_hor].isnull().all()
-        if tiene_horas:
-            df[col_hor] = df[col_hor].astype(str).str.strip().str.upper()
-        else:
-            df['__hora_generica__'] = 'Jornada Completa'
-            col_hor = '__hora_generica__'
-            
-        df_validos = df.dropna(subset=['lat_x', 'lon_y']).copy()
-        df_validos['lat_x'] = pd.to_numeric(df_validos['lat_x'], errors='coerce')
-        df_validos['lon_y'] = pd.to_numeric(df_validos['lon_y'], errors='coerce')
-        df_validos = df_validos.dropna(subset=['lat_x', 'lon_y'])
-        
-        registros_sin_coords = len(df) - len(df_validos)
-        
-        print(f"✅ 7. TOTAL FINAL VÁLIDOS PARA RUTEAR: {len(df_validos)}")
-        print("="*50 + "\n")
-        
-        # ========================================================
-        # 🔥 4. ALGORITMO MAESTRO CON "CUOTA HORARIA JUSTA" 🔥
-        # ========================================================
-        rutas_generadas = []
-        carga_id = 1
+import numpy as np
+import pandas as pd
+from flask import request, jsonify, send_file, g   # 'g' se deja por si otra seccion lo usa
+from sqlalchemy import or_
+from sklearn.cluster import KMeans
 
-        def unificar_a_metros(row):
-            x, y = float(row['lat_x']), float(row['lon_y'])
-            if -20 < y < 0:
-                return 716000 + ((x - (-79.03)) * 109000), 9102000 + ((y - (-8.11)) * 111000)
-            return x, y
+# Validacion direccion <-> coordenada. routes.py vive dentro del paquete 'app',
+# asi que el import es relativo (los dos archivos van en la carpeta app\).
+# Si algun dia se ponen en la raiz del proyecto, el segundo intento los encuentra.
+try:
+    from .rutas_direcciones import (validar_df as _validar_direcciones_df,
+                                    campos_direccion as _campos_direccion,
+                                    alertas_direccion as _alertas_direccion,
+                                    ETIQUETAS_EXPORT as _ETIQ_DIR,
+                                    ESTADOS_VERDES as _DIR_VERDES,
+                                    ESTADOS_ROJOS as _DIR_ROJOS)
+except ImportError:
+    from rutas_direcciones import (validar_df as _validar_direcciones_df,
+                                   campos_direccion as _campos_direccion,
+                                   alertas_direccion as _alertas_direccion,
+                                   ETIQUETAS_EXPORT as _ETIQ_DIR,
+                                   ESTADOS_VERDES as _DIR_VERDES,
+                                   ESTADOS_ROJOS as _DIR_ROJOS)
 
-        df_validos[['math_x', 'math_y']] = df_validos.apply(lambda r: pd.Series(unificar_a_metros(r)), axis=1)
+log = logging.getLogger(__name__)
 
-        if actividad == 'INSPECCIONES COMERCIALES':
-            promedio_supervisor = 12.5 
-            tope_absoluto = 15
-            
-            if tiene_horas:
-                def get_slot_minutos(h_str):
-                    try:
-                        matches = re.findall(r'(\d{1,2}):(\d{2})\s*(AM|PM)', str(h_str).upper())
-                        if not matches: return 9999
-                        h, m, ampm = int(matches[0][0]), int(matches[0][1]), matches[0][2]
-                        if ampm == 'PM' and h < 12: h += 12
-                        if ampm == 'AM' and h == 12: h = 0
-                        return h * 60 + m
-                    except: return 9999
-                df_validos['__ini__'] = df_validos[col_hor].apply(get_slot_minutos)
-            else:
-                df_validos['__ini__'] = 0
+# Punto exacto del lote desde el GIS corporativo de Sedalib (ver gis_sedalib.py)
+try:
+    from . import gis_sedalib as _gis
+except ImportError:
+    import gis_sedalib as _gis
 
-            for fecha, datos_dia in df_validos.groupby(col_fec):
-                
-                df_dia = datos_dia.copy()
-                periferia = df_dia[df_dia['__placa__'].isin(['SECTOR_NORTE', 'SECTOR_ESTE', 'SECTOR_SUR', 'SECTOR_OESTE'])]
-                trujillo_pura = df_dia[df_dia['__placa__'] == 'TRUJILLO_CENTRO']
-                
-                # Expandir las placas: Los puntos de Trujillo Centro se asimilan a la periferia más cercana
-                if not periferia.empty and not trujillo_pura.empty:
-                    for idx, row in trujillo_pura.iterrows():
-                        min_d = float('inf')
-                        mejor_placa = 'TRUJILLO_CENTRO'
-                        for _, p_row in periferia.iterrows():
-                            d = (row['math_x'] - p_row['math_x'])**2 + (row['math_y'] - p_row['math_y'])**2
-                            if d < min_d:
-                                min_d = d
-                                mejor_placa = p_row['__placa__']
-                                
-                        if math.sqrt(min_d) < 3500:
-                            df_dia.at[idx, '__placa__'] = mejor_placa
-                            
-                cargas_totales = []
-                
-                # Por cada bloque geográfico aislado...
-                for placa, df_placa in df_dia.groupby('__placa__'):
-                    total_puntos_placa = len(df_placa)
-                    if total_puntos_placa == 0: continue
-                    
-                    num_cargas_placa = max(1, math.ceil(total_puntos_placa / promedio_supervisor))
-                    
-                    cargas_placa = [{'items': [], 'total': 0, 'cx': 0, 'cy': 0, 'conteo_horas': {}, 'placa': placa} for _ in range(num_cargas_placa)]
-                    
-                    coords = df_placa[['math_x', 'math_y']].values
-                    if num_cargas_placa > 1 and len(coords) >= num_cargas_placa:
-                        kmeans = KMeans(n_clusters=num_cargas_placa, n_init=10, random_state=42)
-                        kmeans.fit(coords)
-                        for i in range(num_cargas_placa):
-                            cargas_placa[i]['cx'], cargas_placa[i]['cy'] = kmeans.cluster_centers_[i]
-                    else:
-                        cargas_placa[0]['cx'], cargas_placa[0]['cy'] = coords[0]
-                        
-                    # 🔥 ASIGNACIÓN EQUITATIVA AGRUPADA POR HORA 🔥
-                    # En lugar de asignar a lo loco, agrupamos las tareas de ESTA placa por franja horaria.
-                    for t_hora, grupo_hora in df_placa.groupby('__ini__'):
-                        tareas_hora = grupo_hora.to_dict('records')
-                        
-                        # Cuota matemática: Si en esta hora hay 14 tareas y son 2 técnicos, a lo mucho harán 7 cada uno. NUNCA 10 y 4.
-                        # Ponemos un mínimo de 6 para no ser tan estrictos en franjas vacías.
-                        cuota_max_hora = max(6, math.ceil(len(tareas_hora) / num_cargas_placa))
-                        
-                        for task in tareas_hora:
-                            t_x, t_y = task['math_x'], task['math_y']
-                            
-                            opciones_validas = []
-                            for i, c in enumerate(cargas_placa):
-                                if c['total'] >= tope_absoluto: continue
-                                if c['conteo_horas'].get(t_hora, 0) >= cuota_max_hora: continue # ¡El candado justo!
-                                
-                                dist = math.sqrt((t_x - c['cx'])**2 + (t_y - c['cy'])**2)
-                                opciones_validas.append({'idx': i, 'dist': dist})
-                                
-                            if opciones_validas:
-                                mejor = min(opciones_validas, key=lambda x: x['dist'])
-                                idx = mejor['idx']
-                                cargas_placa[idx]['items'].append(task)
-                                cargas_placa[idx]['total'] += 1
-                                cargas_placa[idx]['conteo_horas'][t_hora] = cargas_placa[idx]['conteo_horas'].get(t_hora, 0) + 1
-                                cargas_placa[idx]['cx'] = (cargas_placa[idx]['cx'] * 0.9) + (t_x * 0.1)
-                                cargas_placa[idx]['cy'] = (cargas_placa[idx]['cy'] * 0.9) + (t_y * 0.1)
-                            else:
-                                # Rescate: Si la matemática se cuadró, buscamos al técnico que menos inspecciones tenga EN ESTA HORA
-                                opc_emergencia = [c for c in cargas_placa if c['total'] < tope_absoluto]
-                                if not opc_emergencia: opc_emergencia = cargas_placa
-                                
-                                c_emergencia = min(opc_emergencia, key=lambda c: c['conteo_horas'].get(t_hora, 0))
-                                c_emergencia['items'].append(task)
-                                c_emergencia['total'] += 1
-                                c_emergencia['conteo_horas'][t_hora] = c_emergencia['conteo_horas'].get(t_hora, 0) + 1
-                                
-                    cargas_totales.extend(cargas_placa)
+try:
+    from scipy.spatial import cKDTree
+except Exception:                                    # pragma: no cover
+    cKDTree = None
 
-                # TEJIDO CRONOLÓGICO Y RUTA FINAL
-                for c in cargas_totales:
-                    if not c['items']: continue
-                    
-                    df_c = pd.DataFrame(c['items'])
-                    ruta_ordenada = []
-                    
-                    for ini_val, grupo in df_c.groupby('__ini__', sort=True):
-                        pts_hora = grupo.to_dict('records')
-                        if not ruta_ordenada:
-                            pts_hora.sort(key=lambda x: -float(x['math_y']))
-                            punto_actual = pts_hora.pop(0)
-                        else:
-                            punto_anterior = ruta_ordenada[-1]
-                            idx_c = min(range(len(pts_hora)), key=lambda i: (pts_hora[i]['math_x'] - punto_anterior['math_x'])**2 + (pts_hora[i]['math_y'] - punto_anterior['math_y'])**2)
-                            punto_actual = pts_hora.pop(idx_c)
-                            
-                        ruta_ordenada.append(punto_actual)
-                        
-                        while pts_hora:
-                            idx_c = min(range(len(pts_hora)), key=lambda i: (pts_hora[i]['math_x'] - punto_actual['math_x'])**2 + (pts_hora[i]['math_y'] - punto_actual['math_y'])**2)
-                            punto_actual = pts_hora.pop(idx_c)
-                            ruta_ordenada.append(punto_actual)
+try:
+    from pyproj import Transformer
+    _A_UTM = Transformer.from_crs("EPSG:4326", "EPSG:32717", always_xy=True)
+    _A_GEO = Transformer.from_crs("EPSG:32717", "EPSG:4326", always_xy=True)
+except Exception:                                    # pragma: no cover
+    _A_UTM = _A_GEO = None
+    log.warning("pyproj no esta instalado: se usan las formulas UTM propias (mismo resultado).")
 
-                    # ====================================================
-                    # 🖨️ PRINTS DE AUDITORÍA: DIRECCIONES Y COORDENADAS
-                    # ====================================================
-                    print(f"\n📦 CARGA GENERADA ID: {carga_id} | SECTOR DOMINANTE: {c['placa']}")
-                    print(f"📊 Total de suministros en esta carga: {len(ruta_ordenada)}")
-                    
-                    franjas_ordenadas = []
-                    conteos = {}
-                    distritos_involucrados = set()
-                    for item in ruta_ordenada:
-                        rango_str = str(item.get(col_hor, 'Sin Rango'))
-                        dist = str(item.get(col_dis, '')).strip().upper()
-                        if dist and dist != 'NAN': distritos_involucrados.add(dist)
-                        
-                        if not franjas_ordenadas or franjas_ordenadas[-1] != rango_str:
-                            franjas_ordenadas.append(rango_str)
-                        conteos[rango_str] = conteos.get(rango_str, 0) + 1
-                    
-                    distritos_str = " + ".join(list(distritos_involucrados))
-                    print(f"🌍 Distritos Involucrados: {distritos_str}")
-                    
-                    print(f"🕒 Distribución por rangos de hora (EJECUTADO EN ESTE ORDEN):")
-                    for rango_nombre in franjas_ordenadas:
-                        print(f"   -> {rango_nombre}: {conteos[rango_nombre]} suministros")
+# ---- UTM 17S <-> grados sin pyproj (formulas de Snyder, WGS84; error < 1 mm en la zona)
+_WGS_A = 6378137.0
+_WGS_E2 = (1 / 298.257223563) * (2 - 1 / 298.257223563)
+_WGS_EP2 = _WGS_E2 / (1 - _WGS_E2)
+_UTM_K0 = 0.9996
+_UTM_LON0 = np.radians(-81.0)          # meridiano central de la zona 17
+_UTM_FN = 10000000.0                   # falso norte del hemisferio sur
 
-                    print(f"\n🛣️ DETALLE DEL RECORRIDO:")
-                    distancia_total_ruta = 0
-                    for i in range(len(ruta_ordenada)):
-                        item = ruta_ordenada[i]
-                        rango_str = str(item.get(col_hor, 'Sin Rango'))
-                        sum_val = str(item.get(col_sum, 'N/A'))
-                        
-                        via_str = str(item.get(col_via, '')).strip()
-                        num_str = str(item.get(col_num, '')).strip()
-                        urb_str = str(item.get(col_urb, '')).strip()
-                        direccion_str = f"{via_str} {num_str} - {urb_str}".strip()
-                        if not direccion_str or direccion_str == '-': direccion_str = "Sin dirección registrada"
-                        coord_str = f"[{item.get('lon_y', 'N/A')}, {item.get('lat_x', 'N/A')}]"
-                        
-                        if i == 0:
-                            print(f"   📍 [INICIO] {rango_str} | Sum: {sum_val}")
-                            print(f"      🏠 Dir: {direccion_str} | 📌 Coords: {coord_str}")
-                        else:
-                            p1, p2 = ruta_ordenada[i-1], ruta_ordenada[i]
-                            dist_m = math.sqrt((p1['math_x'] - p2['math_x'])**2 + (p1['math_y'] - p2['math_y'])**2)
-                            dist_km = dist_m / 1000.0
-                            distancia_total_ruta += dist_km
-                            
-                            rango_ant = str(ruta_ordenada[i-1].get(col_hor, 'Sin Rango'))
-                            if rango_str == rango_ant:
-                                print(f"      ↓ {dist_km:.2f} km (Mismo rango) -> Sum: {sum_val}")
-                            else:
-                                print(f"      ↓ {dist_km:.2f} km ⏱️ [AVANZA A: {rango_str}] -> Sum: {sum_val}")
-                            print(f"      🏠 Dir: {direccion_str} | 📌 Coords: {coord_str}")
 
-                    print(f"\n📏 Distancia total del recorrido interno: {distancia_total_ruta:.2f} km")
-                    print("-" * 50)
+def _utm17s_desde_grados(lon, lat):
+    a, e2, ep2, k0 = _WGS_A, _WGS_E2, _WGS_EP2, _UTM_K0
+    e4, e6 = e2 * e2, e2 * e2 * e2
+    phi = np.radians(lat)
+    s, c, t = np.sin(phi), np.cos(phi), np.tan(phi)
+    n = a / np.sqrt(1 - e2 * s * s)
+    tt, cc = t * t, ep2 * c * c
+    aa = c * (np.radians(lon) - _UTM_LON0)
+    m = a * ((1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256) * phi
+             - (3 * e2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) * np.sin(2 * phi)
+             + (15 * e4 / 256 + 45 * e6 / 1024) * np.sin(4 * phi)
+             - (35 * e6 / 3072) * np.sin(6 * phi))
+    x = k0 * n * (aa + (1 - tt + cc) * aa ** 3 / 6
+                  + (5 - 18 * tt + tt * tt + 72 * cc - 58 * ep2) * aa ** 5 / 120) + 500000.0
+    y = k0 * (m + n * t * (aa * aa / 2 + (5 - tt + 9 * cc + 4 * cc * cc) * aa ** 4 / 24
+                           + (61 - 58 * tt + tt * tt + 600 * cc - 330 * ep2) * aa ** 6 / 720))
+    return x, y + _UTM_FN
 
-                    df_ruta = pd.DataFrame(ruta_ordenada)
-                    rutas_generadas.append(construir_objeto_ruta(carga_id, str(fecha), "Horarios Mixtos", df_ruta, col_sum, col_dis, col_urb, col_via, col_num, col_hor))
-                    carga_id += 1
 
-        # -----------------------------------------------------------------------------------
-        # RAMA B: OTRAS ACTIVIDADES (PERSUASIVAS, LECTURAS)
-        # -----------------------------------------------------------------------------------
-        else:
-            df_validos['__ini__'] = 0
-            for fecha, datos_dia in df_validos.groupby(col_fec):
-                
-                df_dia = datos_dia.copy()
-                periferia = df_dia[df_dia['__placa__'].isin(['SECTOR_NORTE', 'SECTOR_ESTE', 'SECTOR_SUR', 'SECTOR_OESTE'])]
-                trujillo_pura = df_dia[df_dia['__placa__'] == 'TRUJILLO_CENTRO']
-                
-                if not periferia.empty and not trujillo_pura.empty:
-                    for idx, row in trujillo_pura.iterrows():
-                        min_d = float('inf')
-                        mejor_placa = 'TRUJILLO_CENTRO'
-                        for _, p_row in periferia.iterrows():
-                            d = (row['math_x'] - p_row['math_x'])**2 + (row['math_y'] - p_row['math_y'])**2
-                            if d < min_d:
-                                min_d = d
-                                mejor_placa = p_row['__placa__']
-                        if math.sqrt(min_d) < 3500:
-                            df_dia.at[idx, '__placa__'] = mejor_placa
+def _grados_desde_utm17s(x, y):
+    a, e2, ep2, k0 = _WGS_A, _WGS_E2, _WGS_EP2, _UTM_K0
+    e1 = (1 - np.sqrt(1 - e2)) / (1 + np.sqrt(1 - e2))
+    m = (np.asarray(y, dtype="float64") - _UTM_FN) / k0
+    mu = m / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 ** 3 / 256))
+    phi1 = (mu + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * np.sin(2 * mu)
+            + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * np.sin(4 * mu)
+            + (151 * e1 ** 3 / 96) * np.sin(6 * mu)
+            + (1097 * e1 ** 4 / 512) * np.sin(8 * mu))
+    s, c, t = np.sin(phi1), np.cos(phi1), np.tan(phi1)
+    n1 = a / np.sqrt(1 - e2 * s * s)
+    r1 = a * (1 - e2) / (1 - e2 * s * s) ** 1.5
+    t1, c1 = t * t, ep2 * c * c
+    d = (np.asarray(x, dtype="float64") - 500000.0) / (n1 * k0)
+    lat = phi1 - (n1 * t / r1) * (d * d / 2
+                                  - (5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * ep2) * d ** 4 / 24
+                                  + (61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * ep2
+                                     - 3 * c1 * c1) * d ** 6 / 720)
+    lon = _UTM_LON0 + (d - (1 + 2 * t1 + c1) * d ** 3 / 6
+                       + (5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * ep2 + 24 * t1 * t1)
+                       * d ** 5 / 120) / c
+    return np.degrees(lon), np.degrees(lat)
 
-                for placa, df_placa in df_dia.groupby('__placa__'):
-                    total_puntos_placa = len(df_placa)
-                    if total_puntos_placa == 0: continue
-                    
-                    num_cargas_placa = max(1, math.ceil(total_puntos_placa / limite_input_web))
-                    coords = df_placa[['math_x', 'math_y']].values
-                    
-                    if num_cargas_placa > 1 and len(coords) >= num_cargas_placa:
-                        kmeans = KMeans(n_clusters=num_cargas_placa, n_init=10, random_state=42)
-                        labels = kmeans.fit_predict(coords)
-                        df_placa = df_placa.copy()
-                        df_placa['cluster_label'] = labels
-                    else:
-                        df_placa = df_placa.copy()
-                        df_placa['cluster_label'] = 0
 
-                    for cluster_idx in range(num_cargas_placa):
-                        pts_carga = df_placa[df_placa['cluster_label'] == cluster_idx].to_dict('records')
-                        if not pts_carga: continue
-                        
-                        ruta_ordenada = []
-                        pts_carga.sort(key=lambda x: -float(x['math_y']))
-                        punto_actual = pts_carga.pop(0)
-                        ruta_ordenada.append(punto_actual)
-                        
-                        while pts_carga:
-                            idx_c = min(range(len(pts_carga)), key=lambda i: (pts_carga[i]['math_x'] - punto_actual['math_x'])**2 + (pts_carga[i]['math_y'] - punto_actual['math_y'])**2)
-                            punto_actual = pts_carga.pop(idx_c)
-                            ruta_ordenada.append(punto_actual)
 
-                        df_ruta = pd.DataFrame(ruta_ordenada)
-                        rutas_generadas.append(construir_objeto_ruta(carga_id, str(fecha), "Jornada Completa", df_ruta, col_sum, col_dis, col_urb, col_via, col_num, col_hor))
-                        carga_id += 1
+# =============================================================================
+#  CONFIGURACION OPERATIVA  (todo lo tuneable vive aqui)
+# =============================================================================
+CFG = {
+    # --- Tiempos ---
+    "MIN_INSPECCION":        20,      # minutos dentro del predio
+    "VELOCIDAD_KMH":         15.0,    # velocidad urbana efectiva
+    "FACTOR_RUTA":           1.35,    # euclidiano -> calle real
+    "MIN_TRASLADO_FIJO":     2,       # estacionar / ubicar el predio
+    "MIN_TRASLADO_CERCANO":  1,       # el mismo buffer si estan a menos de 200 m
+    "TRASLADO_NOMINAL":      8,       # solo para estimar cuantas cargas abrir
 
-        # ========================================================
-        # 5. ORDENAR CARGAS CRONOLÓGICAMENTE
-        # ========================================================
-        def ordenar_por_hora(ruta):
-            hora_str = str(ruta.get('hora', ''))
-            if 'JORNADA' in hora_str or 'SIN' in hora_str or not hora_str:
-                from datetime import datetime
-                return datetime.strptime('23:59', '%H:%M')
-            try:
-                from datetime import datetime
-                hora_inicio = hora_str.split('-')[0].strip()
-                return datetime.strptime(hora_inicio, '%I:%M %p')
-            except:
-                from datetime import datetime
-                return datetime.strptime('23:59', '%H:%M')
-                
-        rutas_generadas.sort(key=ordenar_por_hora)
-        
-        for i, ruta in enumerate(rutas_generadas):
-            ruta['id'] = i + 1
+    # --- Jornada ---
+    "JORNADA_INICIO":        7 * 60,   # 07:00
+    "JORNADA_FIN":           18 * 60,  # 18:00 (muro duro)
+    "JORNADA_PREFERIDA_FIN": 14 * 60,  # 14:00 (preferencia blanda, inspecciones)
+    "JORNADA_MASIVA_MIN_H":  6,        # actividades masivas: minimo deseado
+    "JORNADA_MASIVA_MAX_H":  8,        # actividades masivas: maximo duro
+    "MAX_TECNICOS_DIA":      16,       # SOLO respaldo para recalcular. La cuadrilla
+                                       # real la escribe el usuario en el modal,
+                                       # porque no es la misma para inspecciones
+                                       # que para lecturas. Nunca es un muro: si el
+                                       # trabajo no entra se abren mas cargas y se
+                                       # avisa, antes que dejar registros fuera.
+    "TOPE_DIARIO":           15,       # registros maximos por carga/dia
+    "TOPE_POR_FRANJA_HORA":  3.0,      # techo: 3/hora -> hasta 6 en una franja de 2h.
+                                       # Llegar a 5 o 6 solo pasa con predios pegados;
+                                       # el reloj real es el que decide.
+    "TOLERANCIA_FRANJA_MIN": 10,       # minutos de gracia al cierre de franja
+    "DURACION_FRANJA_DEFECTO": 120,    # si la celda trae una sola hora
 
-        print("\n" + "="*50)
-        print(f"✅ RESUMEN FINAL: Se generaron {len(rutas_generadas)} cargas en total.")
-        print("="*50 + "\n")
+    # --- Geografia ---
+    "RADIO_MISMA_LOCALIDAD_M": 6000,   # diametro max de una carga
+    "RADIO_CONURBACION_M":     3000,   # max entre predios de distritos distintos
+    "RADIO_MEZCLA_ACEPTABLE_M": 15000, # hasta aqui juntar localidades es razonable
+                                       # (Moche-Salaverry son ~10 km); mas alla
+                                       # se avisa mas fuerte, pero decide el usuario
+    "CONURBACION_ACTIVA":      True,   # False = ni siquiera Trujillo metro se mezcla
+    "UMBRAL_CONSOLIDACION":    4,      # se intenta disolver cargas de <= N registros
+    "MAX_KM_INSERCION":        6.0,    # km extra maximos al reubicar un predio
+    "MAX_RECEPTORAS_EVALUADAS": 12,    # vecinas evaluadas al consolidar
+    "MAX_VUELTAS_CONSOLIDACION": 40,
 
-        return jsonify({
-            'status': 'success',
-            'resumen': {
-                'total_excel': len(df),
-                'sin_coordenadas': registros_sin_coords,
-                'total_cargas_generadas': len(rutas_generadas)
-            },
-            'rutas': rutas_generadas
-        }), 200
-        
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
+    # --- Rendimiento ---
+    "VECINOS_CANDIDATOS":      12,     # predios cercanos que evalua cada carga
 
-def construir_objeto_ruta(carga_id, fecha, hora_texto, df_ruta, col_sum, col_dis, col_urb, col_via, col_num, col_hor=None):
-    hora_display = hora_texto
-    if col_hor and col_hor in df_ruta.columns:
-        if hora_texto == "Horarios Mixtos":
-            min_val, max_val = df_ruta['__ini__'].min(), df_ruta['__ini__'].max()
-            if min_val != 9999 and max_val != 9999:
-                def min_to_ampm(m):
-                    h, mn = int(m // 60), int(m % 60)
-                    ampm, h12 = ("AM" if h < 12 else "PM"), (h % 12)
-                    return f"{12 if h12 == 0 else h12:02d}:{mn:02d} {ampm}"
-                hora_display = f"Inicia: {min_to_ampm(min_val)}"
-            else: hora_display = "Jornada Completa"
-            
-    registros = []
-    distritos_set = set()
-    for _, fila in df_ruta.iterrows():
-        distrito = str(fila.get(col_dis, '')) if col_dis else ''
-        urb = str(fila.get(col_urb, '')) if col_urb else ''
-        via = str(fila.get(col_via, 'Dirección no especificada')) if col_via else 'Dirección no especificada'
-        num = str(fila.get(col_num, 'S/N')) if col_num else 'S/N'
-        franja = str(fila.get(col_hor, '')) if col_hor and col_hor in fila else ''
-        
-        if distrito and str(distrito).upper() != 'NAN':
-            distritos_set.add(str(distrito).upper())
-            
-        if franja.upper() == 'NAN': franja = ''
-        registros.append({
-            'suministro': str(fila.get(col_sum, '')),
-            'distrito': distrito if distrito != 'nan' else '',
-            'urbanizacion': urb if urb != 'nan' else '',
-            'via': via if via != 'nan' else 'Dirección no especificada',
-            'numero': num if num != 'nan' else 'S/N',
-            'coord_x': fila['lat_x'],
-            'coord_y': fila['lon_y'],
-            'franja_horaria': franja
-        })
-        
-    zonas_ruta = list(distritos_set)
-    if len(zonas_ruta) > 1:
-        zona_display = " / ".join(zonas_ruta[:2]) + ("..." if len(zonas_ruta) > 2 else "")
+    # --- Geocodificacion ---
+    "MAX_GEOCODE_POR_PETICION": 800,
+    "GEOCODE_WORKERS":          6,
+    "GEOCODE_TIMEOUT":          6,
+    "GEOCODE_RADIO_VALIDACION_M": 25000,
+    "GEOCODE_SCORE_MINIMO":     80,     # precision minima aceptada de ArcGIS
+    "GEOCODE_USAR_NOMINATIM":   True,   # segundo intento con OpenStreetMap
+    "MAX_NOMINATIM_POR_PETICION": 150,  # va en serie: hay que acotarlo
+    "NOMINATIM_USER_AGENT":     "radian-rutas/1.0",
+    "NOMINATIM_PAUSA_S":        1.1,    # su politica de uso exige 1 req/segundo
+
+    # --- Localidades que el diccionario no reconoce ---
+    # Los AAHH, urbanizaciones y sectores no son distritos: estan DENTRO de uno.
+    # Si cada nombre desconocido arma su propia localidad, la pared de
+    # localidades le prohibe juntarse con el distrito que lo contiene y cada uno
+    # termina cerrando una carga suelta de 2 o 3 registros. Por eso se miden
+    # contra los distritos reconocidos y se absorben en el mas cercano.
+    "ABSORBER_DESCONOCIDAS":  True,
+    "RADIO_ABSORCION_M":      12000,   # un AAHH mas lejos que esto no se absorbe
+    "MIN_MUESTRA_ABSORCION":  3,       # puntos minimos para ubicar un nombre
+
+    # --- Auditoria de coordenadas de catastro ---
+    # No todas las coordenadas que hay en la base son ciertas. Estas cifras
+    # deciden cuando una se considera imposible. Todo se mide contra la nube de
+    # predios de la MISMA localidad, que sale del propio Excel y no cuesta una
+    # sola consulta a internet.
+    "AUDITAR_COORDENADAS":    True,    # se puede apagar desde el modal
+    "COORD_REGION_X":         (600000, 850000),      # UTM 17S, La Libertad holgada
+    "COORD_REGION_Y":         (9000000, 9300000),
+    "COORD_MIN_MUESTRA":      5,       # puntos minimos para opinar de una localidad
+    "COORD_RADIO_PISO_M":     5000,    # nunca se marca por debajo de esto
+    "COORD_RADIO_TECHO_M":    25000,   # ni se tolera por encima
+    "COORD_MIN_LOCALIDADES_RELLENO": 3,  # misma coordenada en N localidades = relleno
+
+    # --- Validacion direccion <-> coordenada (validador_direcciones.py) ---
+    "VALIDAR_DIRECCIONES":  True,      # se puede apagar desde el modal
+    "CALLES_OSM_ARCHIVO":   os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                         "data", "calles_osm.json"),
+    "DIR_USAR_GEOCODER":    True,      # segunda opinion, solo para los dudosos
+    "DIR_TOL_OK_M":         150,       # a esto de su calle: correcta
+    "DIR_TOL_MAL_M":        400,       # mas lejos: no corresponde
+    "DIR_ANCLA_MAX_M":      800,       # la calle debe pasar a esto de su urbanizacion
+    "DIR_HAB_MAX_M":        1500,      # mas lejos de su urbanizacion: esta en otra
+    "DIR_CONSENSO_MIN":     3,         # predios de la misma calle para comparar
+    "DIR_MAX_GEOCODE":      150,       # consultas al geocodificador por proceso
+
+    # --- Ubicacion acotada a la localidad y correcciones manuales ---
+    "LOCALIDAD_MIN_PUNTOS":      5,     # puntos de catastro para calcular la zona con datos propios
+    "LOCALIDAD_MARGEN_M":        800,   # se suma al percentil 90 de la nube de la localidad
+    "LOCALIDAD_RADIO_MIN_M":     2000,
+    "LOCALIDAD_RADIO_MAX_M":     8000,
+    "LOCALIDAD_RADIO_DEFECTO_M": 5000,  # alrededor del centro OSM si hay pocos puntos
+    "GEOCODE_CANDIDATOS":        6,     # candidatos del geocodificador que se evaluan
+
+    # --- GIS de Sedalib (punto exacto del lote por suministro) ---
+    # Solo funciona si el servidor tiene credenciales (ver gis_sedalib.py).
+    "GIS_SEDALIB_ACTIVO":          True,
+    "GIS_SEDALIB_HILOS":           4,     # consultas a la vez (no saturar a Sedalib)
+    "GIS_SEDALIB_MAX_POR_PROCESO": 300,
+    "GIS_SEDALIB_MAX_SEG":         15,    # tiempo maximo esperando a Sedalib por proceso
+    "GIS_SEDALIB_CACHE_DIAS":      30,    # un lote encontrado se reutiliza 30 dias
+    "GIS_SEDALIB_CACHE_NO_DIAS":   7,     # un "no lo tiene" se vuelve a preguntar a los 7
+
+    # --- BD ---
+    "DB_CHUNK": 900,
+}
+
+# =============================================================================
+#  DICCIONARIO DE LOCALIDADES
+# =============================================================================
+ZONAS = {
+    "EL MILAGRO":           ["EL MILAGRO", "MILAGRO"],
+    "HUANCHACO":            ["HUANCHACO", "HUANCHAQUITO"],
+    "MOCHE":                ["MOCHE", "LAS DELICIAS"],
+    "SALAVERRY":            ["SALAVERRY"],
+    "LAREDO":               ["LAREDO"],
+    "CHEPEN":               ["CHEPEN"],
+    "PACANGUILLA":          ["PACANGUILLA"],
+    "PAIJAN":               ["PAIJAN"],
+    "CHOCOPE":              ["CHOCOPE"],
+    "PUERTO MALABRIGO":     ["PUERTO MALABRIGO", "MALABRIGO", "RAZURI"],
+    "EL PORVENIR":          ["EL PORVENIR", "PORVENIR"],
+    "LA ESPERANZA":         ["LA ESPERANZA", "ESPERANZA"],
+    "FLORENCIA DE MORA":    ["FLORENCIA DE MORA", "FLORENCIA"],
+    "VICTOR LARCO HERRERA": ["VICTOR LARCO HERRERA", "VICTOR LARCO", "BUENOS AIRES"],
+    "TRUJILLO":             ["TRUJILLO"],
+}
+
+# Unicos distritos autorizados a compartir una misma carga (y aun asi solo si
+# los predios estan a <= RADIO_CONURBACION_M entre si).
+CONURBACION = {
+    "TRUJILLO", "EL PORVENIR", "LA ESPERANZA",
+    "FLORENCIA DE MORA", "VICTOR LARCO HERRERA",
+}
+BLOQUE_CONURBADO = "TRUJILLO METROPOLITANO"
+
+
+# =============================================================================
+#  UTILIDADES
+# =============================================================================
+def _norm(v):
+    """Mayusculas, sin tildes, sin espacios repetidos."""
+    if v is None:
+        return ""
+    t = str(v)
+    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode("ascii")
+    t = " ".join(t.upper().strip().split())
+    return "" if t in ("NAN", "NONE", "NULL", "-") else t
+
+
+def _lotes(seq, n):
+    seq = list(seq)
+    for i in range(0, len(seq), n):
+        yield seq[i:i + n]
+
+
+def _dist(a, b):
+    return math.hypot(a["math_x"] - b["math_x"], a["math_y"] - b["math_y"])
+
+
+def _min_traslado(metros, cfg):
+    """
+    Minutos para ir de un predio al siguiente. El buffer fijo (estacionar,
+    ubicar el predio) se reduce cuando los predios estan pegados: caminar a la
+    casa de al lado no cuesta lo mismo que mover la moto y volver a parquear.
+    Es lo que permite meter 5 o 6 inspecciones en una franja de 2 h cuando la
+    manzana es la misma.
+    """
+    km = (metros / 1000.0) * cfg["FACTOR_RUTA"]
+    fijo = cfg["MIN_TRASLADO_FIJO"]
+    if metros < 200:
+        fijo = cfg["MIN_TRASLADO_CERCANO"]
+    return (km / cfg["VELOCIDAD_KMH"]) * 60.0 + fijo
+
+
+def _serie_fechas(serie):
+    """Convierte a datetime detectando si el formato es dd/mm o mm/dd, sin
+    dejar que pandas adivine fila por fila."""
+    import warnings
+    s = serie.astype(str).str.strip()
+    muestra = [v for v in s.head(300) if v and v.lower() != "nan"]
+    dayfirst = False
+    for v in muestra:
+        m = re.match(r"^(\d{1,2})[/\-](\d{1,2})[/\-]\d{2,4}", v)
+        if m and int(m.group(1)) > 12:
+            dayfirst = True
+            break
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return pd.to_datetime(s, errors="coerce", dayfirst=dayfirst)
+
+
+def _hhmm(minutos):
+    if minutos is None:
+        return ""
+    m = int(round(minutos)) % (24 * 60)
+    h, mn = divmod(m, 60)
+    suf = "AM" if h < 12 else "PM"
+    h12 = h % 12 or 12
+    return "%02d:%02d %s" % (h12, mn, suf)
+
+
+# =============================================================================
+#  PARSEO DE FRANJAS HORARIAS
+# =============================================================================
+_RE_HORA = re.compile(r"(\d{1,2})\s*[:\.]\s*(\d{2})(?:\s*[:\.]\s*\d{2})?\s*(A\.?\s?M\.?|P\.?\s?M\.?)?")
+
+
+def _a_minutos(h, m, meridiem):
+    h, m = int(h), int(m)
+    if meridiem:
+        pm = meridiem.replace(".", "").replace(" ", "").upper() == "PM"
+        if pm and h < 12:
+            h += 12
+        if not pm and h == 12:
+            h = 0
+    elif h < 7:
+        # En este negocio nadie trabaja a la 1 de la madrugada: 1:00 -> 13:00
+        h += 12
+    return h * 60 + m
+
+
+def _parse_franja(texto, cfg):
+    """
+    '07:00 AM - 09:00 AM' -> (420, 540, '07:00 AM - 09:00 AM')
+    Devuelve None si la celda no contiene ninguna hora reconocible.
+    """
+    s = _norm(texto)
+    if not s:
+        return None
+    tk = _RE_HORA.findall(s)
+    if not tk:
+        m = re.findall(r"\b(\d{1,2})\b", s)
+        if len(m) >= 2:
+            ini = _a_minutos(m[0], 0, None)
+            fin = _a_minutos(m[1], 0, None)
+            if fin > ini:
+                return ini, fin, s
+        return None
+    ini = _a_minutos(*tk[0])
+    if len(tk) >= 2:
+        fin = _a_minutos(*tk[1])
     else:
-        zona_display = zonas_ruta[0] if zonas_ruta else 'SIN ZONA'
-    
+        fin = ini + cfg["DURACION_FRANJA_DEFECTO"]
+    if fin <= ini:
+        fin = ini + cfg["DURACION_FRANJA_DEFECTO"]
+    ini = max(ini, cfg["JORNADA_INICIO"])
+    fin = min(fin, cfg["JORNADA_FIN"])
+    if fin <= ini:
+        return None
+    return ini, fin, s
+
+
+# =============================================================================
+#  IDENTIFICACION DE LOCALIDAD
+# =============================================================================
+def _match_zona(texto):
+    if not texto:
+        return None
+    for zona, alias in ZONAS.items():
+        if texto in alias:
+            return zona
+    for zona, alias in ZONAS.items():
+        for a in alias:
+            if re.search(r"\b%s\b" % re.escape(a), texto):
+                return zona
+    return None
+
+
+def _identificar_localidad(distrito, urbanizacion, via):
+    """
+    Prioridad estricta: distrito > urbanizacion > via.
+    La via SOLO se usa si distrito y urbanizacion vienen vacios, porque
+    "AV. LARCO" o "URB. BUENOS AIRES" en pleno centro de Trujillo hacian que
+    la version anterior mandara el predio a Victor Larco.
+    """
+    d, u, v = _norm(distrito), _norm(urbanizacion), _norm(via)
+    for campo in (d, u):
+        z = _match_zona(campo)
+        if z:
+            return z
+    if not d and not u:
+        z = _match_zona(v)
+        if z:
+            return z
+    if d:
+        return "OTRA: %s" % d
+    if u:
+        return "OTRA: %s" % u
+    return "SIN LOCALIDAD"
+
+
+def _bloque_de(localidad, cfg):
+    if cfg["CONURBACION_ACTIVA"] and localidad in CONURBACION:
+        return BLOQUE_CONURBADO
+    return localidad
+
+
+# =============================================================================
+#  COORDENADAS
+# =============================================================================
+def _mascara_valida(x, y):
+    """Vectorizado. Acepta WGS84 (Peru) o UTM 17S."""
+    x = np.array(pd.to_numeric(x, errors="coerce"), dtype="float64", copy=True)
+    y = np.array(pd.to_numeric(y, errors="coerce"), dtype="float64", copy=True)
+    geo = (x >= -83) & (x <= -68) & (y >= -20) & (y <= 0)
+    utm = (x >= 100000) & (x <= 900000) & (y >= 7500000) & (y <= 10000000)
+    return x, y, (geo | utm)
+
+
+def _auditar_coordenadas(df, conf, col_sum):
+    """
+    Busca coordenadas de catastro que NO pueden ser ciertas, sin salir a
+    internet y sin comparar direccion por direccion (eso costaria una consulta
+    por registro y mataria el tiempo de proceso).
+
+    La idea: el Excel ya dice a que localidad pertenece cada suministro, y la
+    nube de coordenadas de esa misma localidad es la referencia gratis. Si un
+    predio dice SALAVERRY pero su coordenada cae a 30 km de donde estan los
+    otros predios de Salaverry, esa coordenada esta mal, y para saberlo no hizo
+    falta geocodificar nada.
+
+    Tres capas, todas vectorizadas:
+      1. FUERA DE LA REGION. La coordenada no cae ni en La Libertad ni cerca.
+         No hay discusion posible: esta mal.
+      2. RELLENO COMPARTIDO. La misma coordenada exacta repetida en TRES o mas
+         localidades distintas es un valor por defecto que alguien cargo (la
+         oficina, el centro del distrito), no la ubicacion del predio. Ojo: la
+         misma coordenada repetida DENTRO de una localidad es legitima, son los
+         departamentos de un edificio, y esos no se tocan.
+      3. LEJOS DE SU PROPIA LOCALIDAD. Distancia a la mediana de su localidad
+         mayor que un radio que se calcula con la dispersion real de esa
+         localidad (mediana + 3 MAD), con piso y techo para que un distrito
+         grande no sature de avisos ni uno chico se vuelva un colador.
+
+    Antes de condenar una coordenada se intenta arreglarla gratis: si al
+    intercambiar X con Y el punto cae dentro de su localidad, era una inversion
+    de columnas al cargar la data y se corrige en el acto.
+
+    Devuelve (detalle, contadores). NO borra nada: marca las filas malas
+    poniendo cx/cy en NaN para que el paso de geocodificacion que viene despues
+    intente ubicarlas por direccion, igual que a las que nunca tuvieron
+    coordenada.
+    """
+    detalle, cont = [], {"revisadas": 0, "fuera_region": 0, "relleno": 0,
+                         "lejos": 0, "corregidas_ejes": 0, "sospechosas": 0}
+    # Las ubicaciones fijadas a mano por el supervisor no se auditan: son la verdad.
+    con_coord = (df["cx"].notna() & (df["origen"].astype(str) != ORIGEN_MANUAL)).to_numpy()
+    cont["revisadas"] = int(con_coord.sum())
+    if cont["revisadas"] == 0:
+        return detalle, cont
+
+    idx = df.index[con_coord]
+    cx = df.loc[idx, "cx"].to_numpy(dtype="float64")
+    cy = df.loc[idx, "cy"].to_numpy(dtype="float64")
+    ux, uy, lon, lat = _a_metros_y_grados(cx, cy)
+    loc = df.loc[idx, "__loc__"].astype(str).to_numpy()
+
+    # --- capa 1: fuera de la region ---------------------------------------
+    # La Libertad entra holgada en esta ventana; se deja margen para no marcar
+    # de mas a los predios de los limites provinciales.
+    fuera = ~((conf["COORD_REGION_X"][0] <= ux) & (ux <= conf["COORD_REGION_X"][1]) &
+              (conf["COORD_REGION_Y"][0] <= uy) & (uy <= conf["COORD_REGION_Y"][1]))
+    fuera |= ~np.isfinite(ux) | ~np.isfinite(uy)
+
+    # --- capa 2: relleno compartido entre localidades ---------------------
+    relleno = np.zeros(len(idx), dtype=bool)
+    clave = [(round(float(a), 0), round(float(b), 0)) if np.isfinite(a) and np.isfinite(b)
+             else None for a, b in zip(ux, uy)]
+    locs_por_punto = {}
+    for k, l in zip(clave, loc):
+        if k is not None:
+            locs_por_punto.setdefault(k, set()).add(l)
+    compartidos = {k for k, v in locs_por_punto.items()
+                   if len(v) >= conf["COORD_MIN_LOCALIDADES_RELLENO"]}
+    if compartidos:
+        relleno = np.array([k in compartidos for k in clave], dtype=bool)
+
+    # --- capa 3: lejos de su propia localidad -----------------------------
+    # La mediana aguanta que hasta la mitad de los puntos de una localidad esten
+    # mal; el promedio no, por eso no se usa promedio.
+    lejos = np.zeros(len(idx), dtype=bool)
+    dist_a_centro = np.full(len(idx), np.nan)
+    sano = ~fuera & ~relleno
+    centros, radios = {}, {}
+    for l in np.unique(loc):
+        sel = (loc == l) & sano
+        n = int(sel.sum())
+        if n < conf["COORD_MIN_MUESTRA"]:
+            continue                      # muy pocos puntos para opinar
+        mx = float(np.median(ux[sel]))
+        my = float(np.median(uy[sel]))
+        d = np.hypot(ux[sel] - mx, uy[sel] - my)
+        med = float(np.median(d))
+        mad = float(np.median(np.abs(d - med))) * 1.4826
+        radio = med + 3.0 * mad
+        radio = max(conf["COORD_RADIO_PISO_M"], min(conf["COORD_RADIO_TECHO_M"], radio))
+        centros[l], radios[l] = (mx, my), radio
+
+    for i in range(len(idx)):
+        c = centros.get(loc[i])
+        if not c:
+            continue
+        dist_a_centro[i] = math.hypot(ux[i] - c[0], uy[i] - c[1])
+        if not fuera[i] and not relleno[i] and dist_a_centro[i] > radios[loc[i]]:
+            lejos[i] = True
+
+    # --- las que catastro devolvio pero ni siquiera parecen coordenadas ----
+    # No entran en las capas de arriba porque ya venian en NaN, pero merecen el
+    # mismo intento de reparacion: el este y el norte cambiados de columna dan
+    # justamente un par que no pasa ningun filtro.
+    _rescatar_ejes_invalidos(df, conf, col_sum, centros, radios, detalle, cont)
+
+    sospechosa = fuera | relleno | lejos
+    if not sospechosa.any():
+        return detalle, cont
+
+    # --- reparacion gratis: ejes intercambiados ---------------------------
+    # Cargar el norte en la columna del este es el error mas comun al importar.
+    # Solo se acepta la correccion si el punto corregido cae DENTRO del radio de
+    # su localidad: si no lo verifica la nube, no se toca.
+    for i in np.flatnonzero(sospechosa):
+        c = centros.get(loc[i])
+        if not c:
+            continue
+        sx, sy, _ok = _mascara_valida(np.array([cy[i]]), np.array([cx[i]]))
+        if not bool(_ok[0]):
+            continue
+        vx, vy, _, _ = _a_metros_y_grados(sx, sy)
+        if not (np.isfinite(vx[0]) and np.isfinite(vy[0])):
+            continue
+        if math.hypot(vx[0] - c[0], vy[0] - c[1]) <= radios[loc[i]]:
+            j = idx[i]
+            _, _, nlon, nlat = _a_metros_y_grados(sx, sy)
+            df.at[j, "cx"], df.at[j, "cy"] = float(cy[i]), float(cx[i])
+            df.at[j, "origen"] = "catastro (ejes corregidos)"
+            sospechosa[i] = False
+            cont["corregidas_ejes"] += 1
+            detalle.append({
+                "suministro": str(df.at[j, col_sum]),
+                "localidad": loc[i], "estado": "corregida",
+                "lon_registrada": _num(lon[i]), "lat_registrada": _num(lat[i]),
+                "lon_corregida": _num(nlon[0]), "lat_corregida": _num(nlat[0]),
+                "direccion": str(df.at[j, "__dir_txt__"] or ""),
+                "motivo": "las columnas este y norte venian intercambiadas"})
+
+    # --- las que siguen mal: se sueltan para que las ubique la direccion ---
+    for i in np.flatnonzero(sospechosa):
+        j = idx[i]
+        if fuera[i]:
+            motivo = "la coordenada cae fuera de la region"
+        elif relleno[i]:
+            motivo = ("coordenada de relleno: la misma esta repetida en varias "
+                      "localidades distintas")
+        else:
+            motivo = ("cae a %.1f km del resto de predios de %s (el limite para "
+                      "esa localidad es %.1f km)"
+                      % (dist_a_centro[i] / 1000.0, loc[i],
+                         radios[loc[i]] / 1000.0))
+        detalle.append({
+            "suministro": str(df.at[j, col_sum]),
+            "localidad": loc[i], "estado": "descartada",
+            "lon_registrada": _num(lon[i]), "lat_registrada": _num(lat[i]),
+            "lon_corregida": None, "lat_corregida": None,
+            "direccion": str(df.at[j, "__dir_txt__"] or ""),
+            "motivo": motivo})
+        df.at[j, "cx"], df.at[j, "cy"] = np.nan, np.nan
+        df.at[j, "origen"] = None
+        df.at[j, "__auditada__"] = motivo
+
+    # Se suma, no se asigna: el rescate de ejes invalidos ya conto lo suyo.
+    cont["fuera_region"] += int((fuera & sospechosa).sum())
+    cont["relleno"] += int((relleno & sospechosa).sum())
+    cont["lejos"] += int((lejos & sospechosa).sum())
+    cont["sospechosas"] += int(sospechosa.sum())
+    return detalle, cont
+
+
+def _rescatar_ejes_invalidos(df, conf, col_sum, centros, radios, detalle, cont):
+    """
+    Catastro devolvio un par de numeros que no es una coordenada valida. Casi
+    siempre es el norte cargado en la columna del este: 9'103.500 no puede ser
+    un este, pero si un norte. Se prueba el intercambio y solo se acepta si el
+    punto resultante cae dentro de la nube de su propia localidad.
+
+    Lo que no se puede rescatar se reporta igual, para que quede claro que la
+    base tenia un valor basura y no simplemente un campo vacio.
+    """
+    if "__cx_bruto__" not in df.columns:
+        return
+    bx = pd.to_numeric(df["__cx_bruto__"], errors="coerce").to_numpy(dtype="float64")
+    by = pd.to_numeric(df["__cy_bruto__"], errors="coerce").to_numpy(dtype="float64")
+    sin_coord = df["cx"].isna().to_numpy()
+    hay_bruto = np.isfinite(bx) & np.isfinite(by)
+    objetivo = np.flatnonzero(sin_coord & hay_bruto)
+    if objetivo.size == 0:
+        return
+
+    filas = df.index.to_numpy()
+    locs = df["__loc__"].astype(str).to_numpy()
+    for k in objetivo:
+        j = filas[k]
+        loc = locs[k]
+        cont["revisadas"] += 1
+        motivo = "catastro devolvio una coordenada que no es valida"
+        c = centros.get(loc)
+        if c:
+            sx, sy, ok = _mascara_valida(np.array([by[k]]), np.array([bx[k]]))
+            if bool(ok[0]):
+                vx, vy, nlon, nlat = _a_metros_y_grados(sx, sy)
+                if (np.isfinite(vx[0]) and np.isfinite(vy[0]) and
+                        math.hypot(vx[0] - c[0], vy[0] - c[1]) <= radios[loc]):
+                    df.at[j, "cx"], df.at[j, "cy"] = float(by[k]), float(bx[k])
+                    df.at[j, "origen"] = "catastro (ejes corregidos)"
+                    cont["corregidas_ejes"] += 1
+                    cont["sospechosas"] += 1
+                    detalle.append({
+                        "suministro": str(df.at[j, col_sum]),
+                        "localidad": loc, "estado": "corregida",
+                        "lon_registrada": _num(bx[k]), "lat_registrada": _num(by[k]),
+                        "lon_corregida": _num(nlon[0]), "lat_corregida": _num(nlat[0]),
+                        "direccion": str(df.at[j, "__dir_txt__"] or ""),
+                        "motivo": "las columnas este y norte venian intercambiadas"})
+                    continue
+        cont["fuera_region"] += 1
+        cont["sospechosas"] += 1
+        detalle.append({
+            "suministro": str(df.at[j, col_sum]),
+            "localidad": loc, "estado": "descartada",
+            "lon_registrada": _num(bx[k]), "lat_registrada": _num(by[k]),
+            "lon_corregida": None, "lat_corregida": None,
+            "direccion": str(df.at[j, "__dir_txt__"] or ""),
+            "motivo": motivo})
+        df.at[j, "__auditada__"] = motivo
+
+
+def _es_desconocida(loc):
+    """True si el nombre no corresponde a ningun distrito del diccionario."""
+    s = str(loc or "")
+    return s.startswith("OTRA: ") or s == "SIN LOCALIDAD" or s == ""
+
+
+def _absorber_localidades(df, conf):
+    """
+    Un AAHH, una urbanizacion o un sector NO son un distrito: estan dentro de
+    uno. Cuando el Excel trae ese nombre en el campo de distrito, el sistema no
+    lo reconoce y lo trata como una localidad propia; la pared de localidades le
+    prohibe entonces juntarse con el distrito que fisicamente lo contiene, y
+    cada nombre termina cerrando una carga suelta de dos o tres registros. Con
+    trescientos nombres asi, salen trescientas cargas de mas.
+
+    Aqui cada nombre desconocido se ubica con la mediana de SUS predios y se
+    compara con el centro de los distritos que si se reconocen. Si el mas
+    cercano esta dentro del radio de absorcion, todos los registros de ese
+    nombre pasan a ese distrito y se rutean junto al resto.
+
+    La decision es por NOMBRE, no por registro: un AAHH es un lugar y todos sus
+    predios van al mismo sitio, incluidos los que no tienen coordenada. Los
+    distritos reconocidos no se tocan: SALAVERRY sigue sin poder mezclarse con
+    TRUJILLO, que es la regla de siempre.
+    """
+    info = {"nombres": 0, "registros": 0, "detalle": [], "sin_absorber": 0}
+    if not conf.get("ABSORBER_DESCONOCIDAS", True):
+        return info
+
+    loc = df["__loc__"].astype(str)
+    desconocida = loc.map(_es_desconocida)
+    if not desconocida.any():
+        return info
+
+    con_coord = df["cx"].notna() & df["cy"].notna()
+    ux = np.full(len(df), np.nan)
+    uy = np.full(len(df), np.nan)
+    if con_coord.any():
+        mx, my, _, _ = _a_metros_y_grados(df.loc[con_coord, "cx"].to_numpy(),
+                                          df.loc[con_coord, "cy"].to_numpy())
+        ux[con_coord.to_numpy()] = mx
+        uy[con_coord.to_numpy()] = my
+
+    minimo = conf["MIN_MUESTRA_ABSORCION"]
+    centros, nombres = [], []
+    for nom, g in df[~desconocida & con_coord].groupby(loc[~desconocida & con_coord]):
+        pos = g.index.map(lambda i: df.index.get_loc(i))
+        px, py = ux[list(pos)], uy[list(pos)]
+        px, py = px[np.isfinite(px)], py[np.isfinite(py)]
+        if len(px) < minimo:
+            continue
+        centros.append((float(np.median(px)), float(np.median(py))))
+        nombres.append(str(nom))
+    if not centros:
+        return info
+
+    arr = np.asarray(centros, dtype="float64")
+    radio = float(conf["RADIO_ABSORCION_M"])
+    cambios = {}
+    for nom, g in df[desconocida].groupby(loc[desconocida]):
+        pos = [df.index.get_loc(i) for i in g.index]
+        px, py = ux[pos], uy[pos]
+        ok = np.isfinite(px) & np.isfinite(py)
+        if int(ok.sum()) < 1:
+            info["sin_absorber"] += 1
+            continue
+        cx_, cy_ = float(np.median(px[ok])), float(np.median(py[ok]))
+        d = np.hypot(arr[:, 0] - cx_, arr[:, 1] - cy_)
+        k = int(np.argmin(d))
+        if d[k] > radio:
+            info["sin_absorber"] += 1
+            continue
+        cambios[str(nom)] = (nombres[k], float(d[k]), len(g))
+
+    if not cambios:
+        return info
+
+    nuevo = loc.map(lambda s: cambios.get(s, (s,))[0])
+    df["__loc__"] = nuevo
+    df["__bloque__"] = [_bloque_de(l, conf) for l in nuevo]
+
+    info["nombres"] = len(cambios)
+    info["registros"] = int(sum(v[2] for v in cambios.values()))
+    info["detalle"] = [
+        {"origen": k, "destino": v[0], "km": round(v[1] / 1000.0, 1),
+         "registros": v[2]}
+        for k, v in sorted(cambios.items(), key=lambda kv: -kv[1][2])[:200]]
+    return info
+
+
+def _si_no(valor, por_defecto):
+    """Lee una casilla del formulario. Si no vino, manda el valor por defecto."""
+    if valor is None or str(valor).strip() == "":
+        return bool(por_defecto)
+    return str(valor).strip().lower() not in ("0", "false", "no", "off")
+
+
+def _num(v):
+    """float redondeado y serializable, o None si no es un numero util."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return round(f, 6) if np.isfinite(f) else None
+
+
+def _a_metros_y_grados(x, y):
+    """
+    Recibe arrays mezclados (unos en grados, otros en UTM) y devuelve
+    (utm_x, utm_y, lon, lat) completos.
+    """
+    x = np.asarray(x, dtype="float64")
+    y = np.asarray(y, dtype="float64")
+    es_geo = (y > -20) & (y < 0)
+
+    utm_x = np.where(es_geo, np.nan, x)
+    utm_y = np.where(es_geo, np.nan, y)
+    lon = np.where(es_geo, x, np.nan)
+    lat = np.where(es_geo, y, np.nan)
+
+    if es_geo.any():
+        if _A_UTM is not None:
+            ux, uy = _A_UTM.transform(x[es_geo], y[es_geo])
+        else:  # sin pyproj: formulas exactas (antes una aproximacion con ~1.5 km de error)
+            ux, uy = _utm17s_desde_grados(x[es_geo], y[es_geo])
+        utm_x[es_geo], utm_y[es_geo] = ux, uy
+
+    inv = ~es_geo
+    if inv.any():
+        if _A_GEO is not None:
+            lo, la = _A_GEO.transform(x[inv], y[inv])
+        else:
+            lo, la = _grados_desde_utm17s(x[inv], y[inv])
+        lon[inv], lat[inv] = lo, la
+
+    return utm_x, utm_y, lon, lat
+
+
+# Centro de cada localidad, tomado de data/calles_osm.json (OpenStreetMap) y de
+# la Plaza de Armas para Trujillo. Solo se usa cuando el Excel trae pocos puntos
+# de catastro de esa localidad para calcular su zona con datos propios.
+CENTROS_LOCALIDAD = {          # localidad -> (lon, lat)
+    "TRUJILLO":             (-79.02867, -8.11167),
+    "EL PORVENIR":          (-78.993097, -8.073836),
+    "LA ESPERANZA":         (-79.040994, -8.082979),
+    "FLORENCIA DE MORA":    (-79.02366, -8.082058),
+    "VICTOR LARCO HERRERA": (-79.04484, -8.132002),
+    "HUANCHACO":            (-79.120477, -8.080032),
+    "EL MILAGRO":           (-79.063165, -8.033831),
+    "MOCHE":                (-79.008936, -8.171415),
+    "SALAVERRY":            (-78.976393, -8.224112),
+    "LAREDO":               (-78.959412, -8.086455),
+    "CHEPEN":               (-79.427775, -7.228521),
+    "PACANGUILLA":          (-79.443577, -7.154641),
+    "PAIJAN":               (-79.30328, -7.734257),
+    "CHOCOPE":              (-79.222657, -7.791846),
+    "PUERTO MALABRIGO":     (-79.437195, -7.702037),
+}
+
+ORIGEN_MANUAL = "manual"
+ORIGEN_GIS = "gis_sedalib"
+
+
+# =============================================================================
+#  ZONA DE CADA LOCALIDAD (para que la direccion se busque DENTRO de ella)
+# =============================================================================
+def _areas_localidad(df, conf):
+    """
+    Zona de cada localidad del Excel: centro + radio, en UTM.
+
+    Con datos propios cuando se puede: la mediana de los puntos de catastro (o
+    fijados por el supervisor) de esa localidad, y como radio el percentil 90
+    de sus distancias + un margen. Si hay pocos puntos, el centro de OSM de la
+    localidad con un radio fijo. Las coordenadas geocodificadas NO cuentan:
+    justamente son las que se quieren controlar.
+
+    Devuelve {localidad: {"nombre", "ux", "uy", "lon", "lat", "radio", "fuente"}}.
+    """
+    areas = {}
+    fiables = df["origen"].astype(str).str.match(r"^(catastro|manual)")
+    con = df["cx"].notna() & df["cy"].notna() & fiables
+    minimo = conf["LOCALIDAD_MIN_PUNTOS"]
+    if con.any():
+        ux, uy, _, _ = _a_metros_y_grados(df.loc[con, "cx"].to_numpy(dtype="float64"),
+                                          df.loc[con, "cy"].to_numpy(dtype="float64"))
+        locs = df.loc[con, "__loc__"].astype(str).to_numpy()
+        for loc in np.unique(locs):
+            sel = (locs == loc) & np.isfinite(ux) & np.isfinite(uy)
+            if int(sel.sum()) < minimo:
+                continue
+            cx_, cy_ = float(np.median(ux[sel])), float(np.median(uy[sel]))
+            d = np.hypot(ux[sel] - cx_, uy[sel] - cy_)
+            radio = float(np.percentile(d, 90)) + conf["LOCALIDAD_MARGEN_M"]
+            radio = max(conf["LOCALIDAD_RADIO_MIN_M"], min(conf["LOCALIDAD_RADIO_MAX_M"], radio))
+            _, _, lo, la = _a_metros_y_grados(np.array([cx_]), np.array([cy_]))
+            areas[loc] = {"nombre": loc, "ux": cx_, "uy": cy_, "lon": float(lo[0]),
+                          "lat": float(la[0]), "radio": radio, "fuente": "catastro"}
+
+    for loc in df["__loc__"].astype(str).unique():
+        if loc in areas or loc not in CENTROS_LOCALIDAD:
+            continue
+        lon, lat = CENTROS_LOCALIDAD[loc]
+        ux, uy, _, _ = _a_metros_y_grados(np.array([lon]), np.array([lat]))
+        areas[loc] = {"nombre": loc, "ux": float(ux[0]), "uy": float(uy[0]), "lon": lon,
+                      "lat": lat, "radio": float(conf["LOCALIDAD_RADIO_DEFECTO_M"]),
+                      "fuente": "osm"}
+    return areas
+
+
+def _distancia_area(lon, lat, area):
+    """Metros entre (lon, lat) y el centro de la zona."""
+    ux, uy, _, _ = _a_metros_y_grados(np.array([lon]), np.array([lat]))
+    return math.hypot(float(ux[0]) - area["ux"], float(uy[0]) - area["uy"])
+
+
+# =============================================================================
+#  UBICACIONES FIJADAS A MANO POR EL SUPERVISOR
+# =============================================================================
+# Cuando el supervisor arrastra un punto en el mapa de Rutas, esa ubicacion se
+# guarda por suministro y manda sobre catastro en todos los ruteos siguientes.
+_TABLA_MANUAL_OK = False
+
+
+def _asegurar_tabla_manual():
+    """Crea la tabla coordenada_manual la primera vez (si no existe)."""
+    global _TABLA_MANUAL_OK
+    if _TABLA_MANUAL_OK:
+        return True
+    try:
+        CoordenadaManual.__table__.create(bind=db.engine, checkfirst=True)
+        _TABLA_MANUAL_OK = True
+    except Exception:
+        log.exception("No se pudo crear/verificar la tabla coordenada_manual")
+    return _TABLA_MANUAL_OK
+
+
+_TABLA_GIS_OK = False
+
+
+def _asegurar_tabla_gis():
+    """Crea la tabla coordenada_gis_sedalib la primera vez (si no existe)."""
+    global _TABLA_GIS_OK
+    if _TABLA_GIS_OK:
+        return True
+    try:
+        CoordenadaGisSedalib.__table__.create(bind=db.engine, checkfirst=True)
+        _TABLA_GIS_OK = True
+    except Exception:
+        log.exception("No se pudo crear/verificar la tabla coordenada_gis_sedalib")
+    return _TABLA_GIS_OK
+
+
+def _puntos_gis_sedalib(suministros, conf, forzar=False, tope=None, segundos=None):
+    """
+    {suministro: (lon, lat)} segun el GIS de Sedalib (centro del lote).
+    Usa la cache de la BD; solo consulta a Sedalib lo que no esta o ya vencio.
+    forzar=True ignora la cache (boton del mapa: el supervisor pide ver ahora).
+    Devuelve (puntos, info) con contadores y, si lo hubo, el error.
+    """
+    info = {"activo": True, "pedidos": 0, "desde_cache": 0, "consultados": 0,
+            "pendientes": 0, "ubicados": 0, "segundos": 0.0, "error": ""}
+    pedidos = [s for s in dict.fromkeys(str(x).strip() for x in suministros) if s]
+    info["pedidos"] = len(pedidos)
+    if not pedidos:
+        return {}, info
+    ahora = datetime.now(LIMA_TZ).replace(tzinfo=None)
+    vida_si = timedelta(days=conf["GIS_SEDALIB_CACHE_DIAS"])
+    vida_no = timedelta(days=conf["GIS_SEDALIB_CACHE_NO_DIAS"])
+    utm, resueltos = {}, set()
+    hay_tabla = _asegurar_tabla_gis()
+
+    if hay_tabla and not forzar:
+        try:
+            for lote in _lotes(pedidos, conf["DB_CHUNK"]):
+                for c in (CoordenadaGisSedalib.query
+                          .filter(CoordenadaGisSedalib.suministro.in_(lote)).all()):
+                    edad = ahora - (c.fecha or datetime.min)
+                    if c.encontrado and c.este is not None and edad <= vida_si:
+                        utm[c.suministro] = (float(c.este), float(c.norte))
+                        resueltos.add(c.suministro)
+                    elif not c.encontrado and edad <= vida_no:
+                        resueltos.add(c.suministro)
+        except SQLAlchemyError:
+            db.session.rollback()
+            log.exception("No se pudo leer la cache del GIS de Sedalib")
+    info["desde_cache"] = len(resueltos)
+
+    faltan = [s for s in pedidos if s not in resueltos]
+    if faltan:
+        t0 = time.time()
+        respuestas, error = _gis.consultar(
+            faltan, hilos=conf["GIS_SEDALIB_HILOS"],
+            tope=conf["GIS_SEDALIB_MAX_POR_PROCESO"] if tope is None else tope,
+            presupuesto_s=conf["GIS_SEDALIB_MAX_SEG"] if segundos is None else segundos)
+        info["segundos"] = round(time.time() - t0, 1)
+        info["consultados"], info["error"] = len(respuestas), error
+        info["pendientes"] = len(faltan) - len(respuestas)
+        for s, p in respuestas.items():
+            if p:
+                utm[s] = p
+        if hay_tabla and respuestas:
+            try:
+                for s, p in respuestas.items():
+                    db.session.merge(CoordenadaGisSedalib(
+                        suministro=s, este=p[0] if p else None, norte=p[1] if p else None,
+                        encontrado=bool(p), fecha=ahora))
+                db.session.commit()
+            except SQLAlchemyError:
+                db.session.rollback()
+                log.exception("No se pudo guardar la cache del GIS de Sedalib")
+
+    puntos = {}
+    if utm:
+        claves = list(utm)
+        _, _, lon, lat = _a_metros_y_grados(np.array([utm[k][0] for k in claves]),
+                                            np.array([utm[k][1] for k in claves]))
+        for k, lo, la in zip(claves, lon, lat):
+            if np.isfinite(lo) and np.isfinite(la):
+                puntos[k] = (float(lo), float(la))
+    info["ubicados"] = len(puntos)
+    return puntos, info
+
+
+def _coordenadas_manuales(suministros, conf):
+    """{suministro: (lon, lat)} de los que el supervisor ya ubico a mano."""
+    if not suministros or not _asegurar_tabla_manual():
+        return {}
+    salida = {}
+    try:
+        for lote in _lotes(suministros, conf["DB_CHUNK"]):
+            for r in db.session.query(CoordenadaManual.suministro, CoordenadaManual.lon,
+                                      CoordenadaManual.lat) \
+                    .filter(CoordenadaManual.suministro.in_(lote)).all():
+                lon, lat = _num(r[1]), _num(r[2])
+                if lon is not None and lat is not None:
+                    salida[str(r[0]).strip()] = (lon, lat)
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("No se pudieron leer las coordenadas manuales (se sigue sin ellas)")
+        return {}
+    return salida
+
+
+# =============================================================================
+#  CARGA (un tecnico, un dia)
+# =============================================================================
+class _Carga:
+    __slots__ = ("items", "reloj", "pos", "cx", "cy", "bloque", "alertas")
+
+    def __init__(self, bloque, cx=0.0, cy=0.0):
+        self.items = []
+        self.reloj = None          # minuto en que queda libre
+        self.pos = None            # ultimo predio visitado
+        self.cx, self.cy = cx, cy  # semilla geografica
+        self.bloque = bloque
+        self.alertas = []
+
+    @property
+    def n(self):
+        return len(self.items)
+
+
+def _cabe_lista(items, p, cfg):
+    """
+    Muro geografico. Se compara contra TODOS los predios ya asignados, no
+    contra el centroide, para que el diametro de la carga quede acotado de
+    verdad. Entre distritos distintos (solo posible dentro de la conurbacion)
+    el radio es mas estrecho.
+    """
+    for q in items:
+        radio = (cfg["RADIO_MISMA_LOCALIDAD_M"] if q["__loc__"] == p["__loc__"]
+                 else cfg["RADIO_CONURBACION_M"])
+        if _dist(p, q) > radio:
+            return False
+    return True
+
+
+def _cabe_geograficamente(carga, p, cfg):
+    return _cabe_lista(carga.items, p, cfg)
+
+
+def _simular(carga, p, franja, cfg):
+    """Devuelve (llegada, fin) si el predio cabe en el reloj; None si no."""
+    ini_f, fin_f = franja[0], franja[1]
+    if carga.reloj is None:
+        salida = max(ini_f, cfg["JORNADA_INICIO"])
+        traslado = 0.0
+    else:
+        salida = max(carga.reloj, ini_f)
+        traslado = _min_traslado(_dist(carga.pos, p), cfg)
+    llegada = salida + traslado
+    fin = llegada + cfg["MIN_INSPECCION"]
+    if fin > fin_f + cfg["TOLERANCIA_FRANJA_MIN"]:
+        return None
+    if fin > cfg["JORNADA_FIN"]:
+        return None
+    return llegada, fin
+
+
+def _tope_franja(franja, cfg):
+    """Tope duro de registros por franja: 2 por hora -> 4 en una de 07:00-09:00.
+    Es un techo; el reloj real puede bajarlo a 3 o 2 si los predios estan lejos."""
+    horas = (franja[1] - franja[0]) / 60.0
+    return max(1, int(math.floor(horas * cfg["TOPE_POR_FRANJA_HORA"] + 1e-9)))
+
+
+def _conteo_franja(carga, franja):
+    return sum(1 for it in carga.items if it["__franja__"] == franja)
+
+
+def _capacidad_nominal(franja, cfg):
+    dur = franja[1] - franja[0]
+    ciclo = cfg["MIN_INSPECCION"] + cfg["TRASLADO_NOMINAL"]
+    return max(1, min(int(dur // ciclo), _tope_franja(franja, cfg)))
+
+
+# =============================================================================
+#  NUCLEO: genera las cargas de un (fecha, bloque)
+# =============================================================================
+def _cargas_ideales(puntos, cfg, tope_diario):
+    """Cuantos tecnicos pediria este bloque si no hubiera limite de personal."""
+    franjas = {(p["__f_ini__"], p["__f_fin__"]) for p in puntos}
+    necesarias = math.ceil(len(puntos) / float(tope_diario))
+    for f in franjas:
+        n_f = sum(1 for p in puntos if (p["__f_ini__"], p["__f_fin__"]) == f)
+        necesarias = max(necesarias, math.ceil(n_f / float(_capacidad_nominal(f, cfg))))
+    return max(1, int(necesarias))
+
+
+def _repartir_tecnicos(demanda, disponibles):
+    """
+    Reparte el personal del dia entre los bloques (localidades).
+      * si alcanza para todos, cada bloque recibe lo que pidio;
+      * si no alcanza, primero 1 tecnico a cada bloque empezando por los de
+        mayor demanda, y los que sobren se van uno a uno al bloque peor
+        servido (mayor demanda por tecnico);
+      * si hay mas bloques que tecnicos, los bloques mas chicos se quedan en 0
+        y todo su trabajo sale como no programado.
+    """
+    asign = {b: 0 for b in demanda}
+    if disponibles <= 0 or not demanda:
+        return asign
+    if sum(demanda.values()) <= disponibles:
+        return dict(demanda)
+
+    orden = sorted(demanda, key=lambda b: (-demanda[b], str(b)))
+    libres = disponibles
+    for b in orden:
+        if libres == 0:
+            break
+        asign[b] = 1
+        libres -= 1
+    while libres > 0:
+        cand = [b for b in orden if 0 < asign[b] < demanda[b]]
+        if not cand:
+            break
+        peor = max(cand, key=lambda b: (demanda[b] / float(asign[b]), demanda[b]))
+        asign[peor] += 1
+        libres -= 1
+    return asign
+
+
+def _repartir_por_volumen(volumen, disponibles):
+    """
+    Reparte los tecnicos del dia entre las localidades en proporcion a CUANTOS
+    REGISTROS tiene cada una (no a cuantas cargas pediria). Es el reparto que
+    corresponde cuando el usuario dice "tengo N tecnicos, divideme el trabajo
+    entre ellos".
+    Cada localidad con trabajo recibe al menos 1: si hay mas localidades que
+    tecnicos se generan mas cargas que personal y se avisa, antes que dejar
+    una localidad sin atender.
+    """
+    asign = {b: 0 for b in volumen}
+    if not volumen:
+        return asign
+    orden = sorted(volumen, key=lambda b: (-volumen[b], str(b)))
+
+    libres = max(0, int(disponibles))
+    for b in orden:
+        if libres == 0:
+            break
+        asign[b] = 1
+        libres -= 1
+    while libres > 0:
+        cand = [b for b in orden if asign[b] > 0]
+        if not cand:
+            break
+        peor = max(cand, key=lambda b: (volumen[b] / float(asign[b]), volumen[b]))
+        asign[peor] += 1
+        libres -= 1
+    for b in orden:            # nadie se queda sin atender
+        if asign[b] == 0:
+            asign[b] = 1
+    return asign
+
+
+def _generar_cargas_bloque(puntos, cfg, tope_diario, max_cargas=None):
+    """
+    Devuelve (cargas, sobrantes).
+    max_cargas = techo duro de tecnicos para este bloque. Lo que no entra sale
+    en 'sobrantes' con su motivo, nunca se fuerza dentro de una carga.
+    """
+    franjas = sorted({(p["__f_ini__"], p["__f_fin__"]) for p in puntos})
+    # techo = personal disponible. Si es None no hay limite y el bloque puede
+    # abrir las cargas que la geometria pida; 'necesarias' es solo la semilla.
+    techo = None if max_cargas is None else max(0, int(max_cargas))
+    necesarias = _cargas_ideales(puntos, cfg, tope_diario)
+    if techo is not None:
+        necesarias = min(necesarias, techo)
+    if (techo is not None and techo <= 0) or necesarias <= 0:
+        for p in puntos:
+            p["__motivo__"] = "sin tecnico disponible para esta localidad ese dia"
+        return [], list(puntos)
+
+    # --- Semillas geograficas ---------------------------------------------
+    coords = np.array([[p["math_x"], p["math_y"]] for p in puntos], dtype="float64")
+    cargas = []
+    if necesarias > 1 and len(coords) > necesarias:
+        n_init = 10 if necesarias <= 25 else 2
+        km = KMeans(n_clusters=necesarias, n_init=n_init, random_state=42).fit(coords)
+        for c in km.cluster_centers_:
+            cargas.append(_Carga(puntos[0]["__bloque__"], float(c[0]), float(c[1])))
+    else:
+        for i in range(necesarias):
+            base = coords[min(i, len(coords) - 1)]
+            cargas.append(_Carga(puntos[0]["__bloque__"], float(base[0]), float(base[1])))
+
+    # --- Asignacion franja por franja, en orden cronologico ----------------
+    sobrantes = []
+    for f in franjas:
+        pendientes = [p for p in puntos if (p["__f_ini__"], p["__f_fin__"]) == f]
+        sobrantes.extend(_asignar_franja(cargas, pendientes, f, cfg,
+                                         tope_diario, techo))
+
+    # --- Consolidacion y segundo intento con los sobrantes -----------------
+    _consolidar(cargas, cfg, tope_diario)
+    sobrantes = _reintentar_sobrantes(cargas, sobrantes, cfg, tope_diario)
+
+    return [c for c in cargas if c.items], sobrantes
+
+
+def _reintentar_sobrantes(cargas, sobrantes, cfg, tope_diario):
+    """
+    Tras consolidar quedan huecos: se vuelve a intentar colocar cada sobrante
+    en cualquier posicion valida de cualquier carga. Lo que siga sin entrar se
+    devuelve con el motivo real.
+    """
+    if not sobrantes:
+        return []
+    quedan = []
+    for it in sorted(sobrantes, key=lambda p: p["__f_ini__"]):
+        f = (it["__f_ini__"], it["__f_fin__"])
+        candidato = dict(it)
+        candidato["__franja__"] = f
+        mejor = None
+        for c in cargas:
+            if not c.items or c.n >= tope_diario:
+                continue
+            if _conteo_franja(c, f) >= _tope_franja(f, cfg):
+                continue
+            if not _cabe_lista(c.items, candidato, cfg):
+                continue
+            base = _medir(c.items, cfg)[2]
+            cand = _mejor_insercion(c.items, candidato, cfg, base)
+            if cand is None:
+                continue
+            if mejor is None or cand[0] < mejor[0]:
+                mejor = (cand[0], c, cand[1])
+        if mejor is not None:
+            mejor[1].items = mejor[2]
+        else:
+            quedan.append(it)
+    return quedan
+
+
+def _rango_insercion(items, it):
+    """Posiciones donde el predio puede entrar sin romper el orden de franjas:
+    dentro de su propio bloque horario, en cualquier punto."""
+    f0 = it["__franja__"][0]
+    ini = 0
+    while ini < len(items) and items[ini]["__franja__"][0] < f0:
+        ini += 1
+    fin = ini
+    while fin < len(items) and items[fin]["__franja__"][0] <= f0:
+        fin += 1
+    return ini, fin
+
+
+def _mejor_insercion(items, it, cfg, base_km):
+    """Prueba todas las posiciones validas y devuelve (extra_km, lista, km) de
+    la mejor, o None si el predio no cabe en ninguna."""
+    ini, fin = _rango_insercion(items, it)
+    mejor = None
+    for pos in range(ini, fin + 1):
+        nueva = items[:pos] + [it] + items[pos:]
+        ok, _, km = _medir(nueva, cfg)
+        if not ok:
+            continue
+        extra = km - base_km
+        if mejor is None or extra < mejor[0]:
+            mejor = (extra, nueva, km)
+    return mejor
+
+
+def _consolidar(cargas, cfg, tope_diario):
+    """
+    Las restricciones de franja dejan colas: una carga de 1 o 2 registros que
+    en realidad cabia en otra. Aqui se intenta disolver cada carga flaca
+    repartiendo TODOS sus predios en las demas (o todos entran, o no se toca).
+    Reduce el numero de tecnicos sin romper ninguna restriccion.
+    """
+    umbral = cfg["UMBRAL_CONSOLIDACION"]
+    max_rec = cfg["MAX_RECEPTORAS_EVALUADAS"]
+    hubo_cambio = True
+    vueltas = 0
+    while hubo_cambio and vueltas < cfg["MAX_VUELTAS_CONSOLIDACION"]:
+        hubo_cambio = False
+        vueltas += 1
+        vivas = sorted([c for c in cargas if c.items], key=lambda c: c.n)
+        for donante in vivas:
+            if donante.n == 0 or donante.n > umbral:
+                continue
+            # solo se evaluan las cargas geograficamente vecinas: sin esto el
+            # coste crece con el cuadrado del numero de cargas
+            centro = _ref_pos(donante)
+            receptoras = sorted(
+                (c for c in cargas if c is not donante and c.items),
+                key=lambda c: _dist(centro, _ref_pos(c)))[:max_rec]
+            receptoras = [c for c in receptoras
+                          if _dist(centro, _ref_pos(c)) <= cfg["RADIO_MISMA_LOCALIDAD_M"]]
+            if not receptoras:
+                continue
+            plan = {id(r): list(r.items) for r in receptoras}
+            ref = {id(r): r for r in receptoras}
+            base_km = {id(r): _medir(r.items, cfg)[2] for r in receptoras}
+            exito = True
+
+            for it in donante.items:
+                mejor = None
+                for r in receptoras:
+                    lista = plan[id(r)]
+                    if len(lista) >= tope_diario:
+                        continue
+                    f = it["__franja__"]
+                    if sum(1 for q in lista if q["__franja__"] == f) >= _tope_franja(f, cfg):
+                        continue
+                    if not _cabe_lista(lista, it, cfg):
+                        continue
+                    cand = _mejor_insercion(lista, it, cfg, base_km[id(r)])
+                    if cand is None or cand[0] > cfg["MAX_KM_INSERCION"]:
+                        continue
+                    extra, nueva, km = cand
+                    if mejor is None or extra < mejor[0]:
+                        mejor = (extra, r, nueva, km)
+                if mejor is None:
+                    exito = False
+                    break
+                _, r, nueva, km = mejor
+                plan[id(r)] = nueva
+                base_km[id(r)] = km
+
+            if exito:
+                for k, lista in plan.items():
+                    ref[k].items = lista
+                donante.items = []
+                donante.reloj, donante.pos = None, None
+                hubo_cambio = True
+                break
+
+
+def _ref_pos(c):
+    return c.pos if c.pos is not None else {"math_x": c.cx, "math_y": c.cy}
+
+
+def _puede_recibir(c, franja, cfg, tope_diario):
+    return (c.n < tope_diario and
+            _conteo_franja(c, franja) < _tope_franja(franja, cfg))
+
+
+def _asignar_franja(cargas, pendientes, franja, cfg, tope_diario, max_cargas=None):
+    """
+    Reparto por rondas dentro de una franja:
+      * en cada ronda la carga con menos predios EN ESTA FRANJA elige primero
+        (equidad) y se queda con el predio factible mas cercano a su posicion
+        actual (compacidad);
+      * la busqueda usa un KD-tree sobre los predios pendientes, asi que el
+        costo no explota con miles de registros;
+      * factible = cabe en el radio de la carga + termina dentro de la franja
+        + termina dentro de la jornada + no supera el tope de la franja;
+      * si nadie puede tomar un predio se abre una carga nueva, PERO solo
+        mientras no se llegue a max_cargas (el personal disponible). Pasado
+        ese techo el predio se devuelve como sobrante con su motivo: nunca se
+        mete a la fuerza en una carga que no puede ejecutarlo.
+    Devuelve la lista de sobrantes.
+    """
+    pendientes = list(pendientes)
+    sobrantes = []
+    if not pendientes:
+        return sobrantes
+    vecinos = min(len(pendientes), cfg["VECINOS_CANDIDATOS"])
+
+    while pendientes:
+        arr = np.asarray([[p["math_x"], p["math_y"]] for p in pendientes], dtype="float64")
+        tree = cKDTree(arr) if (cKDTree is not None and len(arr) > 16) else None
+        tomados = set()
+        progreso = False
+
+        orden = sorted(cargas, key=lambda c: (_conteo_franja(c, franja),
+                                              c.reloj if c.reloj is not None else 0,
+                                              c.n))
+        for c in orden:
+            if len(tomados) >= len(pendientes):
+                break
+            if not _puede_recibir(c, franja, cfg, tope_diario):
+                continue
+            ref = _ref_pos(c)
+            if tree is not None:
+                k = min(len(pendientes), max(vecinos, len(tomados) + vecinos))
+                _, idx = tree.query([ref["math_x"], ref["math_y"]], k=k)
+                cands = [int(i) for i in np.atleast_1d(idx) if int(i) not in tomados]
+            else:
+                cands = sorted((i for i in range(len(pendientes)) if i not in tomados),
+                               key=lambda i: _dist(ref, pendientes[i]))
+            for i in cands:
+                p = pendientes[i]
+                if not _cabe_geograficamente(c, p, cfg):
+                    continue
+                sim = _simular(c, p, franja, cfg)
+                if sim is None:
+                    continue
+                _colocar(c, p, sim, franja)
+                tomados.add(i)
+                progreso = True
+                break
+
+        if tomados:
+            pendientes = [p for i, p in enumerate(pendientes) if i not in tomados]
+            continue
+
+        # Nadie avanzo con los vecinos cercanos: barrido completo para el primero
+        p = pendientes[0]
+        mejor = None
+        for c in cargas:
+            if not _puede_recibir(c, franja, cfg, tope_diario):
+                continue
+            if not _cabe_geograficamente(c, p, cfg):
+                continue
+            sim = _simular(c, p, franja, cfg)
+            if sim is None:
+                continue
+            d = _dist(_ref_pos(c), p)
+            if sim[1] > cfg["JORNADA_PREFERIDA_FIN"]:
+                d += 500.0          # preferencia blanda: cerrar antes de las 14:00
+            if mejor is None or d < mejor[0]:
+                mejor = (d, c, sim)
+        if mejor is not None:
+            _colocar(mejor[1], p, mejor[2], franja)
+        elif max_cargas is None or len(cargas) < max_cargas:
+            nueva = _Carga(p["__bloque__"], p["math_x"], p["math_y"])
+            sim = _simular(nueva, p, franja, cfg)
+            if sim is None:      # la franja es mas corta que una inspeccion
+                arranque = max(franja[0], cfg["JORNADA_INICIO"])
+                sim = (arranque, arranque + cfg["MIN_INSPECCION"])
+                nueva.alertas.append("La franja %s no alcanza para una inspeccion completa"
+                                     % p["__f_txt__"])
+            _colocar(nueva, p, sim, franja)
+            cargas.append(nueva)
+        else:
+            p["__motivo__"] = ("no alcanza el personal del dia para su franja %s"
+                               % p.get("__f_txt__", ""))
+            sobrantes.append(p)
+        pendientes.pop(0)
+
+    return sobrantes
+
+
+def _colocar(carga, p, sim, franja):
+    llegada, fin = sim
+    item = dict(p)
+    item["__llegada__"] = llegada
+    item["__fin__"] = fin
+    item["__franja__"] = franja
+    carga.items.append(item)
+    carga.reloj = fin
+    carga.pos = p
+
+
+# =============================================================================
+#  SECUENCIACION FINAL (2-opt por franja) Y MEDICION
+# =============================================================================
+def _dos_opt(seq, ancla, max_pasadas=30):
+    """
+    2-opt sobre un camino abierto, evaluando solo el delta de las dos aristas
+    que cambian (no el costo completo). Pasa de O(n^3) a O(n^2) por pasada, que
+    es lo que permite usarlo en cargas masivas de 40 o 60 predios.
+    'ancla' es la posicion desde la que se llega al primer predio (None si el
+    tecnico arranca libremente en el primero).
+    """
+    n = len(seq)
+    if n < 3:
+        return list(seq)
+    ruta = list(seq)
+    for _ in range(max_pasadas):
+        mejoro = False
+        for i in range(n - 1):
+            a = ancla if i == 0 else ruta[i - 1]
+            for j in range(i + 1, n):
+                b = ruta[j + 1] if j + 1 < n else None
+                delta = 0.0
+                if a is not None:
+                    delta += _dist(a, ruta[j]) - _dist(a, ruta[i])
+                if b is not None:
+                    delta += _dist(ruta[i], b) - _dist(ruta[j], b)
+                if delta < -1e-6:
+                    ruta[i:j + 1] = ruta[i:j + 1][::-1]
+                    mejoro = True
+        if not mejoro:
+            break
+    return ruta
+
+
+def _resecuenciar(carga, cfg):
+    """Reordena dentro de cada franja y recalcula el reloj. Si el reordenado
+    rompe alguna ventana, se conserva el orden original."""
+    original = list(carga.items)
+
+    bloques, actual, f_act = [], [], None
+    for it in original:
+        if it["__franja__"] != f_act:
+            if actual:
+                bloques.append((f_act, actual))
+            f_act, actual = it["__franja__"], []
+        actual.append(it)
+    if actual:
+        bloques.append((f_act, actual))
+
+    propuesta, ancla = [], None
+    for f, grupo in bloques:
+        g = _dos_opt(grupo, ancla)
+        propuesta.extend(g)
+        ancla = g[-1]
+
+    for candidata in (propuesta, original):
+        ok, medidos, km = _medir(candidata, cfg)
+        if ok:
+            carga.items = medidos
+            return km
+    ok, medidos, km = _medir(original, cfg)
+    carga.items = medidos
+    carga.alertas.append("La secuencia no cabe completa en sus franjas")
+    return km
+
+
+def _medir(items, cfg):
+    reloj, pos, km, ok = None, None, 0.0, True
+    salida = []
+    for it in items:
+        f_ini, f_fin = it["__franja__"][0], it["__franja__"][1]
+        if reloj is None:
+            arranque, traslado, d = max(f_ini, cfg["JORNADA_INICIO"]), 0.0, 0.0
+        else:
+            d = _dist(pos, it)
+            arranque = max(reloj, f_ini)
+            traslado = _min_traslado(d, cfg)
+        llegada = arranque + traslado
+        fin = llegada + cfg["MIN_INSPECCION"]
+        if fin > f_fin + cfg["TOLERANCIA_FRANJA_MIN"] or fin > cfg["JORNADA_FIN"]:
+            ok = False
+        nuevo = dict(it)
+        nuevo["__llegada__"], nuevo["__fin__"] = llegada, fin
+        nuevo["__km_prev__"] = (d / 1000.0) * cfg["FACTOR_RUTA"]
+        km += nuevo["__km_prev__"]
+        salida.append(nuevo)
+        reloj, pos = fin, it
+    return ok, salida, km
+
+
+# =============================================================================
+#  SALIDA JSON
+# =============================================================================
+def _construir_objeto_carga(carga, fecha_txt, fecha_iso, km, cols, cfg):
+    col_sum, col_dis, col_urb, col_via, col_num, col_hor = cols
+    registros, localidades, franjas_map = [], [], {}
+
+    for i, it in enumerate(carga.items, start=1):
+        loc = it["__loc__"]
+        if loc not in localidades:
+            localidades.append(loc)
+        ftxt = it["__f_txt__"]
+        # Se guarda el minuto de inicio junto al conteo: la cinta se ordena por
+        # hora real, no alfabeticamente (si no, "02:00 PM" saldria antes que
+        # "07:00 AM", que es justo lo que pasaba).
+        if ftxt not in franjas_map:
+            franjas_map[ftxt] = {"franja": ftxt, "cantidad": 0,
+                                 "inicio_min": it["__franja__"][0],
+                                 "fin_min": it["__franja__"][1]}
+        franjas_map[ftxt]["cantidad"] += 1
+
+        via = str(it.get(col_via, "") or "").strip() if col_via else ""
+        num = str(it.get(col_num, "") or "").strip() if col_num else ""
+        urb = str(it.get(col_urb, "") or "").strip() if col_urb else ""
+        dis = str(it.get(col_dis, "") or "").strip() if col_dis else ""
+        via = "" if via.lower() == "nan" else via
+        num = "" if num.lower() in ("nan", "s/n") else num
+        urb = "" if urb.lower() == "nan" else urb
+        dis = "" if dis.lower() == "nan" else dis
+
+        registros.append({
+            "orden": i,
+            "suministro": str(it.get(col_sum, "")),
+            "distrito": dis,
+            "urbanizacion": urb,
+            "via": _via_mostrada(it, via),
+            "numero": _numero_mostrado(it, num, _via_mostrada(it, via)),
+            "localidad": loc,
+            "lat": round(float(it["lat"]), 7),
+            "lon": round(float(it["lon"]), 7),
+            "coord_x": float(it["coord_x"]),      # compatibilidad
+            "coord_y": float(it["coord_y"]),      # compatibilidad
+            "origen_coord": it["__origen__"],
+            "franja_horaria": ftxt,
+            "hora_estimada": _hhmm(it["__llegada__"]),
+            "minuto_estimado": int(round(it["__llegada__"])),
+            "km_desde_anterior": round(float(it.get("__km_prev__", 0.0)), 2),
+            **_campos_direccion(it),
+        })
+
+    ini = carga.items[0]["__llegada__"]
+    fin = carga.items[-1]["__fin__"]
+    alertas = list(carga.alertas)
+    alertas.extend(_alertas_direccion(registros))
+    # Solo se avisa si el retraso es "nuestro": si la ultima franja del Excel ya
+    # empezaba despues de la hora preferida, cerrar tarde es inevitable.
+    ultima_franja_ini = carga.items[-1]["__franja__"][0]
+    if fin > cfg["JORNADA_PREFERIDA_FIN"] and ultima_franja_ini < cfg["JORNADA_PREFERIDA_FIN"]:
+        alertas.append("Se extiende hasta %s (pasa la hora preferida de cierre, %s)" %
+                       (_hhmm(fin), _hhmm(cfg["JORNADA_PREFERIDA_FIN"])))
+    if len(localidades) > 1:
+        alertas.append("Conurbacion: %s" % " + ".join(localidades))
+
     return {
-        'id': carga_id,
-        'fecha': fecha,
-        'hora': hora_display,
-        'zona': zona_display,
-        'cantidad': len(registros),
-        'registros': registros
+        "id": 0,
+        "fecha": fecha_txt,
+        "fecha_iso": fecha_iso,
+        "localidad": carga.bloque,
+        "zona": " + ".join(localidades[:2]) + ("..." if len(localidades) > 2 else ""),
+        "hora": "%s - %s" % (_hhmm(ini), _hhmm(fin)),
+        "hora_inicio": _hhmm(ini),
+        "hora_fin": _hhmm(fin),
+        "minuto_inicio": int(round(ini)),
+        "duracion_min": int(round(fin - ini)),
+        "km_total": round(float(km), 2),
+        "cantidad": len(registros),
+        "franjas": sorted(franjas_map.values(),
+                          key=lambda f: (f["inicio_min"], f["franja"])),
+        "alertas": alertas,
+        "registros": registros,
     }
+
+
+# =============================================================================
+#  GEOCODIFICACION
+# =============================================================================
+# Cache de direcciones VIVA ENTRE PETICIONES. El mismo Excel se reprocesa
+# muchas veces mientras el supervisor ajusta; sin esto se vuelve a pagar el
+# tiempo de geocodificacion cada vez.
+_CACHE_GEO = {}
+_CACHE_GEO_MAX = 20000
+
+
+def _geocodificar(direcciones, cfg, areas=None):
+    """
+    Resuelve direcciones a coordenadas. Devuelve
+        {direccion: {"coord": (lon, lat) | None, "motivo": str, "fuente": str}}
+    para que el sistema pueda decirle al usuario POR QUE fallo cada una y no
+    solo que fallo.
+
+    areas: {direccion: zona de su localidad} (ver _areas_localidad). Si la
+    direccion trae zona, la busqueda se hace DENTRO de ella: de todos los
+    candidatos del geocodificador se toma el mejor que cae en la localidad, y
+    si ninguno cae ahi la direccion se descarta (no se manda el predio a una
+    calle con el mismo nombre en otro distrito).
+
+    Estrategia:
+      1. cache en memoria (gratis, instantaneo)
+      2. ArcGIS en paralelo, descartando coincidencias de score bajo
+      3. Nominatim (OpenStreetMap) en serie, solo para las que ArcGIS no pudo.
+         Va secuencial y con pausa porque su politica de uso lo exige.
+    """
+    areas = areas or {}
+    salida = {}
+    restantes = []
+
+    def clave(d):
+        a = areas.get(d)
+        return d if not a else "%s|%.3f,%.3f,%d" % (d, a["lon"], a["lat"], int(a["radio"]))
+
+    for d in direcciones:
+        c = _CACHE_GEO.get(clave(d))
+        if c is not None:
+            salida[d] = {"coord": c["coord"], "fuente": "cache", "motivo": c["motivo"]}
+        else:
+            restantes.append(d)
+
+    tope = cfg["MAX_GEOCODE_POR_PETICION"]
+    if len(restantes) > tope:
+        for d in restantes[tope:]:
+            salida[d] = {"coord": None, "fuente": "",
+                         "motivo": "no se intento: se alcanzo el tope de %d "
+                                   "direcciones por proceso" % tope}
+        restantes = restantes[:tope]
+
+    if not restantes:
+        return salida
+
+    def elegir(candidatos, area, score_min):
+        """candidatos: [(lon, lat, score)] -> ((lon, lat) | None, motivo)."""
+        validos = [c for c in candidatos if c[2] >= score_min]
+        if not validos:
+            if candidatos:
+                return None, ("coincidencia dudosa (precision %.0f de 100)"
+                              % max(c[2] for c in candidatos))
+            return None, "la direccion no se encontro"
+        if not area:
+            mejor = max(validos, key=lambda c: c[2])
+            return (mejor[0], mejor[1]), ""
+        dentro = []
+        for lon, lat, score in validos:
+            dist = _distancia_area(lon, lat, area)
+            if dist <= area["radio"]:
+                dentro.append((score, -dist, lon, lat))
+        if dentro:
+            _, _, lon, lat = max(dentro)
+            return (lon, lat), ""
+        cerca = min(_distancia_area(c[0], c[1], area) for c in validos)
+        return None, ("la direccion solo se encontro fuera de %s (a %.1f km de su zona)"
+                      % (area["nombre"], cerca / 1000.0))
+
+    # ---------------------------------------------------------- 1) ArcGIS
+    try:
+        from geopy.geocoders import ArcGIS
+    except Exception:
+        log.warning("geopy no esta instalado: no se puede geocodificar por direccion")
+        for d in restantes:
+            salida[d] = {"coord": None, "fuente": "",
+                         "motivo": "geopy no esta instalado en el servidor"}
+        return salida
+
+    arc = ArcGIS(timeout=cfg["GEOCODE_TIMEOUT"])
+
+    def con_arcgis(d):
+        area = areas.get(d)
+        try:
+            locs = arc.geocode(d, exactly_one=False) if area else arc.geocode(d)
+            if not locs:
+                return d, None, "la direccion no se encontro"
+            if not isinstance(locs, list):
+                locs = [locs]
+            candidatos = []
+            for loc in locs[:cfg["GEOCODE_CANDIDATOS"]]:
+                try:
+                    score = float((loc.raw or {}).get("score", 100))
+                except Exception:
+                    score = 100.0
+                candidatos.append((float(loc.longitude), float(loc.latitude), score))
+            coord, motivo = elegir(candidatos, area, cfg["GEOCODE_SCORE_MINIMO"])
+            return d, coord, motivo
+        except Exception as e:
+            return d, None, "error consultando el geocodificador (%s)" % type(e).__name__
+
+    fallidas = []
+    with ThreadPoolExecutor(max_workers=cfg["GEOCODE_WORKERS"]) as ex:
+        for d, coord, motivo in ex.map(con_arcgis, restantes):
+            if coord:
+                salida[d] = {"coord": coord, "fuente": "arcgis", "motivo": ""}
+            else:
+                fallidas.append((d, motivo))
+
+    # ------------------------------------------- 2) Nominatim para las sobras
+    if fallidas and cfg.get("GEOCODE_USAR_NOMINATIM"):
+        try:
+            from geopy.geocoders import Nominatim
+            nom = Nominatim(user_agent=cfg["NOMINATIM_USER_AGENT"],
+                            timeout=cfg["GEOCODE_TIMEOUT"])
+            limite = cfg["MAX_NOMINATIM_POR_PETICION"]
+            for i, (d, motivo) in enumerate(fallidas):
+                if i >= limite:
+                    salida[d] = {"coord": None, "fuente": "",
+                                 "motivo": motivo + " (segundo intento omitido "
+                                                    "por tope de tiempo)"}
+                    continue
+                area = areas.get(d)
+                try:
+                    if area:
+                        # caja alrededor de la localidad: OSM solo busca ahi dentro
+                        dlat = area["radio"] / 111000.0
+                        dlon = area["radio"] / (111000.0 * max(0.2, math.cos(math.radians(area["lat"]))))
+                        locs = nom.geocode(d, exactly_one=False, limit=cfg["GEOCODE_CANDIDATOS"],
+                                           country_codes="pe", bounded=True,
+                                           viewbox=[(area["lat"] - dlat, area["lon"] - dlon),
+                                                    (area["lat"] + dlat, area["lon"] + dlon)])
+                        candidatos = [(float(l.longitude), float(l.latitude), 100.0)
+                                      for l in (locs or [])]
+                        coord, motivo_nom = elegir(candidatos, area, 0)
+                    else:
+                        loc = nom.geocode(d, country_codes="pe")
+                        coord = (float(loc.longitude), float(loc.latitude)) if loc else None
+                        motivo_nom = ""
+                    if coord:
+                        salida[d] = {"coord": coord, "fuente": "nominatim", "motivo": ""}
+                    else:
+                        # se conserva el motivo mas util: "no se encontro" no
+                        # debe tapar un "solo se encontro fuera de MOCHE"
+                        generico = (not motivo_nom or motivo_nom == "la direccion no se encontro")
+                        salida[d] = {"coord": None, "fuente": "",
+                                     "motivo": motivo if generico else motivo_nom}
+                except Exception:
+                    salida[d] = {"coord": None, "fuente": "",
+                                 "motivo": motivo + " (error en el segundo intento)"}
+                time.sleep(cfg["NOMINATIM_PAUSA_S"])
+        except Exception:
+            for d, motivo in fallidas:
+                salida.setdefault(d, {"coord": None, "fuente": "", "motivo": motivo})
+    else:
+        for d, motivo in fallidas:
+            salida[d] = {"coord": None, "fuente": "", "motivo": motivo}
+
+    # --------------------------------------------------- guardar en el cache
+    # Solo resultados firmes. Lo que no se intento (tope), lo que fallo por la
+    # red o se corto por tiempo NO se guarda: si no, en la siguiente corrida
+    # saldria como "no se encontro" y nunca se volveria a consultar.
+    no_cachear = ("no se intento", "error consultando", "omitido por tope",
+                  "error en el segundo intento")
+    if len(_CACHE_GEO) > _CACHE_GEO_MAX:
+        _CACHE_GEO.clear()
+    for d, r in salida.items():
+        if r["fuente"] == "cache" or any(m in (r["motivo"] or "") for m in no_cachear):
+            continue
+        _CACHE_GEO[clave(d)] = {"coord": r["coord"], "motivo": r["motivo"]}
+
+    return salida
+
+
+# =============================================================================
+#  MOTOR MASIVO  (persuasivas, comunicaciones, gestion de medicion, lecturas)
+# -----------------------------------------------------------------------------
+#  Diferencias con inspecciones:
+#    · No hay franjas horarias: la ruta es continua de 07:00 en adelante.
+#    · El LIMITE de registros por carga es un tope duro puesto por el usuario.
+#    · Se busca jornada de 6 a 8 horas. Si el limite deja la carga en 4 h, se
+#      genera igual y se marca "jornada incompleta" (el limite manda).
+#    · Las cargas se arman por encadenamiento de vecinos desde la periferia
+#      hacia adentro, para que salgan compactas y consecutivas.
+#    · El muro de localidades es identico: SALAVERRY nunca con CHEPEN, etc.
+# =============================================================================
+PERFILES_MASIVOS = {
+    "ACCIONES PERSUASIVAS":   {"min_registro": 15, "etiqueta": "Accion persuasiva"},
+    "COMUNICACIONES":         {"min_registro": 5,  "etiqueta": "Comunicacion"},
+    "GESTION DE LA MEDICION": {"min_registro": 20, "etiqueta": "Gestion de medicion"},
+    "LECTURAS":               {"min_registro": 3,  "etiqueta": "Lectura"},
+}
+PERFIL_MASIVO_DEFECTO = {"min_registro": 10, "etiqueta": "Actividad de campo"}
+
+
+def _perfil_masivo(actividad):
+    return dict(PERFILES_MASIVOS.get(actividad, PERFIL_MASIVO_DEFECTO))
+
+
+def _duracion_masiva(items, perfil, cfg):
+    """(duracion_min, km) de recorrer los items en ese orden."""
+    if not items:
+        return 0.0, 0.0
+    total = float(perfil["min_registro"])
+    km = 0.0
+    for a, b in zip(items, items[1:]):
+        d = _dist(a, b)
+        total += _min_traslado(d, cfg) + perfil["min_registro"]
+        km += (d / 1000.0) * cfg["FACTOR_RUTA"]
+    return total, km
+
+
+def _cargas_masivas(puntos, cap, perfil, cfg, max_cargas=None):
+    """
+    Arma cargas compactas por encadenamiento de vecinos.
+      * arranca en el punto mas alejado del centro del bloque (periferia) para
+        que las cargas no queden entrelazadas;
+      * va tomando el vecino mas cercano al ultimo asignado mientras quepa en
+        el limite, en el radio de la carga y en las 8 horas de jornada;
+      * el limite de registros manda: si la carga llega al limite antes de las
+        6 h se cierra igual y se marca "jornada incompleta".
+
+    'cap' puede ser un numero (el mismo tope para todas las cargas, que es el
+    modo de siempre) o una LISTA con el tamano exacto de cada carga, que es lo
+    que se usa al repartir entre N tecnicos para que a nadie le toque una carga
+    notoriamente mas chica que la del companero.
+    Devuelve (lista_de_listas_de_puntos, sobrantes).
+    """
+    restantes = list(puntos)
+    cargas, sobrantes = [], []
+    caps = list(cap) if isinstance(cap, (list, tuple)) else None
+    jornada_max = cfg["JORNADA_MASIVA_MAX_H"] * 60.0
+    ventana = max(cfg["VECINOS_CANDIDATOS"], 40)
+
+    while restantes:
+        if max_cargas is not None and len(cargas) >= max_cargas:
+            for p in restantes:
+                p["__motivo__"] = "no alcanza el personal del dia para esta localidad"
+            sobrantes.extend(restantes)
+            break
+
+        arr = np.asarray([[p["math_x"], p["math_y"]] for p in restantes], dtype="float64")
+        centro = arr.mean(axis=0)
+        # semilla: el mas lejano del centro -> se empieza por el borde y las
+        # cargas no quedan entrelazadas
+        i0 = int(np.argmax(((arr - centro) ** 2).sum(axis=1)))
+        actual = [restantes.pop(i0)]
+        arr = np.delete(arr, i0, axis=0)
+
+        if caps is None:
+            tope = cap
+        elif len(cargas) < len(caps):
+            tope = caps[len(cargas)]
+        else:
+            tope = caps[-1] if caps else 1
+        tope = max(1, int(tope))
+
+        # EL LIMITE MANDA: la carga se llena hasta 'cap' exacto mientras haya
+        # predios en la localidad. El radio y las 8 h son preferencias: primero
+        # se busca un vecino que cumpla las dos, y si ninguno cumple se toma el
+        # mas cercano igual y la carga sale con alerta. Nunca se cierra una
+        # carga corta teniendo trabajo pendiente al lado.
+        while restantes and len(actual) < tope:
+            ref = actual[-1]
+            d2 = ((arr[:, 0] - ref["math_x"]) ** 2 + (arr[:, 1] - ref["math_y"]) ** 2)
+            k = min(ventana, len(restantes))
+            cercanos = np.argpartition(d2, k - 1)[:k]
+            cercanos = cercanos[np.argsort(d2[cercanos])]
+
+            elegido = None
+            for i in cercanos:
+                cand = restantes[int(i)]
+                if not _cabe_lista(actual, cand, cfg):
+                    continue
+                if _duracion_masiva(actual + [cand], perfil, cfg)[0] > jornada_max:
+                    continue
+                elegido = int(i)
+                break
+            if elegido is None:
+                elegido = int(cercanos[0])
+
+            actual.append(restantes.pop(elegido))
+            arr = np.delete(arr, elegido, axis=0)
+
+        cargas.append(actual)
+
+    return cargas, sobrantes
+
+
+def _fusionar_masivas(cargas, cap, perfil, cfg):
+    """
+    Disuelve las cargas que quedaron por debajo de la jornada minima cuando sus
+    predios caben en las vecinas. O entran todos, o la carga no se toca.
+    """
+    minimo = cfg["JORNADA_MASIVA_MIN_H"] * 60.0
+    maximo = cfg["JORNADA_MASIVA_MAX_H"] * 60.0
+    cambio = True
+    vueltas = 0
+    while cambio and vueltas < cfg["MAX_VUELTAS_CONSOLIDACION"]:
+        cambio = False
+        vueltas += 1
+        orden = sorted(range(len(cargas)), key=lambda k: len(cargas[k]))
+        for k in orden:
+            donante = cargas[k]
+            if not donante:
+                continue
+            if _duracion_masiva(donante, perfil, cfg)[0] >= minimo:
+                continue
+            plan = {j: list(g) for j, g in enumerate(cargas) if j != k and g}
+            if not plan:
+                continue
+            exito = True
+            for p in donante:
+                mejor = None
+                for j, lista in plan.items():
+                    if len(lista) >= cap:
+                        continue
+                    if not _cabe_lista(lista, p, cfg):
+                        continue
+                    dur = _duracion_masiva(lista + [p], perfil, cfg)[0]
+                    if dur > maximo:
+                        continue
+                    if mejor is None or dur < mejor[0]:
+                        mejor = (dur, j, lista + [p])
+                if mejor is None:
+                    exito = False
+                    break
+                plan[mejor[1]] = mejor[2]
+            if exito:
+                nuevas = [plan[j] for j in sorted(plan)]
+                cargas[:] = [g for g in nuevas if g]
+                cambio = True
+                break
+
+
+def _construir_carga_masiva(items, fecha_txt, fecha_iso, bloque, perfil, cols, cfg):
+    col_sum, col_dis, col_urb, col_via, col_num, _ = cols
+    secuencia = _dos_opt(items, None)
+    dur, km = _duracion_masiva(secuencia, perfil, cfg)
+
+    reloj = float(cfg["JORNADA_INICIO"])
+    registros, localidades = [], []
+    prev = None
+    for i, it in enumerate(secuencia, start=1):
+        d = 0.0
+        if prev is not None:
+            d = _dist(prev, it)
+            reloj += _min_traslado(d, cfg)
+        loc = it["__loc__"]
+        if loc not in localidades:
+            localidades.append(loc)
+
+        via = str(it.get(col_via, "") or "").strip() if col_via else ""
+        num = str(it.get(col_num, "") or "").strip() if col_num else ""
+        urb = str(it.get(col_urb, "") or "").strip() if col_urb else ""
+        dis = str(it.get(col_dis, "") or "").strip() if col_dis else ""
+        via = "" if via.lower() == "nan" else via
+        num = "" if num.lower() in ("nan", "s/n") else num
+        urb = "" if urb.lower() == "nan" else urb
+        dis = "" if dis.lower() == "nan" else dis
+
+        registros.append({
+            "orden": i,
+            "suministro": str(it.get(col_sum, "")),
+            "distrito": dis,
+            "urbanizacion": urb,
+            "via": _via_mostrada(it, via),
+            "numero": _numero_mostrado(it, num, _via_mostrada(it, via)),
+            "localidad": loc,
+            "lat": round(float(it["lat"]), 7),
+            "lon": round(float(it["lon"]), 7),
+            "coord_x": float(it["coord_x"]),
+            "coord_y": float(it["coord_y"]),
+            "origen_coord": it["__origen__"],
+            "tipo_servicio": it.get("__tipo__", ""),
+            "franja_horaria": "",
+            "hora_estimada": _hhmm(reloj),
+            "minuto_estimado": int(round(reloj)),
+            "km_desde_anterior": round((d / 1000.0) * cfg["FACTOR_RUTA"], 2),
+            **_campos_direccion(it),
+        })
+        reloj += perfil["min_registro"]
+        prev = it
+
+    ini = float(cfg["JORNADA_INICIO"])
+    fin = ini + dur
+    alertas = []
+    alertas.extend(_alertas_direccion(registros))
+    if dur < cfg["JORNADA_MASIVA_MIN_H"] * 60:
+        alertas.append("Jornada incompleta: %.1f h (minimo deseado %d h)"
+                       % (dur / 60.0, cfg["JORNADA_MASIVA_MIN_H"]))
+    if dur > cfg["JORNADA_MASIVA_MAX_H"] * 60:
+        alertas.append("Jornada larga: %.1f h para %d registros (el limite manda; "
+                       "baja el limite si quieres cerrar en %d h)"
+                       % (dur / 60.0, len(registros), cfg["JORNADA_MASIVA_MAX_H"]))
+    if fin > cfg["JORNADA_FIN"]:
+        alertas.append("Cierra %s, pasa el fin de jornada" % _hhmm(fin))
+    if len(localidades) > 1:
+        alertas.append("Conurbacion: %s" % " + ".join(localidades))
+
+    return {
+        "id": 0,
+        "fecha": fecha_txt,
+        "fecha_iso": fecha_iso,
+        "localidad": bloque,
+        "zona": " + ".join(localidades[:2]) + ("..." if len(localidades) > 2 else ""),
+        "hora": "%s - %s" % (_hhmm(ini), _hhmm(fin)),
+        "hora_inicio": _hhmm(ini),
+        "hora_fin": _hhmm(fin),
+        "minuto_inicio": int(round(ini)),
+        "duracion_min": int(round(dur)),
+        "duracion_h": round(dur / 60.0, 2),
+        "km_total": round(float(km), 2),
+        "cantidad": len(registros),
+        "franjas": [],
+        "alertas": alertas,
+        "registros": registros,
+    }
+
+
+# =============================================================================
+#  PREPARACION DE DATOS  (comun a los dos endpoints)
+# =============================================================================
+class _ErrorEntrada(Exception):
+    def __init__(self, mensaje, codigo=400):
+        Exception.__init__(self, mensaje)
+        self.mensaje = mensaje
+        self.codigo = codigo
+
+
+def _texto_direccion(fila, cols_dir, col_via, col_num, col_urb, col_dis, loc):
+    """
+    Arma el texto de la direccion que se manda al geocodificador.
+
+    Hay ordenes de trabajo donde la direccion viene COMPLETA en una sola
+    columna ("AV. LARCO 500 URB. EL GOLF") y otras donde viene partida en
+    via / numero / urbanizacion / distrito. Por eso el usuario elige que
+    columnas la componen: si eligio una, se usa esa; si eligio varias, se
+    concatenan en el orden del Excel.
+
+    Los numeros sueltos se pegan con espacio a lo anterior ("AV LARCO 500")
+    y el resto se separa con coma, para que salga una direccion natural.
+    """
+    if cols_dir:
+        piezas = []
+        for c in cols_dir:
+            v = _norm(fila.get(c))
+            if not v or v in ("S/N", "SN", "0"):
+                continue
+            if piezas and v.isdigit() and len(v) <= 6:
+                piezas[-1] = piezas[-1] + " " + v      # numero municipal
+            else:
+                piezas.append(v)
+    else:
+        via = _norm(fila.get(col_via)) if col_via else ""
+        if not via:
+            return ""
+        num = _norm(fila.get(col_num)) if col_num else ""
+        num = "" if num in ("S/N", "SN") else num
+        piezas = [("%s %s" % (via, num)).strip()]
+        urb = _norm(fila.get(col_urb)) if col_urb else ""
+        if urb:
+            piezas.append(urb)
+
+    if not piezas:
+        return ""
+
+    # referencia geografica: el distrito, o la localidad deducida
+    texto = ", ".join(dict.fromkeys(piezas))
+    dis = _norm(fila.get(col_dis)) if col_dis else ""
+    ref = dis or (loc if loc and not str(loc).startswith(("OTRA", "SIN")) else "")
+    if ref:
+        # No se repite la referencia si el texto ya la nombra, aunque sea de
+        # forma parcial: un campo libre que dice "VICTOR LARCO" no debe
+        # terminar como "... VICTOR LARCO, VICTOR LARCO HERRERA".
+        t_norm, r_norm = _norm(texto), _norm(ref)
+        palabras = [w for w in r_norm.split() if len(w) > 2]
+        ya_esta = (r_norm in t_norm or
+                   (palabras and all(w in t_norm for w in palabras[:2])))
+        if not ya_esta:
+            texto += ", " + ref
+    return texto
+
+
+def _direccion_vista(fila, cols_dir):
+    """
+    La direccion que se MUESTRA (tarjetas, mapa, planos, Excel) cuando el usuario
+    eligio que columnas forman la direccion: esas columnas, tal cual vienen en el
+    Excel y en su orden. La localidad no entra aqui: es solo la referencia para
+    buscar, y se muestra aparte.
+    Si las columnas elegidas estan vacias en esta fila, lo dice con su nombre.
+    """
+    piezas = []
+    for c in cols_dir:
+        v = fila.get(c)
+        v = "" if v is None else str(v).strip()
+        if not v or v.lower() in ("nan", "none", "null", "-"):
+            continue
+        if piezas and v.isdigit() and len(v) <= 6:
+            piezas[-1] = piezas[-1] + " " + v          # numero municipal suelto
+        elif v not in piezas:
+            piezas.append(v)
+    if piezas:
+        return ", ".join(piezas)
+    return "Sin direccion (%s vacia%s en el Excel)" % (
+        " / ".join(str(c) for c in cols_dir), "s" if len(cols_dir) > 1 else "")
+
+
+def _via_mostrada(fila, via):
+    """Si se eligieron columnas de direccion mandan ellas; si no, la via detectada."""
+    vista = fila.get("__dir_vista__")
+    if isinstance(vista, str) and vista.strip():
+        return vista
+    txt = fila.get("__dir_txt__")
+    txt = txt if isinstance(txt, str) else ""
+    return via or txt or "Sin direccion en el Excel"
+
+
+def _numero_mostrado(fila, num, via=""):
+    """Con columnas elegidas el numero ya va dentro de la direccion. Tampoco se
+    repite si la via ya lo trae, ni se pega a un aviso de "sin direccion"."""
+    vista = fila.get("__dir_vista__")
+    if isinstance(vista, str) and vista.strip():
+        return ""
+    if num and via and (str(via).startswith("Sin direccion") or str(num) in str(via).split()):
+        return ""
+    return num or "S/N"
+
+
+def _direccion_para_buscar(texto):
+    """Le agrega la referencia regional para que el geocodificador no se vaya
+    a otro departamento con el mismo nombre de calle."""
+    if not texto:
+        return ""
+    t = texto if "LA LIBERTAD" in texto.upper() else texto + ", La Libertad"
+    return t + ", Peru"
+
+
+def _mapear_columnas(df, form, tipo_mapeo):
+    columnas = [str(c) for c in df.columns]
+    if tipo_mapeo == "manual":
+        g = lambda k: (form.get(k) or "").strip() or None
+        cols = {"sum": g("col_suministro"), "fec": g("col_fecha"), "hor": g("col_hora"),
+                "dis": g("col_distrito"), "urb": g("col_urb"),
+                "via": g("col_via"), "num": g("col_numero")}
+    else:
+        cols = {
+            "sum": _detectar(columnas, ["SUMINISTRO", "CLICODFAC", "CLICOD"]),
+            "hor": _detectar(columnas, ["RANGO", "FRANJA", "HORARIO", "HORA"],
+                             excluir=["FECHA"]),
+            "fec": _detectar(columnas, ["FECHA"]),
+            "dis": _detectar(columnas, ["DISTRITO", "DISTRIT", "LOCALIDAD"]),
+            "urb": _detectar(columnas, ["URBANIZACION", "URBANIZ", "SECTOR", "URB"]),
+            "via": _detectar(columnas, ["DIRECCION", "VIA", "CALLE", "AVENIDA"]),
+            "num": _detectar(columnas, ["NRO MUNICIPAL", "NUMERO MUNICIPAL",
+                                        "MUNICIPAL", "NUMERO", "NRO"]),
+        }
+    for c in cols.values():
+        if c and c not in df.columns:
+            raise _ErrorEntrada("La columna '%s' no existe en el Excel." % c)
+    if not cols["sum"]:
+        raise _ErrorEntrada("No se detecto la columna Suministro.")
+
+    # Columnas que componen la direccion. Puede ser UNA sola (el Excel trae la
+    # direccion completa en un campo) o varias (via, numero, urbanizacion...).
+    crudo = form.get("cols_direccion") or ""
+    elegidas = []
+    if crudo:
+        try:
+            posibles = json.loads(crudo) if crudo.strip().startswith("[") \
+                else crudo.split("|")
+        except ValueError:
+            posibles = crudo.split("|")
+        for c in posibles:
+            c = str(c).strip()
+            if not c:
+                continue
+            if c not in df.columns:
+                raise _ErrorEntrada("La columna de direccion '%s' no existe "
+                                    "en el Excel." % c)
+            if c not in elegidas:
+                elegidas.append(c)
+    cols["dir"] = elegidas
+    return cols
+
+
+def _preparar_datos(contenido, form, conf, db, CoordenadasCatastro, DataCatastroV2,
+                    usar_franjas, col_clave=None):
+    """
+    Lee el Excel, mapea columnas, identifica localidad, resuelve coordenadas
+    (catastro -> catastro v2 -> geocodificacion) y deja todo listo para rutear.
+    Devuelve un dict con df_val, cols y contadores.
+    """
+    df = pd.read_excel(io.BytesIO(contenido), dtype=str)
+    total_original = len(df)
+    cols = _mapear_columnas(df, form, form.get("tipo_mapeo", "auto"))
+    col_sum = col_clave if (col_clave and col_clave in df.columns) else cols["sum"]
+    col_fec, col_hor = cols["fec"], cols["hor"]
+    col_dis, col_urb, col_via, col_num = cols["dis"], cols["urb"], cols["via"], cols["num"]
+    cols_dir = cols.get("dir") or []
+
+    # --- Limpieza ---------------------------------------------------------
+    df = df.dropna(subset=[col_sum]).copy()
+    df[col_sum] = df[col_sum].astype(str).str.strip()
+    df = df[df[col_sum] != ""]
+    antes = len(df)
+    df = df.drop_duplicates(subset=[col_sum], keep="first")
+    duplicados = antes - len(df)
+    if df.empty:
+        raise _ErrorEntrada("El Excel no tiene filas con suministro.")
+
+    # --- Localidad (antes de geocodificar) --------------------------------
+    ser = lambda c: (df[c].fillna("").astype(str).tolist() if c and c in df.columns
+                     else [""] * len(df))
+    # Si la direccion viene en una sola columna, ese texto es tambien lo unico
+    # que puede delatar la localidad, asi que se usa como ultimo recurso.
+    if cols_dir:
+        libre = [" ".join(x for x in vals if x)
+                 for vals in zip(*[ser(c) for c in cols_dir])]
+    else:
+        libre = ser(col_via)
+    locs = [_identificar_localidad(d, u, v)
+            for d, u, v in zip(ser(col_dis), ser(col_urb), libre)]
+    df["__loc__"] = locs
+    df["__bloque__"] = [_bloque_de(l, conf) for l in locs]
+
+    # Texto de direccion legible: sirve para geocodificar y tambien para
+    # mostrarlo en la carga cuando el Excel no trae via/numero por separado.
+    df["__dir_txt__"] = [
+        _texto_direccion(fila, cols_dir, col_via, col_num, col_urb, col_dis,
+                         fila.get("__loc__"))
+        for _, fila in df.iterrows()]
+    # Lo que se MUESTRA como direccion: las columnas elegidas por el usuario.
+    df["__dir_vista__"] = ([_direccion_vista(fila, cols_dir) for _, fila in df.iterrows()]
+                           if cols_dir else "")
+
+    # --- Ubicaciones fijadas a mano por el supervisor (mandan sobre todo) ---
+    suministros = df[col_sum].unique().tolist()
+    manuales = _coordenadas_manuales(suministros, conf)
+    filas = [{"sum_db": s, "cx": lon, "cy": lat, "origen": ORIGEN_MANUAL}
+             for s, (lon, lat) in manuales.items()]
+
+    # --- Catastro por lotes ------------------------------------------------
+    pendientes_cat = [s for s in suministros if s not in manuales]
+    for lote in _lotes(pendientes_cat, conf["DB_CHUNK"]):
+        for r in db.session.query(
+                CoordenadasCatastro.clicodfac,
+                CoordenadasCatastro.coord_x,
+                CoordenadasCatastro.coord_y
+        ).filter(CoordenadasCatastro.clicodfac.in_(lote)).all():
+            filas.append({"sum_db": str(r[0]).strip(), "cx": r[1], "cy": r[2],
+                          "origen": "catastro"})
+
+    encontrados = {f["sum_db"] for f in filas}
+    faltantes = [s for s in suministros if s not in encontrados]
+    if faltantes:
+        pend = set(faltantes)
+        for lote in _lotes(faltantes, conf["DB_CHUNK"]):
+            for r in db.session.query(
+                    DataCatastroV2.agrupado, DataCatastroV2.suministro_p,
+                    DataCatastroV2.este, DataCatastroV2.norte
+            ).filter(or_(DataCatastroV2.agrupado.in_(lote),
+                         DataCatastroV2.suministro_p.in_(lote))).all():
+                ag = str(r[0]).strip() if r[0] is not None else ""
+                sp = str(r[1]).strip() if r[1] is not None else ""
+                clave = ag if ag in pend else (sp if sp in pend else None)
+                if clave:
+                    filas.append({"sum_db": clave, "cx": r[2], "cy": r[3],
+                                  "origen": "catastro_v2"})
+
+    df_coords = pd.DataFrame(filas, columns=["sum_db", "cx", "cy", "origen"])
+    if not df_coords.empty:
+        df_coords = df_coords.drop_duplicates(subset=["sum_db"], keep="first")
+    df = df.merge(df_coords, left_on=col_sum, right_on="sum_db", how="left")
+
+    x, y, ok = _mascara_valida(df["cx"], df["cy"])
+    # Se guarda lo que catastro devolvio ANTES de descartarlo: un valor
+    # imposible como coordenada puede seguir siendo util como pista (el caso
+    # tipico es el este y el norte cargados al reves, que se arregla solo).
+    df["__cx_bruto__"], df["__cy_bruto__"] = x.copy(), y.copy()
+    x[~ok], y[~ok] = np.nan, np.nan
+    df["cx"], df["cy"] = x, y
+    df.loc[~ok, "origen"] = None
+
+    # --- Auditoria de las coordenadas que SI trajo catastro ----------------
+    # Una coordenada mala hace mas dano que una faltante: la faltante se nota y
+    # se engancha al final, la mala se mete en medio de la ruta y arrastra al
+    # tecnico 30 km. Aqui se sueltan las imposibles para que el paso siguiente
+    # intente ubicarlas por direccion, que es el unico momento en que vale la
+    # pena gastar una consulta al geocodificador.
+    df["__auditada__"] = None
+    audit_pedida = _si_no(form.get("validar_coordenadas"), conf["AUDITAR_COORDENADAS"])
+    if audit_pedida:
+        detalle_coords, auditoria = _auditar_coordenadas(df, conf, col_sum)
+    else:
+        detalle_coords, auditoria = [], {"revisadas": 0, "fuera_region": 0,
+                                         "relleno": 0, "lejos": 0,
+                                         "corregidas_ejes": 0, "sospechosas": 0}
+    auditoria["activa"] = bool(audit_pedida)
+
+    # --- Zona de cada localidad (la direccion se busca DENTRO de ella) ------
+    areas = _areas_localidad(df, conf)
+
+    # --- Geocodificacion de respaldo --------------------------------------
+    geocodificados = 0
+    recuperadas = set()          # sospechosas que la direccion si pudo ubicar
+    motivos, direcciones_usadas = {}, {}
+
+    # --- GIS de Sedalib: el lote exacto para los que siguen sin coordenada ---
+    # (no tenian en catastro, o la auditoria descarto la que tenian). Va antes
+    # que la busqueda por direccion porque es mucho mas exacto.
+    usar_gis = _si_no(form.get("usar_gis_sedalib"), conf["GIS_SEDALIB_ACTIVO"])
+    gis_info = {"activo": False, "ubicados": 0, "error": ""}
+    if usar_gis and not _gis.disponible():
+        gis_info["error"] = _gis.motivo_no_disponible()
+    elif usar_gis:
+        sin_coord = list(df.index[df["cx"].isna()])
+        puntos_gis, gis_info = _puntos_gis_sedalib(
+            [df.at[i, col_sum] for i in sin_coord], conf)
+        for i in sin_coord:
+            p = puntos_gis.get(str(df.at[i, col_sum]).strip())
+            if not p:
+                continue
+            df.at[i, "cx"], df.at[i, "cy"] = p
+            df.at[i, "origen"] = ORIGEN_GIS
+            if df.at[i, "__auditada__"]:
+                recuperadas.add(str(df.at[i, col_sum]))
+
+    mask = df["cx"].isna()
+    if mask.any():
+        direcciones, idx_dir, areas_dir = {}, {}, {}
+        for idx in df.index[mask]:
+            d = _direccion_para_buscar(df.at[idx, "__dir_txt__"])
+            if not d:
+                motivos[idx] = ("sin direccion en el Excel: no se indico que "
+                                "columnas forman la direccion, o estan vacias")
+                continue
+            direcciones[d] = None
+            idx_dir[idx] = d
+            area = areas.get(df.at[idx, "__loc__"])
+            if area:
+                areas_dir[d] = area
+            direcciones_usadas[idx] = d
+
+        resueltas = (_geocodificar(list(direcciones), conf, areas_dir)
+                     if direcciones else {})
+
+        # centro de referencia por localidad, con lo que SI vino del catastro
+        centros = {}
+        val = df[df["cx"].notna()]
+        for loc, g in val.groupby("__loc__"):
+            gx, gy, _, _ = _a_metros_y_grados(g["cx"].to_numpy(), g["cy"].to_numpy())
+            centros[loc] = (float(np.nanmedian(gx)), float(np.nanmedian(gy)))
+
+        for idx, d in idx_dir.items():
+            r = resueltas.get(d) or {"coord": None, "motivo": "no se proceso"}
+            if not r.get("coord"):
+                motivos[idx] = r.get("motivo") or "la direccion no se encontro"
+                continue
+            lon, lat = r["coord"]
+            if not (-83 <= lon <= -68 and -20 <= lat <= 0):
+                motivos[idx] = "el geocodificador devolvio un punto fuera de la region"
+                continue
+            loc = df.at[idx, "__loc__"]
+            area = areas.get(loc)
+            if area:
+                dist = _distancia_area(lon, lat, area)
+                if dist > area["radio"]:
+                    motivos[idx] = ("resultado descartado: cayo fuera de %s "
+                                    "(a %.1f km de su zona)" % (loc, dist / 1000.0))
+                    continue
+            cen = None if area else centros.get(loc)
+            if cen:
+                ux, uy, _, _ = _a_metros_y_grados(np.array([lon]), np.array([lat]))
+                dist = math.hypot(ux[0] - cen[0], uy[0] - cen[1])
+                if dist > conf["GEOCODE_RADIO_VALIDACION_M"]:
+                    motivos[idx] = ("resultado descartado: cayo a %.0f km del centro "
+                                    "de %s (probable coincidencia generica)"
+                                    % (dist / 1000.0, loc))
+                    continue
+            df.at[idx, "cx"], df.at[idx, "cy"] = lon, lat
+            # Distinguir las dos historias: una nunca tuvo coordenada, la otra
+            # tenia una mala y se acaba de reemplazar. Al supervisor le importa.
+            rescatada = bool(df.at[idx, "__auditada__"])
+            df.at[idx, "origen"] = "corregido" if rescatada else "geocodificado"
+            geocodificados += 1
+            if rescatada:
+                recuperadas.add(str(df.at[idx, col_sum]))
+
+    # Cerrar el parte de la auditoria: cuales de las descartadas se pudieron
+    # reemplazar por una coordenada buena y cuales quedaron sin ubicacion fina.
+    if detalle_coords:
+        por_sum = {}
+        for idx in df.index:
+            por_sum[str(df.at[idx, col_sum])] = idx
+        for d in detalle_coords:
+            if d["estado"] != "descartada":
+                continue
+            if d["suministro"] in recuperadas:
+                j = por_sum.get(d["suministro"])
+                d["estado"] = "reemplazada"
+                d["lon_corregida"] = _num(df.at[j, "cx"]) if j is not None else None
+                d["lat_corregida"] = _num(df.at[j, "cy"]) if j is not None else None
+            else:
+                d["estado"] = "sin_reemplazo"
+        auditoria["reemplazadas"] = len(recuperadas)
+        auditoria["sin_reemplazo"] = sum(1 for d in detalle_coords
+                                         if d["estado"] == "sin_reemplazo")
+
+    # --- Validacion direccion <-> coordenada --------------------------------
+    # Despues de geocodificar (tambien revisa lo que devolvio el geocodificador)
+    # y antes de absorber localidades (que necesita las coordenadas corregidas).
+    if _si_no(form.get("validar_direcciones"), conf["VALIDAR_DIRECCIONES"]):
+        validacion_dir = _validar_direcciones_df(
+            df, conf, col_sum, (cols_dir, col_urb, col_via, col_num),
+            _a_metros_y_grados, _geocodificar_para_validacion(conf), detalle_coords,
+            areas=areas)
+    else:
+        validacion_dir = {"activa": False}
+
+    # --- GIS de Sedalib para lo que el validador dejo en duda -----------------
+    # 'revisar' (no cuadra con su direccion) y 'corregida' (la movio por la
+    # calle): si el GIS tiene el lote, ese punto manda.
+    if (usar_gis and _gis.disponible() and "__dir_estado__" in df.columns):
+        dudas = [i for i in df.index
+                 if df.at[i, "__dir_estado__"] in ("revisar", "corregida")
+                 and str(df.at[i, "origen"]) not in (ORIGEN_MANUAL, ORIGEN_GIS)]
+        if dudas:
+            puntos2, info2 = _puntos_gis_sedalib(
+                [df.at[i, col_sum] for i in dudas], conf,
+                tope=max(0, conf["GIS_SEDALIB_MAX_POR_PROCESO"] - gis_info.get("consultados", 0)),
+                segundos=max(0.0, conf["GIS_SEDALIB_MAX_SEG"] - gis_info.get("segundos", 0.0)))
+            gis_info["activo"] = True
+            for k in ("pedidos", "desde_cache", "consultados", "pendientes", "segundos"):
+                gis_info[k] = gis_info.get(k, 0) + info2.get(k, 0)
+            gis_info["error"] = gis_info.get("error") or info2.get("error", "")
+            reubicados = {}
+            for i in dudas:
+                s = str(df.at[i, col_sum]).strip()
+                p = puntos2.get(s)
+                if not p:
+                    continue
+                previo = df.at[i, "__dir_estado__"]
+                if validacion_dir.get("activa"):
+                    clave_res = "revisar" if previo == "revisar" else "corregidas"
+                    validacion_dir[clave_res] = max(0, validacion_dir.get(clave_res, 0) - 1)
+                    validacion_dir["gis_sedalib"] = validacion_dir.get("gis_sedalib", 0) + 1
+                if previo == "revisar" and pd.notna(df.at[i, "cx"]):
+                    _, _, lo0, la0 = _a_metros_y_grados(np.array([float(df.at[i, "cx"])]),
+                                                        np.array([float(df.at[i, "cy"])]))
+                    df.at[i, "__lon_orig__"], df.at[i, "__lat_orig__"] = lo0[0], la0[0]
+                    df.at[i, "__origen_orig__"] = df.at[i, "origen"]
+                df.at[i, "cx"], df.at[i, "cy"] = p
+                df.at[i, "origen"] = ORIGEN_GIS
+                df.at[i, "__dir_estado__"] = "gis"
+                df.at[i, "__dir_nota__"] = ("Ubicado con el GIS de Sedalib (centro del lote "
+                                            "del suministro).")
+                df.at[i, "__lon_prop__"], df.at[i, "__lat_prop__"] = None, None
+                reubicados[s] = p
+            # deja la correccion en la lista que va a catastro
+            for d in detalle_coords:
+                p = reubicados.get(str(d.get("suministro")))
+                if p:
+                    d["estado"] = "corregida_gis"
+                    d["lon_corregida"], d["lat_corregida"] = _num(p[0]), _num(p[1])
+                    d["motivo"] = "Ubicado con el GIS de Sedalib (lote del suministro)"
+    gis_info["ubicados"] = int((df["origen"].astype(str) == ORIGEN_GIS).sum())
+
+    # --- Absorcion de localidades desconocidas -----------------------------
+    # Va DESPUES de geocodificar porque necesita coordenadas definitivas para
+    # medir a que distrito pertenece cada nombre.
+    conf_abs = dict(conf)
+    conf_abs["ABSORBER_DESCONOCIDAS"] = _si_no(form.get("absorber_localidades"),
+                                               conf["ABSORBER_DESCONOCIDAS"])
+    absorcion = _absorber_localidades(df, conf_abs)
+    absorcion["activa"] = bool(conf_abs["ABSORBER_DESCONOCIDAS"])
+
+    # --- Fecha para TODAS las filas (tambien las que no tienen coordenada,
+    #     porque igual hay que entregarlas a un tecnico) --------------------
+    if col_fec and col_fec in df.columns and df[col_fec].notna().any():
+        f_txt = df[col_fec].astype(str).str.strip()
+        f_dt = _serie_fechas(f_txt)
+    else:
+        f_txt = pd.Series(["Sin Fecha"] * len(df), index=df.index)
+        f_dt = pd.Series([pd.NaT] * len(df), index=df.index)
+    df["__fecha_txt__"] = f_txt
+    df["__fecha_iso__"] = f_dt.dt.strftime("%Y-%m-%d").fillna("9999-12-31")
+
+    # --- Coordenadas finales ----------------------------------------------
+    df_val = df[df["cx"].notna() & df["cy"].notna()].copy()
+    sin_coords = df[df["cx"].isna() | df["cy"].isna()].copy()
+    if df_val.empty:
+        raise _ErrorEntrada("Ningun suministro tiene coordenada valida. "
+                            "Revisa el catastro o la columna de direccion.")
+
+    mx, my, lon, lat = _a_metros_y_grados(df_val["cx"].to_numpy(), df_val["cy"].to_numpy())
+    df_val["math_x"], df_val["math_y"] = mx, my
+    df_val["lon"], df_val["lat"] = lon, lat
+    df_val["coord_x"], df_val["coord_y"] = df_val["cx"], df_val["cy"]
+    df_val["__origen__"] = df_val["origen"].fillna("desconocido")
+
+    # --- Franja -------------------------------------------------------------
+    jornada = (conf["JORNADA_INICIO"], conf["JORNADA_FIN"], "Jornada Completa")
+    if usar_franjas and col_hor and col_hor in df_val.columns:
+        parsed = [(_parse_franja(v, conf) or jornada) for v in df_val[col_hor]]
+    else:
+        parsed = [jornada] * len(df_val)
+    df_val["__f_ini__"] = [p[0] for p in parsed]
+    df_val["__f_fin__"] = [p[1] for p in parsed]
+    df_val["__f_txt__"] = [p[2] for p in parsed]
+
+    return {
+        "df_val": df_val,
+        "cols": (col_sum, col_dis, col_urb, col_via, col_num, col_hor),
+        "total_original": total_original,
+        "duplicados": duplicados,
+        "sin_coords": sin_coords,
+        # ya no es una lista de codigos: cada uno viene con la direccion que se
+        # intento y el motivo exacto por el que no se pudo ubicar
+        "lista_sin_coords": [
+            {"suministro": str(fila.get(col_sum, "")),
+             "localidad": fila.get("__loc__", ""),
+             "direccion": direcciones_usadas.get(idx, ""),
+             "motivo": motivos.get(idx, "sin coordenada en catastro y sin direccion util")}
+            for idx, fila in sin_coords.head(400).iterrows()
+        ],
+        "geocodificados": geocodificados,
+        # Auditoria de coordenadas: contadores para el resumen y el detalle
+        # suministro por suministro para la tabla y el Excel de catastro.
+        "auditoria_coords": auditoria,
+        "detalle_coords": detalle_coords[:2000],
+        "absorcion": absorcion,
+        "validacion_dir": validacion_dir,
+        "gis_sedalib": gis_info,
+    }
+
+
+def _leer_form_comun(conf):
+    """
+    Devuelve (actividad, tipo_mapeo, limite, tecnicos).
+    'tecnicos' vale 0 si el formulario no lo mando: cada endpoint decide si lo
+    exige. NO se asume una cuadrilla por defecto, porque el personal de
+    inspecciones no es el mismo que el de lecturas.
+    """
+    tipo_mapeo = request.form.get("tipo_mapeo", "auto")
+    actividad = (request.form.get("actividad") or "").strip().upper()
+    try:
+        limite = int(float(request.form.get("limite_carga") or 0))
+    except (TypeError, ValueError):
+        limite = 0
+    try:
+        tecnicos = int(float(request.form.get("tecnicos") or 0))
+    except (TypeError, ValueError):
+        tecnicos = 0
+    return actividad, tipo_mapeo, limite, max(0, min(tecnicos, 500))
+
+
+# =============================================================================
+#  ENDPOINTS
+# =============================================================================
+def registrar_rutas(app, db, CoordenadasCatastro, DataCatastroV2, cfg=None):
+    conf = dict(CFG)
+    if cfg:
+        conf.update(cfg)
+
+    # -------------------------------------------------------------------------
+    #  A) INSPECCIONES COMERCIALES  (con franjas horarias)
+    # -------------------------------------------------------------------------
+    @app.route("/api/generar_rutas", methods=["POST"])
+    def generar_rutas():
+        try:
+            if "archivo" not in request.files:
+                return jsonify({"error": "No se encontro ningun archivo excel."}), 400
+
+            actividad, _tm, limite, tecnicos_dia = _leer_form_comun(conf)
+            actividad = actividad or "INSPECCIONES COMERCIALES"
+            if tecnicos_dia <= 0:
+                return jsonify({"error": "Indica cuantos tecnicos hay disponibles "
+                                         "para esta orden de trabajo."}), 400
+            # INSPECCIONES no usa el limite del modal: su capacidad la decide
+            # el reloj (franja + traslado) y el tope diario de CFG. Se deja
+            # exactamente como estaba antes del motor masivo.
+            tope_diario = conf["TOPE_DIARIO"]
+
+            datos = _preparar_datos(request.files["archivo"].read(), request.form, conf,
+                                    db, CoordenadasCatastro, DataCatastroV2,
+                                    usar_franjas=True)
+            df_val, cols = datos["df_val"], datos["cols"]
+
+            cargas_json, resumen_bloques = [], {}
+            no_programados, plan_personal = [], {}
+
+            for (fecha_iso, fecha_txt), dia in df_val.groupby(
+                    ["__fecha_iso__", "__fecha_txt__"], sort=True):
+
+                bloques = {}
+                for bloque, grupo in dia.groupby("__bloque__"):
+                    puntos = grupo.to_dict("records")
+                    for p in puntos:
+                        p["math_x"] = float(p["math_x"])
+                        p["math_y"] = float(p["math_y"])
+                    bloques[bloque] = puntos
+
+                # EN INSPECCIONES NO SE DESCARTA NADA. El personal disponible
+                # es un objetivo que se reporta, no un muro: siempre se rutea
+                # sin techo, y si hacen falta mas cargas que tecnicos, se
+                # generan igual y se avisa cuantos faltan. Es preferible que el
+                # supervisor vea "necesitas 18" a que se pierdan 20 ordenes.
+                cargas_del_dia = 0
+                demanda = {}
+                for bloque, puntos in bloques.items():
+                    cargas, sobrantes = _generar_cargas_bloque(
+                        puntos, conf, tope_diario, max_cargas=None)
+                    demanda[bloque] = len(cargas)
+                    cargas_del_dia += len(cargas)
+                    for c in cargas:
+                        km = _resecuenciar(c, conf)
+                        cargas_json.append(_construir_objeto_carga(
+                            c, str(fecha_txt), str(fecha_iso), km, cols, conf))
+                    resumen_bloques[bloque] = resumen_bloques.get(bloque, 0) + len(cargas)
+                    # sin techo, _generar_cargas_bloque no devuelve sobrantes;
+                    # si algun dia los devolviera, se reportan igual
+                    no_programados.extend(_fila_no_programada(sobrantes, fecha_txt,
+                                                              fecha_iso, cols))
+
+                requeridos = int(sum(demanda.values()))
+                plan_personal[str(fecha_txt)] = {
+                    "tecnicos_disponibles": tecnicos_dia,
+                    "tecnicos_requeridos": requeridos,
+                    "tecnicos_usados": cargas_del_dia,
+                    "tecnicos_libres": max(0, tecnicos_dia - cargas_del_dia),
+                    "tecnicos_faltantes": max(0, cargas_del_dia - tecnicos_dia),
+                    "asignacion": {b: {"pide": demanda[b], "recibe": demanda[b]}
+                                   for b in sorted(demanda)},
+                }
+
+            # Los predios sin coordenada NO se descartan: se enganchan a la
+            # carga de su localidad para que igual salgan a campo.
+            adjuntados = _adjuntar_sin_coordenada(cargas_json, datos["sin_coords"],
+                                                  cols, conf, cols[5])
+
+            cargas_json.sort(key=lambda r: (r["fecha_iso"], r["minuto_inicio"],
+                                            -r["cantidad"]))
+            for i, r in enumerate(cargas_json, start=1):
+                r["id"] = i
+            _marcar_exceso_personal(cargas_json, tecnicos_dia)
+
+            respuesta = _respuesta(datos, cargas_json, no_programados,
+                                      plan_personal, resumen_bloques, {
+                                          "actividad": actividad,
+                                          "modo": "inspecciones",
+                                          "min_inspeccion": conf["MIN_INSPECCION"],
+                                          "velocidad_kmh": conf["VELOCIDAD_KMH"],
+                                          "jornada": "%s - %s" % (
+                                              _hhmm(conf["JORNADA_INICIO"]),
+                                              _hhmm(conf["JORNADA_FIN"])),
+                                          "tope_diario": tope_diario,
+                                          "tecnicos_por_dia": tecnicos_dia,
+                                          "max_por_franja_2h": int(
+                                              2 * conf["TOPE_POR_FRANJA_HORA"]),
+                                      })
+            # En inspecciones el total programado incluye los enganchados sin
+            # coordenada: la suma tiene que dar el 100% de las filas utiles.
+            respuesta["resumen"]["programados"] = sum(c["cantidad"] for c in cargas_json)
+            respuesta["resumen"]["sin_coordenada_enganchados"] = adjuntados
+            respuesta["resumen"]["no_programados"] = len(no_programados)
+            respuesta["resumen"]["total_cargas_generadas"] = len(cargas_json)
+            # Inspecciones tambien exporta su Excel de ruta: suministro -> carga/orden
+            respuesta["asignacion"] = {
+                r["suministro"]: {"carga": c["id"], "orden": r["orden"], "tipo": ""}
+                for c in cargas_json for r in c["registros"]}
+            return jsonify(respuesta), 200
+
+        except _ErrorEntrada as e:
+            return jsonify({"error": e.mensaje}), e.codigo
+        except Exception:
+            db.session.rollback()
+            log.error("Error generando rutas:\n%s", traceback.format_exc())
+            return jsonify({"error": "No se pudo procesar el archivo. "
+                                     "Revisa el log del servidor."}), 500
+
+    # -------------------------------------------------------------------------
+    #  B) ACTIVIDADES MASIVAS  (sin franjas, limite por carga, jornada 6-8 h)
+    # -------------------------------------------------------------------------
+    @app.route("/api/generar_rutas_masivas", methods=["POST"])
+    def generar_rutas_masivas():
+        try:
+            if "archivo" not in request.files:
+                return jsonify({"error": "No se encontro ningun archivo excel."}), 400
+
+            actividad, _tm, limite, tecnicos_dia = _leer_form_comun(conf)
+            if not actividad:
+                return jsonify({"error": "Debes seleccionar la actividad."}), 400
+            if tecnicos_dia <= 0:
+                return jsonify({"error": "Indica cuantos tecnicos hay disponibles "
+                                         "para esta orden de trabajo."}), 400
+
+            # Que decide cuantas cargas salen: el limite de registros o la
+            # cantidad de tecnicos. Son dos formas de repartir lo mismo y con
+            # un volumen dado no pueden cumplirse las dos, asi que el usuario
+            # elige en el modal cual manda.
+            criterio = (request.form.get("criterio_reparto") or "limite").lower()
+            if criterio not in ("limite", "tecnicos"):
+                criterio = "limite"
+            if criterio == "limite" and limite <= 0:
+                return jsonify({"error": "Indica el limite de registros por carga, "
+                                         "o cambia el criterio a repartir entre "
+                                         "los tecnicos."}), 400
+            limite = max(1, min(limite, 500)) if limite > 0 else 0
+            perfil = _perfil_masivo(actividad)
+
+            col_cruce = (request.form.get("col_cruce") or "").strip() or None
+            es_persuasivas = actividad == "ACCIONES PERSUASIVAS"
+
+            datos = _preparar_datos(request.files["archivo"].read(), request.form, conf,
+                                    db, CoordenadasCatastro, DataCatastroV2,
+                                    usar_franjas=False, col_clave=col_cruce)
+            df_val, cols = datos["df_val"], datos["cols"]
+            col_sum = cols[0]
+
+            # --- Cruce con el archivo secundario (obturacion / desague) -----
+            claves_desague, cruce_info = set(), None
+            arch2 = request.files.get("archivo_secundario")
+            if es_persuasivas and arch2 and arch2.filename:
+                if not col_cruce:
+                    return jsonify({"error": "Selecciona la columna de cruce entre "
+                                             "los dos archivos."}), 400
+                df2 = pd.read_excel(io.BytesIO(arch2.read()), dtype=str)
+                if col_cruce not in df2.columns:
+                    return jsonify({"error": "El archivo secundario no tiene la "
+                                             "columna '%s'." % col_cruce}), 400
+                claves_desague = {str(v).strip() for v in df2[col_cruce].dropna()
+                                  if str(v).strip()}
+                cruce_info = {
+                    "columna": col_cruce,
+                    "filas_secundario": int(len(df2)),
+                    "claves_secundario": len(claves_desague),
+                }
+            df_val["__tipo__"] = [
+                "AGUA Y DESAGUE" if str(v).strip() in claves_desague else "AGUA"
+                for v in df_val[col_sum]
+            ]
+            if cruce_info:
+                cruce_info["coincidencias"] = int(
+                    (df_val["__tipo__"] == "AGUA Y DESAGUE").sum())
+
+            # --- Ruteo ------------------------------------------------------
+            cargas_json, resumen_bloques = [], {}
+            no_programados, plan_personal = [], {}
+
+            for (fecha_iso, fecha_txt), dia in df_val.groupby(
+                    ["__fecha_iso__", "__fecha_txt__"], sort=True):
+
+                bloques = {}
+                for bloque, grupo in dia.groupby("__bloque__"):
+                    puntos = grupo.to_dict("records")
+                    for p in puntos:
+                        p["math_x"] = float(p["math_x"])
+                        p["math_y"] = float(p["math_y"])
+                    bloques[bloque] = puntos
+
+                # Igual que en inspecciones: no se descarta trabajo. El personal
+                # se reporta; si hacen falta mas cargas, se generan y se avisa.
+                # Si manda el numero de tecnicos, primero se reparten entre las
+                # localidades segun su volumen y despues cada una divide su
+                # trabajo en exactamente esa cantidad de cargas.
+                cupos_dia = {}
+                if criterio == "tecnicos":
+                    cupos_dia = _repartir_por_volumen(
+                        {b: len(p) for b, p in bloques.items()}, tecnicos_dia)
+
+                cargas_del_dia, demanda = 0, {}
+                for bloque, puntos in bloques.items():
+                    if criterio == "tecnicos":
+                        # Cupo de la localidad y tamano EXACTO de cada carga: el
+                        # resto se reparte de a uno, no se acumula en la ultima.
+                        # Con 152 registros y 7 tecnicos salen 22,22,22,22,22,21,21
+                        # y no 22,22,22,22,22,22,20.
+                        cupo = max(1, min(cupos_dia.get(bloque, 1), len(puntos)))
+                        base, resto = divmod(len(puntos), cupo)
+                        cap = [base + 1] * resto + [base] * (cupo - resto)
+                        grupos, sobrantes = _cargas_masivas(
+                            list(puntos), cap, perfil, conf, max_cargas=cupo)
+                    else:
+                        grupos, sobrantes = _cargas_masivas(
+                            list(puntos), limite, perfil, conf, max_cargas=None)
+                    demanda[bloque] = len(grupos)
+                    cargas_del_dia += len(grupos)
+                    for items in grupos:
+                        cargas_json.append(_construir_carga_masiva(
+                            items, str(fecha_txt), str(fecha_iso), bloque,
+                            perfil, cols, conf))
+                    resumen_bloques[bloque] = resumen_bloques.get(bloque, 0) + len(grupos)
+                    no_programados.extend(_fila_no_programada(sobrantes, fecha_txt,
+                                                              fecha_iso, cols))
+
+                plan_personal[str(fecha_txt)] = {
+                    "tecnicos_disponibles": tecnicos_dia,
+                    "tecnicos_requeridos": int(sum(demanda.values())),
+                    "tecnicos_usados": cargas_del_dia,
+                    "tecnicos_libres": max(0, tecnicos_dia - cargas_del_dia),
+                    "tecnicos_faltantes": max(0, cargas_del_dia - tecnicos_dia),
+                    "asignacion": {b: {"pide": demanda[b], "recibe": demanda[b]}
+                                   for b in sorted(demanda)},
+                }
+
+            adjuntados = _adjuntar_sin_coordenada(cargas_json, datos["sin_coords"],
+                                                  cols, conf, None)
+            if adjuntados:
+                for c in cargas_json:
+                    for reg in c["registros"]:
+                        if reg.get("sin_ubicacion"):
+                            reg["tipo_servicio"] = (
+                                "AGUA Y DESAGUE"
+                                if reg["suministro"] in claves_desague else "AGUA")
+            # cargas mas grandes primero: las cortas quedan al final
+            cargas_json.sort(key=lambda r: (r["fecha_iso"], -r["cantidad"],
+                                            r["localidad"]))
+            for i, r in enumerate(cargas_json, start=1):
+                r["id"] = i
+            _marcar_exceso_personal(cargas_json, tecnicos_dia)
+
+            extra = {
+                "actividad": actividad,
+                "modo": "masiva",
+                "min_por_registro": perfil["min_registro"],
+                "velocidad_kmh": conf["VELOCIDAD_KMH"],
+                "jornada": "%s - %s (objetivo %d a %d h)" % (
+                    _hhmm(conf["JORNADA_INICIO"]), _hhmm(conf["JORNADA_FIN"]),
+                    conf["JORNADA_MASIVA_MIN_H"], conf["JORNADA_MASIVA_MAX_H"]),
+                "limite_por_carga": limite,
+                "tecnicos_por_dia": tecnicos_dia,
+                "criterio_reparto": criterio,
+                "columna_clave": col_sum,
+            }
+            resp = _respuesta(datos, cargas_json, no_programados, plan_personal,
+                              resumen_bloques, extra)
+            resp["cruce"] = cruce_info
+            resp["resumen"]["programados"] = sum(c["cantidad"] for c in cargas_json)
+            resp["resumen"]["sin_coordenada_enganchados"] = adjuntados
+            resp["resumen"]["total_cargas_generadas"] = len(cargas_json)
+            resp["resumen"]["jornadas_incompletas"] = sum(
+                1 for c in cargas_json
+                if c.get("duracion_h", 0) < conf["JORNADA_MASIVA_MIN_H"])
+            resp["resumen"]["jornadas_largas"] = sum(
+                1 for c in cargas_json
+                if c.get("duracion_h", 0) > conf["JORNADA_MASIVA_MAX_H"])
+            resp["asignacion"] = {r["suministro"]: {"carga": c["id"], "orden": r["orden"],
+                                                    "tipo": r.get("tipo_servicio", "")}
+                                  for c in cargas_json for r in c["registros"]}
+            return jsonify(resp), 200
+
+        except _ErrorEntrada as e:
+            return jsonify({"error": e.mensaje}), e.codigo
+        except Exception:
+            db.session.rollback()
+            log.error("Error generando rutas masivas:\n%s", traceback.format_exc())
+            return jsonify({"error": "No se pudo procesar el archivo. "
+                                     "Revisa el log del servidor."}), 500
+
+    # -------------------------------------------------------------------------
+    #  C) RECALCULAR tras mover franjas entre cargas (edicion del supervisor)
+    # -------------------------------------------------------------------------
+    @app.route("/api/recalcular_cargas", methods=["POST"])
+    def recalcular_cargas():
+        """
+        El supervisor mueve un rango horario (con sus registros) de una carga a
+        otra y esto devuelve todo recalculado: orden de visita, horas estimadas,
+        km y alertas. No inventa ni descarta registros: trabaja exactamente con
+        los que le mandan.
+        """
+        try:
+            datos = request.get_json(silent=True) or {}
+            entrada = datos.get("cargas")
+            if not isinstance(entrada, list) or not entrada:
+                return jsonify({"error": "No se recibieron cargas que recalcular."}), 400
+            try:
+                tecnicos_dia = int(float(datos.get("tecnicos")
+                                         or conf["MAX_TECNICOS_DIA"]))
+            except (TypeError, ValueError):
+                tecnicos_dia = conf["MAX_TECNICOS_DIA"]
+            tecnicos_dia = max(1, min(tecnicos_dia, 200))
+
+            # 1. Mezcla de localidades: ya NO se prohibe. Se mide lo que cuesta
+            #    en km y minutos y se le devuelve al supervisor para que decida.
+            #    Si vuelve con confirmado=true, se aplica tal cual.
+            confirmado = bool(datos.get("confirmado"))
+            consultas = []
+            for c in entrada:
+                if not (c.get("registros") or []):
+                    continue
+                mezcla = _evaluar_mezcla(c["registros"], conf)
+                if not mezcla:
+                    continue
+                # Solo se pregunta por mezclas NUEVAS. Si la carga ya tenia esas
+                # localidades antes del movimiento es porque el supervisor ya lo
+                # aprobo: volver a preguntar en cada recalculo es ruido.
+                previas = set(c.get("localidades_previas") or [])
+                actuales = set(mezcla["localidades"])
+                nuevas = sorted(actuales - previas)
+                if previas and not nuevas:
+                    continue
+                consultas.append(dict(mezcla, carga=c.get("id"),
+                                      nuevas=nuevas,
+                                      existentes=sorted(actuales & previas)))
+            if consultas and not confirmado:
+                return jsonify({"status": "requiere_confirmacion",
+                                "confirmaciones": consultas}), 409
+
+            # 2. Recalcular. Las masivas usan su propio tiempo por registro.
+            modo = str(datos.get("modo") or "").lower()
+            perfil = (_perfil_masivo(str(datos.get("actividad") or "").strip().upper())
+                      if modo == "masiva" else None)
+            salida = []
+            for c in entrada:
+                if not (c.get("registros") or []):
+                    continue      # carga vaciada por el supervisor: desaparece
+                salida.append(_recomponer_carga_masiva(c, perfil, conf) if perfil
+                              else _recomponer_carga(c, conf))
+
+            if not salida:
+                return jsonify({"error": "Todas las cargas quedaron vacias."}), 400
+
+            salida.sort(key=lambda r: (r["fecha_iso"], r["minuto_inicio"],
+                                       -r["cantidad"]))
+            for i, r in enumerate(salida, start=1):
+                r["id"] = i
+            _marcar_exceso_personal(salida, tecnicos_dia)
+
+            plan = {}
+            for c in salida:
+                p = plan.setdefault(c["fecha"], {
+                    "tecnicos_disponibles": tecnicos_dia, "tecnicos_usados": 0,
+                    "tecnicos_requeridos": 0, "asignacion": {}})
+                p["tecnicos_usados"] += 1
+                p["tecnicos_requeridos"] += 1
+            for p in plan.values():
+                p["tecnicos_libres"] = max(0, tecnicos_dia - p["tecnicos_usados"])
+                p["tecnicos_faltantes"] = max(0, p["tecnicos_usados"] - tecnicos_dia)
+
+            return jsonify({
+                "status": "success",
+                "rutas": salida,
+                "plan_personal": plan,
+                "resumen": {
+                    "total_cargas_generadas": len(salida),
+                    "programados": sum(c["cantidad"] for c in salida),
+                },
+            }), 200
+
+        except Exception:
+            log.error("Error recalculando cargas:\n%s", traceback.format_exc())
+            return jsonify({"error": "No se pudo recalcular la distribucion."}), 500
+
+    # -------------------------------------------------------------------------
+    #  D) EXPORTAR EL EXCEL ORIGINAL CON tecnico / carga / orden / tipo
+    # -------------------------------------------------------------------------
+    @app.route("/api/exportar_ruta_excel", methods=["POST"])
+    @app.route("/api/exportar_rutas_masivas", methods=["POST"])   # nombre anterior
+    def exportar_rutas_masivas():
+        """
+        Recibe de nuevo el archivo original + la asignacion que devolvio el
+        ruteo, y entrega el MISMO Excel con cuatro columnas agregadas:
+        'tecnico' (vacia, para llenar a mano), 'carga', 'orden' al inicio y
+        'tipo' al final. Se trabaja sobre el libro original con openpyxl para
+        no perder formato.
+        """
+        try:
+            from openpyxl import load_workbook
+
+            if "archivo" not in request.files:
+                return jsonify({"error": "Falta el archivo original."}), 400
+            col_clave = (request.form.get("col_cruce") or "").strip()
+            try:
+                asignacion = json.loads(request.form.get("asignacion") or "{}")
+            except ValueError:
+                return jsonify({"error": "La asignacion enviada no es valida."}), 400
+            if not asignacion:
+                return jsonify({"error": "No hay ruteo que exportar."}), 400
+
+            # La columna 'tipo' (AGUA / AGUA Y DESAGUE) solo tiene sentido cuando
+            # hubo cruce con el archivo de obturaciones. En inspecciones y en las
+            # demas actividades sin segundo archivo no se agrega.
+            pedido_tipo = (request.form.get("incluir_tipo") or "auto").lower()
+            if pedido_tipo == "auto":
+                incluir_tipo = any((v or {}).get("tipo") for v in asignacion.values())
+            else:
+                incluir_tipo = pedido_tipo not in ("0", "false", "no")
+
+            archivo = request.files["archivo"]
+            contenido = archivo.read()
+            if not contenido:
+                return jsonify({"error": "El archivo llego vacio. Vuelve a "
+                                         "seleccionarlo y genera de nuevo."}), 400
+
+            # openpyxl SOLO abre .xlsx. Si el original es .xls o .csv revienta
+            # con 'BadZipFile: File is not a zip file', asi que en ese caso se
+            # reconstruye el libro con pandas. Se pierde el formato del archivo
+            # de origen, pero los datos y las columnas nuevas salen igual.
+            formato_original = True
+            wb = ws = df_src = None
+            try:
+                wb = load_workbook(io.BytesIO(contenido))
+                ws = wb.active
+            except Exception:
+                formato_original = False
+
+            if ws is None:
+                # Se prueba en cascada y sin fiarse de la extension: hay
+                # sistemas que exportan un CSV y lo guardan como .xls.
+                intentos = [
+                    ("excel", lambda: pd.read_excel(io.BytesIO(contenido), dtype=str)),
+                    ("csv",   lambda: pd.read_csv(io.BytesIO(contenido), dtype=str,
+                                                  sep=None, engine="python")),
+                    ("csv-latin", lambda: pd.read_csv(io.BytesIO(contenido), dtype=str,
+                                                      sep=None, engine="python",
+                                                      encoding="latin-1")),
+                ]
+                usado = None
+                for nombre_modo, leer in intentos:
+                    try:
+                        candidato = leer()
+                        if candidato is not None and len(candidato.columns):
+                            df_src, usado = candidato, nombre_modo
+                            break
+                    except Exception:
+                        continue
+                if df_src is None:
+                    log.error("No se pudo leer el archivo a exportar (%s):\n%s",
+                              archivo.filename, traceback.format_exc())
+                    return jsonify({
+                        "error": "No se pudo leer el archivo original. Abrelo en "
+                                 "Excel y guardalo como .xlsx (Libro de Excel), "
+                                 "luego vuelve a generar las cargas."}), 400
+
+                from openpyxl import Workbook
+                wb = Workbook()
+                ws = wb.active
+                ws.append([str(c) for c in df_src.columns])
+                for fila in df_src.itertuples(index=False, name=None):
+                    ws.append(["" if (v is None or (isinstance(v, float) and v != v))
+                               else v for v in fila])
+                log.info("Export: el original no era .xlsx (leido como %s), "
+                         "se reconstruyo el libro", usado)
+
+            cabeceras = [(str(c.value).strip() if c.value is not None else "")
+                         for c in ws[1]]
+            if col_clave and col_clave in cabeceras:
+                idx_clave = cabeceras.index(col_clave)
+            else:
+                idx_clave = None
+                for i, h in enumerate(cabeceras):
+                    hn = _norm(h)
+                    if "SUMINISTRO" in hn or "CLICOD" in hn:
+                        idx_clave = i
+                        break
+                if idx_clave is None:
+                    return jsonify({"error": "No se pudo ubicar la columna de "
+                                             "suministro en el Excel."}), 400
+
+            ws.insert_cols(1, 3)                      # tecnico | carga | orden
+            ws.cell(row=1, column=1, value="tecnico")
+            ws.cell(row=1, column=2, value="carga")
+            ws.cell(row=1, column=3, value="orden")
+            col_tipo = ws.max_column + 1
+            if incluir_tipo:
+                ws.cell(row=1, column=col_tipo, value="tipo")
+
+            sin_asignar = 0
+            for fila in range(2, ws.max_row + 1):
+                v = ws.cell(row=fila, column=idx_clave + 4).value   # +3 insertadas, +1 base
+                clave = "" if v is None else str(v).strip()
+                dato = asignacion.get(clave)
+                if dato:
+                    ws.cell(row=fila, column=2, value=dato.get("carga"))
+                    ws.cell(row=fila, column=3, value=dato.get("orden"))
+                    if incluir_tipo:
+                        ws.cell(row=fila, column=col_tipo, value=dato.get("tipo") or "AGUA")
+                else:
+                    sin_asignar += 1
+                    if incluir_tipo:
+                        ws.cell(row=fila, column=col_tipo, value="")
+
+            # --- Ordenar el Excel por carga y luego por orden -----------------
+            # El archivo original viene en el orden que lo exporto el sistema
+            # comercial. Para el supervisor no sirve: necesita carga 1 completa
+            # (orden 1..n), luego carga 2, y asi. Se reordenan las filas
+            # llevandose el formato de cada celda.
+            ordenado = _ordenar_filas_por_carga(ws)
+
+            salida = io.BytesIO()
+            wb.save(salida)
+            salida.seek(0)
+            nombre = "ruta_%s.xlsx" % pd.Timestamp.now().strftime("%Y%m%d_%H%M")
+            log.info("Excel de ruta exportado: %d filas sin asignacion | formato "
+                     "original %s | filas %s", sin_asignar,
+                     "conservado" if formato_original else "reconstruido",
+                     "ordenadas por carga/orden" if ordenado
+                     else "NO reordenadas (la hoja tiene celdas combinadas)")
+            return send_file(salida, as_attachment=True, download_name=nombre,
+                             mimetype="application/vnd.openxmlformats-officedocument."
+                                      "spreadsheetml.sheet")
+
+        except Exception:
+            log.error("Error exportando ruta:\n%s", traceback.format_exc())
+            return jsonify({"error": "No se pudo generar el Excel de ruta."}), 500
+
+    @app.route("/api/exportar_coordenadas_catastro", methods=["POST"])
+    def exportar_coordenadas_catastro():
+        """
+        Entrega la lista de coordenadas observadas durante el ruteo, para
+        pasarsela al area que mantiene catastro. El ruteo del dia se arregla
+        solo, pero mientras nadie corrija la base el problema vuelve en la
+        siguiente orden de trabajo: este Excel es el que corta el ciclo.
+        """
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+
+            try:
+                filas = json.loads(request.form.get("coordenadas") or "[]")
+            except ValueError:
+                return jsonify({"error": "La lista enviada no es valida."}), 400
+            if not isinstance(filas, list) or not filas:
+                return jsonify({"error": "No hay coordenadas observadas que "
+                                         "exportar."}), 400
+
+            ETIQUETA = {
+                "corregida": "CORREGIDA AUTOMATICAMENTE (ejes invertidos)",
+                "reemplazada": "REEMPLAZADA POR LA DIRECCION",
+                "sin_reemplazo": "SIN UBICACION: REVISAR EN CAMPO",
+                "descartada": "DESCARTADA",
+            }
+            ETIQUETA.update(_ETIQ_DIR)
+            CABECERA = ["SUMINISTRO", "LOCALIDAD", "DIRECCION EN EL EXCEL",
+                        "LON REGISTRADA", "LAT REGISTRADA",
+                        "LON PROPUESTA", "LAT PROPUESTA",
+                        "QUE SE HIZO", "POR QUE"]
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Coordenadas a revisar"
+            ws.append(CABECERA)
+            cab_fill = PatternFill("solid", fgColor="1E293B")
+            for c in ws[1]:
+                c.font = Font(bold=True, color="FFFFFF", size=10)
+                c.fill = cab_fill
+                c.alignment = Alignment(horizontal="center", vertical="center")
+            ws.freeze_panes = "A2"
+
+            rojo = PatternFill("solid", fgColor="FEE2E2")
+            verde = PatternFill("solid", fgColor="DCFCE7")
+            for f in filas:
+                if not isinstance(f, dict):
+                    continue
+                estado = str(f.get("estado") or "descartada")
+                ws.append([
+                    str(f.get("suministro") or ""),
+                    str(f.get("localidad") or ""),
+                    str(f.get("direccion") or ""),
+                    f.get("lon_registrada"), f.get("lat_registrada"),
+                    f.get("lon_corregida"), f.get("lat_corregida"),
+                    ETIQUETA.get(estado, estado),
+                    str(f.get("motivo") or ""),
+                ])
+                relleno = rojo if estado in ({"sin_reemplazo"} | _DIR_ROJOS) else (
+                    verde if estado in ({"corregida", "reemplazada"} | _DIR_VERDES) else None)
+                if relleno:
+                    for c in ws[ws.max_row]:
+                        c.fill = relleno
+
+            for col, ancho in zip("ABCDEFGHI", (16, 22, 46, 15, 15, 15, 15, 34, 62)):
+                ws.column_dimensions[col].width = ancho
+            for fila in ws.iter_rows(min_row=2, min_col=4, max_col=7):
+                for c in fila:
+                    c.number_format = "0.000000"
+
+            salida = io.BytesIO()
+            wb.save(salida)
+            salida.seek(0)
+            nombre = ("coordenadas_catastro_%s.xlsx"
+                      % pd.Timestamp.now().strftime("%Y%m%d_%H%M"))
+            log.info("Excel de coordenadas observadas: %d filas", len(filas))
+            return send_file(salida, as_attachment=True, download_name=nombre,
+                             mimetype="application/vnd.openxmlformats-officedocument."
+                                      "spreadsheetml.sheet")
+
+        except Exception:
+            log.error("Error exportando coordenadas:\n%s", traceback.format_exc())
+            return jsonify({"error": "No se pudo generar el Excel de "
+                                     "coordenadas."}), 500
+
+    # -------------------------------------------------------------------------
+    #  F) PUNTO DEL GIS DE SEDALIB PARA UN SUMINISTRO (boton del mapa)
+    # -------------------------------------------------------------------------
+    @app.route("/api/rutas/gis_sedalib", methods=["POST"])
+    @requiere_login
+    def ubicar_en_gis_sedalib():
+        """Body: {"suministro": "..."} -> {"lat", "lon"} del centro de su lote."""
+        try:
+            datos = request.get_json(silent=True) or {}
+            s = str(datos.get("suministro") or "").strip()
+            if not s.isdigit():
+                return jsonify({"success": False, "error": "Suministro no valido."}), 400
+            if not _gis.disponible():
+                return jsonify({"success": False, "error": _gis.motivo_no_disponible()}), 503
+            puntos, info = _puntos_gis_sedalib([s], conf, forzar=True)
+            p = puntos.get(s)
+            if not p:
+                if info.get("error"):
+                    return jsonify({"success": False, "error": "No se pudo consultar el GIS "
+                                    "de Sedalib: %s" % info["error"]}), 502
+                return jsonify({"success": False, "error": "El GIS de Sedalib no tiene "
+                                "ubicado el suministro %s." % s}), 404
+            return jsonify({"success": True, "suministro": s, "lon": p[0], "lat": p[1]}), 200
+        except Exception:
+            db.session.rollback()
+            log.error("Error consultando el GIS de Sedalib:\n%s", traceback.format_exc())
+            return jsonify({"success": False,
+                            "error": "No se pudo consultar el GIS de Sedalib."}), 500
+
+    # -------------------------------------------------------------------------
+    #  E) UBICACION FIJADA A MANO (el supervisor arrastra el punto en el mapa)
+    # -------------------------------------------------------------------------
+    @app.route("/api/rutas/coordenada_manual", methods=["POST"])
+    @requiere_login
+    def guardar_coordenada_manual():
+        """
+        Body JSON:
+          {"accion": "guardar", "suministro": "...", "lat": -8.1, "lon": -79.0,
+           "lat_anterior": ..., "lon_anterior": ..., "origen_anterior": "...",
+           "direccion": "...", "localidad": "..."}
+          {"accion": "eliminar", "suministro": "..."}   (para "Deshacer")
+        La ubicacion guardada manda sobre catastro en los siguientes ruteos.
+        """
+        try:
+            datos = request.get_json(silent=True) or {}
+            suministro = str(datos.get("suministro") or "").strip()
+            accion = str(datos.get("accion") or "guardar").strip().lower()
+            if not suministro or len(suministro) > 50:
+                return jsonify({"success": False, "error": "Suministro no valido."}), 400
+            if not _asegurar_tabla_manual():
+                return jsonify({"success": False,
+                                "error": "No se pudo preparar la tabla de ubicaciones."}), 500
+
+            registro = CoordenadaManual.query.get(suministro)
+            if accion == "eliminar":
+                if registro:
+                    db.session.delete(registro)
+                    registrar_bitacora("ELIMINAR", "COORDENADA_MANUAL", suministro,
+                                       "Quito la ubicacion fijada a mano de %s" % suministro)
+                db.session.commit()
+                return jsonify({"success": True, "suministro": suministro,
+                                "eliminada": bool(registro)}), 200
+
+            lat, lon = _num(datos.get("lat")), _num(datos.get("lon"))
+            if lat is None or lon is None or not (-20 <= lat <= 0 and -83 <= lon <= -68):
+                return jsonify({"success": False,
+                                "error": "La ubicacion cae fuera de Peru."}), 400
+
+            if registro is None:
+                registro = CoordenadaManual(suministro=suministro)
+                db.session.add(registro)
+            registro.lat, registro.lon = lat, lon
+            registro.lat_anterior = _num(datos.get("lat_anterior"))
+            registro.lon_anterior = _num(datos.get("lon_anterior"))
+            registro.origen_anterior = (str(datos.get("origen_anterior") or "")[:60]) or None
+            registro.direccion = (str(datos.get("direccion") or "")[:300]) or None
+            registro.localidad = (str(datos.get("localidad") or "")[:100]) or None
+            usuario = obtener_usuario_actual() or {}
+            registro.id_usuario = usuario.get("id_usuario")
+            registro.usuario = (str(usuario.get("nombre") or usuario.get("login") or "")[:150]) or None
+            registro.fecha = datetime.now(LIMA_TZ).replace(tzinfo=None)
+
+            antes = ("%.6f, %.6f" % (registro.lat_anterior, registro.lon_anterior)
+                     if registro.lat_anterior is not None and registro.lon_anterior is not None
+                     else "sin coordenada")
+            registrar_bitacora("EDITAR", "COORDENADA_MANUAL", suministro,
+                               "Ubico %s en %.6f, %.6f (antes: %s)" % (suministro, lat, lon, antes))
+            db.session.commit()
+            return jsonify({"success": True, "suministro": suministro,
+                            "lat": lat, "lon": lon}), 200
+
+        except Exception:
+            db.session.rollback()
+            log.error("Error guardando coordenada manual:\n%s", traceback.format_exc())
+            return jsonify({"success": False,
+                            "error": "No se pudo guardar la ubicacion."}), 500
+
+    return (generar_rutas, generar_rutas_masivas,
+            recalcular_cargas, exportar_rutas_masivas,
+            exportar_coordenadas_catastro)
+
+
+# =============================================================================
+#  AUXILIARES DE RESPUESTA
+# =============================================================================
+def _recomponer_carga(carga_in, cfg):
+    """
+    Recalcula una carga que el supervisor edito moviendo franjas.
+    Reordena (franja cronologica -> vecino mas cercano -> 2-opt), vuelve a
+    simular el reloj y devuelve el objeto de carga con horas, km y alertas
+    actualizados. Los predios sin coordenada se mantienen al final.
+    """
+    entrada = carga_in.get("registros") or []
+    ruteables, sin_ubic = [], []
+    for r in entrada:
+        lat, lon = r.get("lat"), r.get("lon")
+        if r.get("sin_ubicacion") or lat is None or lon is None:
+            sin_ubic.append(r)
+            continue
+        try:
+            lat, lon = float(lat), float(lon)
+        except (TypeError, ValueError):
+            sin_ubic.append(r)
+            continue
+        f = _parse_franja(r.get("franja_horaria"), cfg)
+        if not f:
+            f = (cfg["JORNADA_INICIO"], cfg["JORNADA_FIN"],
+                 r.get("franja_horaria") or "Jornada Completa")
+        ux, uy, _lo, _la = _a_metros_y_grados(np.array([lon]), np.array([lat]))
+        ruteables.append({
+            "math_x": float(ux[0]), "math_y": float(uy[0]),
+            "lat": lat, "lon": lon,
+            "__franja__": (f[0], f[1]), "__f_txt__": f[2],
+            "__loc__": r.get("localidad", "") or "",
+            "__reg__": r,
+        })
+
+    # --- secuencia: franjas en orden, y dentro de cada una vecino mas cercano
+    secuencia, ancla = [], None
+    for f in sorted({p["__franja__"] for p in ruteables}):
+        pend = [p for p in ruteables if p["__franja__"] == f]
+        tramo = []
+        pos = ancla
+        while pend:
+            if pos is None:
+                i = max(range(len(pend)), key=lambda k: pend[k]["math_y"])
+            else:
+                i = min(range(len(pend)), key=lambda k: _dist(pos, pend[k]))
+            pos = pend.pop(i)
+            tramo.append(pos)
+        tramo = _dos_opt(tramo, ancla)
+        secuencia.extend(tramo)
+        ancla = tramo[-1] if tramo else ancla
+
+    ok, medidos, km = _medir(secuencia, cfg) if secuencia else (True, [], 0.0)
+
+    registros, localidades, franjas_map = [], [], {}
+    for i, it in enumerate(medidos, start=1):
+        base = dict(it["__reg__"])
+        base["orden"] = i
+        base["hora_estimada"] = _hhmm(it["__llegada__"])
+        base["minuto_estimado"] = int(round(it["__llegada__"]))
+        base["km_desde_anterior"] = round(float(it.get("__km_prev__", 0.0)), 2)
+        registros.append(base)
+        loc = it["__loc__"]
+        if loc and loc not in localidades:
+            localidades.append(loc)
+        ftxt = it["__f_txt__"]
+        if ftxt not in franjas_map:
+            franjas_map[ftxt] = {"franja": ftxt, "cantidad": 0,
+                                 "inicio_min": it["__franja__"][0],
+                                 "fin_min": it["__franja__"][1]}
+        franjas_map[ftxt]["cantidad"] += 1
+
+    for r in sin_ubic:
+        base = dict(r)
+        base["orden"] = len(registros) + 1
+        base["hora_estimada"] = ""
+        base["minuto_estimado"] = None
+        base["km_desde_anterior"] = 0.0
+        base["sin_ubicacion"] = True
+        registros.append(base)
+        loc = r.get("localidad", "")
+        if loc and loc not in localidades:
+            localidades.append(loc)
+
+    alertas = []
+    if medidos:
+        ini = float(medidos[0]["__llegada__"])
+        fin = float(medidos[-1]["__fin__"])
+    else:
+        ini = fin = float(cfg["JORNADA_INICIO"])
+        alertas.append("Carga sin predios ubicables")
+
+    if not ok:
+        alertas.append("No alcanza el tiempo: algun predio se sale de su franja")
+    for f in franjas_map.values():
+        tope = _tope_franja((f["inicio_min"], f["fin_min"]), cfg)
+        if f["cantidad"] > tope:
+            alertas.append("%s tiene %d predios (maximo operativo %d)"
+                           % (f["franja"], f["cantidad"], tope))
+    if len(registros) > cfg["TOPE_DIARIO"]:
+        alertas.append("Supera el tope diario de %d registros" % cfg["TOPE_DIARIO"])
+    if fin > cfg["JORNADA_PREFERIDA_FIN"] and medidos and \
+            medidos[-1]["__franja__"][0] < cfg["JORNADA_PREFERIDA_FIN"]:
+        alertas.append("Se extiende hasta %s" % _hhmm(fin))
+    if len(localidades) > 1:
+        mezcla = _evaluar_mezcla(registros, cfg)
+        if mezcla:
+            etiqueta = {"aviso": "Mezcla aprobada",
+                        "riesgo": "Mezcla lejana aprobada",
+                        "inviable": "MEZCLA INVIABLE aprobada"}[mezcla["nivel"]]
+            alertas.append("%s: %s" % (etiqueta, mezcla["mensaje"]))
+        else:
+            alertas.append("Conurbacion: %s" % " + ".join(localidades))
+            peor = 0.0
+            pts = []
+            for r in registros:
+                lat, lon = r.get("lat"), r.get("lon")
+                if lat is None or lon is None:
+                    continue
+                ux, uy, _a, _b = _a_metros_y_grados(np.array([float(lon)]),
+                                                    np.array([float(lat)]))
+                pts.append((r.get("localidad", ""), float(ux[0]), float(uy[0])))
+            for i in range(len(pts)):
+                for j in range(i + 1, len(pts)):
+                    if pts[i][0] == pts[j][0]:
+                        continue
+                    peor = max(peor, math.hypot(pts[i][1] - pts[j][1],
+                                                pts[i][2] - pts[j][2]))
+            if peor > cfg["RADIO_CONURBACION_M"]:
+                alertas.append("Predios de distritos distintos separados hasta "
+                               "%.1f km (lo recomendado son %.1f km)"
+                               % (peor / 1000.0, cfg["RADIO_CONURBACION_M"] / 1000.0))
+    if any(r.get("sin_ubicacion") for r in registros):
+        alertas.append("Incluye predios sin coordenada (ubicar por direccion)")
+
+    alertas.extend(_alertas_direccion(registros))
+    return {
+        "id": carga_in.get("id", 0),
+        "fecha": carga_in.get("fecha", ""),
+        "fecha_iso": carga_in.get("fecha_iso", "9999-12-31"),
+        "localidad": carga_in.get("localidad", localidades[0] if localidades else ""),
+        "zona": " + ".join(localidades[:2]) + ("..." if len(localidades) > 2 else ""),
+        "hora": "%s - %s" % (_hhmm(ini), _hhmm(fin)),
+        "hora_inicio": _hhmm(ini), "hora_fin": _hhmm(fin),
+        "minuto_inicio": int(round(ini)),
+        "duracion_min": int(round(fin - ini)),
+        "km_total": round(float(km), 2),
+        "cantidad": len(registros),
+        "franjas": sorted(franjas_map.values(),
+                          key=lambda f: (f["inicio_min"], f["franja"])),
+        "alertas": alertas,
+        "registros": registros,
+    }
+
+
+def _evaluar_mezcla(registros, cfg):
+    """
+    Mide lo que REALMENTE cuesta juntar localidades distintas en una carga.
+    La regla no es el nombre de la localidad sino la distancia: Moche y
+    Salaverry estan a ~10 km y se hacen en una jornada; Chepen y Salaverry
+    estan a ~126 km y no se hacen ni con todo el dia. Por eso esto no prohibe:
+    devuelve el costo en km y minutos para que el supervisor decida.
+
+    Devuelve None si no hay nada que consultar, o un dict con:
+      nivel  -> 'aviso'    : distancia razonable, cabe en la jornada
+                'riesgo'   : lejos, se come buena parte del dia
+                'inviable' : el puro traslado no entra en la jornada
+      km, minutos_ida, localidades, mensaje
+    """
+    grupos = {}
+    for r in registros:
+        loc = r.get("localidad") or ""
+        lat, lon = r.get("lat"), r.get("lon")
+        if not loc or lat is None or lon is None:
+            continue
+        try:
+            lat, lon = float(lat), float(lon)
+        except (TypeError, ValueError):
+            continue
+        ux, uy, _a, _b = _a_metros_y_grados(np.array([lon]), np.array([lat]))
+        grupos.setdefault(loc, []).append((float(ux[0]), float(uy[0])))
+
+    if len(grupos) < 2:
+        return None
+
+    centros = {k: (sum(p[0] for p in v) / len(v), sum(p[1] for p in v) / len(v))
+               for k, v in grupos.items()}
+    peor = None
+    nombres = sorted(centros)
+    for i in range(len(nombres)):
+        for j in range(i + 1, len(nombres)):
+            a, b = nombres[i], nombres[j]
+            d = math.hypot(centros[a][0] - centros[b][0],
+                           centros[a][1] - centros[b][1])
+            if peor is None or d > peor[0]:
+                peor = (d, a, b)
+
+    metros, la, lb = peor
+    # Trujillo metropolitano es una sola mancha urbana: mezclar sus distritos
+    # es lo normal y no se consulta nunca, para no preguntar lo mismo en cada
+    # recalculo. La distancia interna se reporta como alerta, no como consulta.
+    if all(l in CONURBACION for l in grupos):
+        return None
+
+    minutos = _min_traslado(metros, cfg)
+    jornada = cfg["JORNADA_FIN"] - cfg["JORNADA_INICIO"]
+    km = metros / 1000.0 * cfg["FACTOR_RUTA"]
+
+    if (minutos * 2) > jornada * 0.5:
+        nivel = "inviable"
+        mensaje = ("%s y %s estan a %.0f km de ruta: solo el traslado son %.1f h "
+                   "de ida (%.1f h ida y vuelta) y la jornada es de %.0f h. "
+                   "Esta carga no se puede ejecutar en un dia."
+                   % (la, lb, km, minutos / 60.0, minutos * 2 / 60.0, jornada / 60.0))
+    elif metros > cfg["RADIO_MEZCLA_ACEPTABLE_M"]:
+        nivel = "riesgo"
+        mensaje = ("%s y %s estan a %.0f km: son %.0f min de traslado entre zonas, "
+                   "buena parte de la jornada se va en el camino."
+                   % (la, lb, km, minutos))
+    else:
+        nivel = "aviso"
+        mensaje = ("%s y %s estan a %.0f km: son unos %.0f min de traslado entre "
+                   "las dos zonas. Es factible en una jornada."
+                   % (la, lb, km, minutos))
+
+    return {"nivel": nivel, "km": round(km, 1), "minutos_ida": int(round(minutos)),
+            "localidades": nombres, "mensaje": mensaje}
+
+
+def _adjuntar_sin_coordenada(cargas_json, sin_coords, cols, conf, col_hor=None):
+    """
+    Un predio sin coordenada no se puede rutear, pero IGUAL hay que ejecutarlo.
+    En vez de dejarlo fuera se engancha al final de la carga de su misma
+    localidad y fecha (la que tenga menos registros), marcado 'sin ubicacion'
+    para que el tecnico lo ubique por direccion. Si no existe ninguna carga de
+    esa localidad ese dia, se crea una carga aparte solo con estos predios.
+    Devuelve cuantos se engancharon.
+    """
+    if sin_coords is None or sin_coords.empty:
+        return 0
+    col_sum, col_dis, col_urb, col_via, col_num, _h = cols
+
+    indice = {}
+    for c in cargas_json:
+        indice.setdefault((c["fecha_iso"], c["localidad"]), []).append(c)
+
+    adjuntados = 0
+    for _, fila in sin_coords.iterrows():
+        loc = fila.get("__loc__", "SIN LOCALIDAD")
+        bloque = fila.get("__bloque__", loc)
+        fecha_iso = str(fila.get("__fecha_iso__", "9999-12-31"))
+        fecha_txt = str(fila.get("__fecha_txt__", "Sin Fecha"))
+
+        candidatas = indice.get((fecha_iso, bloque))
+        if candidatas:
+            destino = min(candidatas, key=lambda c: c["cantidad"])
+        else:
+            destino = {
+                "id": 0, "fecha": fecha_txt, "fecha_iso": fecha_iso,
+                "localidad": bloque, "zona": loc,
+                "hora": "Sin ubicacion", "hora_inicio": "", "hora_fin": "",
+                "minuto_inicio": conf["JORNADA_FIN"], "duracion_min": 0,
+                "km_total": 0.0, "cantidad": 0, "franjas": [],
+                "alertas": ["Predios sin coordenada: ubicar por direccion"],
+                "registros": [],
+            }
+            cargas_json.append(destino)
+            indice.setdefault((fecha_iso, bloque), []).append(destino)
+
+        via = str(fila.get(col_via, "") or "").strip() if col_via else ""
+        num = str(fila.get(col_num, "") or "").strip() if col_num else ""
+        urb = str(fila.get(col_urb, "") or "").strip() if col_urb else ""
+        dis = str(fila.get(col_dis, "") or "").strip() if col_dis else ""
+        franja = ""
+        if col_hor:
+            franja = str(fila.get(col_hor, "") or "").strip()
+            if franja.lower() == "nan":
+                franja = ""
+
+        destino["registros"].append({
+            "orden": len(destino["registros"]) + 1,
+            "suministro": str(fila.get(col_sum, "")),
+            "distrito": "" if dis.lower() == "nan" else dis,
+            "urbanizacion": "" if urb.lower() == "nan" else urb,
+            "via": _via_mostrada(fila, "" if via.lower() == "nan" else via),
+            "numero": _numero_mostrado(fila, "" if num.lower() in ("nan", "s/n") else num,
+                                       _via_mostrada(fila, "" if via.lower() == "nan" else via)),
+            "localidad": loc,
+            "lat": None, "lon": None, "coord_x": None, "coord_y": None,
+            "origen_coord": "sin coordenada",
+            "tipo_servicio": "",
+            "franja_horaria": franja,
+            "hora_estimada": "",
+            "minuto_estimado": None,
+            "km_desde_anterior": 0.0,
+            "sin_ubicacion": True,
+        })
+        destino["cantidad"] = len(destino["registros"])
+        aviso = "Incluye predios sin coordenada (ubicar por direccion)"
+        if aviso not in destino["alertas"]:
+            destino["alertas"].append(aviso)
+        adjuntados += 1
+    return adjuntados
+
+
+def _marcar_exceso_personal(cargas_json, tecnicos_dia):
+    """Numera y avisa cuales cargas del dia pasan del personal disponible."""
+    contador = {}
+    for c in cargas_json:
+        f = c["fecha_iso"]
+        contador[f] = contador.get(f, 0) + 1
+        c["indice_dia"] = contador[f]
+        if contador[f] > tecnicos_dia:
+            c["excede_personal"] = True
+            c["alertas"].append(
+                "Carga %d del dia: excede los %d tecnicos disponibles"
+                % (contador[f], tecnicos_dia))
+        else:
+            c["excede_personal"] = False
+
+
+def _ordenar_filas_por_carga(ws):
+    """
+    Reordena las filas de datos por (carga, orden), llevandose el valor Y el
+    formato de cada celda. Las filas sin carga quedan al final.
+    Devuelve False sin tocar nada si la hoja tiene celdas combinadas en el area
+    de datos (moverlas romperia el archivo).
+    """
+    if ws.max_row < 3:
+        return True
+    for rango in list(ws.merged_cells.ranges):
+        if rango.max_row > 1:
+            return False
+
+    ancho = ws.max_column
+    filas = []
+    for fila in range(2, ws.max_row + 1):
+        celdas = [ws.cell(row=fila, column=col) for col in range(1, ancho + 1)]
+        carga = celdas[1].value
+        orden = celdas[2].value
+        try:
+            k_carga = int(carga)
+        except (TypeError, ValueError):
+            k_carga = 10 ** 9          # sin asignar -> al final
+        try:
+            k_orden = int(orden)
+        except (TypeError, ValueError):
+            k_orden = 10 ** 9
+        dim = ws.row_dimensions.get(fila)
+        filas.append({
+            "clave": (k_carga, k_orden, fila),
+            "valores": [c.value for c in celdas],
+            "estilos": [c._style for c in celdas],
+            "alto": getattr(dim, "height", None) if dim is not None else None,
+        })
+
+    filas.sort(key=lambda f: f["clave"])
+
+    for i, datos in enumerate(filas):
+        fila = 2 + i
+        for col in range(1, ancho + 1):
+            celda = ws.cell(row=fila, column=col)
+            celda.value = datos["valores"][col - 1]
+            celda._style = datos["estilos"][col - 1]
+        if datos["alto"] is not None:
+            ws.row_dimensions[fila].height = datos["alto"]
+    return True
+
+
+def _fila_no_programada(sobrantes, fecha_txt, fecha_iso, cols):
+    col_sum, col_dis, _u, col_via, col_num, _h = cols
+    salida = []
+    for p in sobrantes:
+        salida.append({
+            "suministro": str(p.get(col_sum, "")),
+            "fecha": str(fecha_txt),
+            "fecha_iso": str(fecha_iso),
+            "localidad": p.get("__loc__", ""),
+            "franja_horaria": p.get("__f_txt__", ""),
+            "distrito": str(p.get(col_dis, "") or "") if col_dis else "",
+            "via": str(p.get(col_via, "") or "") if col_via else "",
+            "numero": str(p.get(col_num, "") or "") if col_num else "",
+            "motivo": p.get("__motivo__", "no alcanza el personal disponible"),
+        })
+    return salida
+
+
+def _respuesta(datos, cargas_json, no_programados, plan_personal, resumen_bloques, extra):
+    return {
+        "status": "success",
+        "config": extra,
+        "resumen": {
+            "total_excel": datos["total_original"],
+            "duplicados_eliminados": datos["duplicados"],
+            "con_coordenada": int(len(datos["df_val"])),
+            "sin_coordenadas": int(len(datos["sin_coords"])),
+            "geocodificados": datos["geocodificados"],
+            "total_cargas_generadas": len(cargas_json),
+            "programados": sum(c["cantidad"] for c in cargas_json),
+            "no_programados": len(no_programados),
+            "cargas_por_localidad": resumen_bloques,
+            "suministros_sin_coordenada": datos["lista_sin_coords"],
+            "auditoria_coordenadas": datos.get("auditoria_coords") or {},
+            "absorcion_localidades": datos.get("absorcion") or {},
+            "validacion_direcciones": datos.get("validacion_dir") or {},
+            "gis_sedalib": datos.get("gis_sedalib") or {},
+        },
+        "plan_personal": plan_personal,
+        "no_programados": no_programados,
+        "coordenadas_observadas": datos.get("detalle_coords") or [],
+        "rutas": cargas_json,
+    }
+
+
+def _detectar(columnas, patrones, excluir=None):
+    """Detecta una columna por prioridad de patron; 'excluir' descarta falsos
+    positivos (p.ej. que 'HORA' matchee 'FECHA_HORA')."""
+    excluir = [e.upper() for e in (excluir or [])]
+    for pat in patrones:
+        for c in columnas:
+            cu = _norm(c)
+            if any(e in cu for e in excluir):
+                continue
+            if pat in cu:
+                return c
+    return None
+
+
+# =============================================================================
+#  VALIDACION DIRECCION <-> COORDENADA  (funciones que faltaban)
+# =============================================================================
+def _geocodificar_para_validacion(conf):
+    """Adapta _geocodificar (con su cache) al formato que pide el validador:
+    lista de textos -> {texto: (lon, lat) | None}."""
+    def geo(textos):
+        dirs = {t: _direccion_para_buscar(t) for t in textos}
+        r = _geocodificar(sorted(set(d for d in dirs.values() if d)), conf)
+        return {t: (r.get(d) or {}).get("coord") for t, d in dirs.items()}
+    return geo
+
+
+def _recomponer_carga_masiva(carga_in, perfil, cfg):
+    """
+    Recalcula una carga de actividad masiva (sin franjas) cuando el supervisor
+    cambia la ubicacion de un predio. Mismo criterio que el motor masivo:
+    vecino mas cercano + 2-opt, tiempo por registro del perfil, sin tope de
+    franja ni el tope diario de inspecciones.
+    """
+    entrada = carga_in.get("registros") or []
+    ruteables, sin_ubic = [], []
+    for r in entrada:
+        lat, lon = _num(r.get("lat")), _num(r.get("lon"))
+        if r.get("sin_ubicacion") or lat is None or lon is None:
+            sin_ubic.append(r)
+            continue
+        ux, uy, _a, _b = _a_metros_y_grados(np.array([lon]), np.array([lat]))
+        ruteables.append({"math_x": float(ux[0]), "math_y": float(uy[0]), "__reg__": r})
+
+    secuencia, pend, pos = [], list(ruteables), None
+    while pend:
+        if pos is None:
+            i = max(range(len(pend)), key=lambda k: pend[k]["math_y"])
+        else:
+            i = min(range(len(pend)), key=lambda k: _dist(pos, pend[k]))
+        pos = pend.pop(i)
+        secuencia.append(pos)
+    secuencia = _dos_opt(secuencia, None)
+
+    ini = float(cfg["JORNADA_INICIO"])
+    reloj, prev, km = ini, None, 0.0
+    registros, localidades = [], []
+    for i, it in enumerate(secuencia, start=1):
+        d = 0.0
+        if prev is not None:
+            d = _dist(prev, it)
+            reloj += _min_traslado(d, cfg)
+        tramo = (d / 1000.0) * cfg["FACTOR_RUTA"]
+        km += tramo
+        base = dict(it["__reg__"])
+        base.update(orden=i, hora_estimada=_hhmm(reloj),
+                    minuto_estimado=int(round(reloj)),
+                    km_desde_anterior=round(tramo, 2))
+        registros.append(base)
+        reloj += perfil["min_registro"]
+        prev = it
+        loc = base.get("localidad") or ""
+        if loc and loc not in localidades:
+            localidades.append(loc)
+    dur = (reloj - ini) if secuencia else 0.0
+    fin = ini + dur
+
+    for r in sin_ubic:
+        base = dict(r)
+        base.update(orden=len(registros) + 1, hora_estimada="", minuto_estimado=None,
+                    km_desde_anterior=0.0, sin_ubicacion=True)
+        registros.append(base)
+        loc = r.get("localidad") or ""
+        if loc and loc not in localidades:
+            localidades.append(loc)
+
+    alertas = []
+    if secuencia and dur < cfg["JORNADA_MASIVA_MIN_H"] * 60:
+        alertas.append("Jornada incompleta: %.1f h (minimo deseado %d h)"
+                       % (dur / 60.0, cfg["JORNADA_MASIVA_MIN_H"]))
+    if dur > cfg["JORNADA_MASIVA_MAX_H"] * 60:
+        alertas.append("Jornada larga: %.1f h para %d registros (el limite manda; "
+                       "baja el limite si quieres cerrar en %d h)"
+                       % (dur / 60.0, len(registros), cfg["JORNADA_MASIVA_MAX_H"]))
+    if fin > cfg["JORNADA_FIN"]:
+        alertas.append("Cierra %s, pasa el fin de jornada" % _hhmm(fin))
+    if len(localidades) > 1:
+        alertas.append("Conurbacion: %s" % " + ".join(localidades))
+    if sin_ubic:
+        alertas.append("Incluye predios sin coordenada (ubicar por direccion)")
+    alertas.extend(_alertas_direccion(registros))
+
+    return {
+        "id": carga_in.get("id", 0),
+        "fecha": carga_in.get("fecha", ""),
+        "fecha_iso": carga_in.get("fecha_iso", "9999-12-31"),
+        "localidad": carga_in.get("localidad", localidades[0] if localidades else ""),
+        "zona": " + ".join(localidades[:2]) + ("..." if len(localidades) > 2 else ""),
+        "hora": "%s - %s" % (_hhmm(ini), _hhmm(fin)),
+        "hora_inicio": _hhmm(ini),
+        "hora_fin": _hhmm(fin),
+        "minuto_inicio": int(round(ini)),
+        "duracion_min": int(round(dur)),
+        "duracion_h": round(dur / 60.0, 2),
+        "km_total": round(float(km), 2),
+        "cantidad": len(registros),
+        "franjas": [],
+        "alertas": alertas,
+        "registros": registros,
+    }
+
+registrar_rutas(app, db, CoordenadasCatastro, DataCatastroV2)
