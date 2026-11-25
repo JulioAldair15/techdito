@@ -16394,6 +16394,39 @@ def registrar_rutas(app, db, CoordenadasCatastro, DataCatastroV2, cfg=None):
                             "error": "No se pudo consultar el suministro."}), 500
 
     # -------------------------------------------------------------------------
+    #  H) UNA FOTO DEL HISTORIAL, SERVIDA DESDE AQUI (para descargarla o compartirla)
+    #     El servidor de fotos es de otro dominio: el navegador no deja descargarla
+    #     con su nombre ni pasarla a WhatsApp si no viene de este mismo servidor.
+    # -------------------------------------------------------------------------
+    @app.route("/api/rutas/foto", methods=["GET"])
+    @requiere_login
+    def foto_de_consulta():
+        import requests as _rq
+        u = (request.args.get("u") or "").strip()
+        base = conf["FOTOS_URL_BASE"].rstrip("/") + "/"
+        # solo fotos del servidor de fotos (nada de pedir otras direcciones)
+        if (not u.startswith(base) or len(u) > 700 or ".." in u or "\\" in u
+                or "@" in u[len(base):]):
+            return jsonify({"success": False, "error": "Foto no permitida."}), 400
+        nombre = re.sub(r"[^\w.\-]+", "_", (request.args.get("n") or u.rsplit("/", 1)[-1]))[:120]
+        if not re.search(r"\.(jpe?g|png)$", nombre, re.I):
+            nombre += ".jpg"
+        try:
+            r = _rq.get(u, timeout=20, allow_redirects=False)
+        except Exception:
+            return jsonify({"success": False,
+                            "error": "No se pudo traer la foto del servidor de fotos."}), 502
+        tipo = (r.headers.get("Content-Type") or "image/jpeg").split(";")[0].strip()
+        if r.status_code != 200 or not tipo.startswith("image/"):
+            return jsonify({"success": False, "error": "El servidor de fotos no tiene esa foto."}), 404
+        if len(r.content) > 25 * 1024 * 1024:
+            return jsonify({"success": False, "error": "La foto es demasiado grande."}), 413
+        resp = send_file(io.BytesIO(r.content), mimetype=tipo, as_attachment=True,
+                         download_name=nombre)
+        resp.headers["Cache-Control"] = "private, max-age=86400"
+        return resp
+
+    # -------------------------------------------------------------------------
     #  F) PUNTO DEL GIS DE SEDALIB PARA UN SUMINISTRO (boton del mapa)
     # -------------------------------------------------------------------------
     @app.route("/api/rutas/gis_sedalib", methods=["POST"])
