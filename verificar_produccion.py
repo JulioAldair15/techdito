@@ -140,7 +140,7 @@ try:
     rutas = {r.rule for r in app.url_map.iter_rules()}
     ok("el sistema carga sin errores (%d rutas)" % len(rutas))
     for r in ["/api/generar_rutas", "/api/rutas/gis_sedalib", "/api/rutas/coordenada_manual",
-              "/api/rutas_desde_excel"]:
+              "/api/rutas_desde_excel", "/api/rutas/consulta_suministro"]:
         if r not in rutas:
             error("no esta registrada la ruta %s (codigo incompleto)" % r)
 except Exception:
@@ -159,7 +159,8 @@ if app is not None:
             for tabla, sql, sola in [
                     ("coordenada_manual", "2026_11_23_CREATE_TABLE_coordenada_manual.sql", True),
                     ("coordenada_gis_sedalib", "2026_11_23_CREATE_TABLE_coordenada_gis_sedalib.sql",
-                     True)]:
+                     True),
+                    ("foto_fecha", "2026_11_25_CREATE_TABLE_foto_fecha.sql", True)]:
                 if tabla in tablas:
                     ok("tabla %s" % tabla)
                 elif sola:
@@ -245,6 +246,18 @@ if "--red" in sys.argv:
             aviso("ArcGIS respondio sin resultado")
     except Exception as e:
         aviso("ArcGIS no responde desde este servidor: %s" % e)
+    try:
+        import requests
+        r = requests.head("http://200.233.44.171/app_oraclesedalib/public/storage/images/ordenes/29/"
+                          "10015005313_C17_29_1763741_0.jpg", timeout=8)
+        if r.status_code == 200 and r.headers.get("Last-Modified"):
+            ok("el servidor de fotos responde (el historial tendra fechas)")
+        else:
+            aviso("el servidor de fotos respondio %s sin fecha: las fotos de ordenes saldran "
+                  "'Sin fecha'" % r.status_code)
+    except Exception as e:
+        aviso("el servidor de fotos no responde desde aqui (%s): las fotos se veran en el "
+              "navegador, pero las de ordenes saldran 'Sin fecha'" % type(e).__name__)
     try:
         sys.path.insert(0, os.path.join(RAIZ, "app"))
         import gis_sedalib as g
