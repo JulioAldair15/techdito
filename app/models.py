@@ -685,6 +685,15 @@ class CoordenadaGisSedalib(db.Model):
     fecha = db.Column(db.DateTime, nullable=False)
 
 
+class FotoFecha(db.Model):
+    """Fecha de cada foto del historial (Last-Modified del servidor de fotos).
+    Es una cache: las fotos no cambian, asi que cada una se consulta una sola vez."""
+    __tablename__ = 'foto_fecha'
+    clave = db.Column(db.String(40), primary_key=True)     # sha1 de la URL de la foto
+    fecha = db.Column(db.DateTime, nullable=True)
+    revisado = db.Column(db.DateTime, nullable=False)
+
+
 class UnidadMedida(db.Model):
     __tablename__ = 'unidad_medida'
     id_unidad = db.Column(db.Integer, primary_key=True)

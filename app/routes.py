@@ -1,6 +1,6 @@
 import os
 from flask import g, Flask, after_this_request, render_template, request, redirect, url_for, flash, session, jsonify, send_file, current_app, send_from_directory, render_template, make_response
-from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CoordenadasCatastro, CargaDiaria, BitacoraAlmacen, Digitacion, OperadorAlias, CoordenadaManual, CoordenadaGisSedalib
+from .models import Usuario, Empleado, DataCatastroV2, RegistroTrabajo, EmpleadoLectura, EmpleadoDistribucion, EmpleadoInspecciones, EmpleadoCatastro, EmpleadoPersuasivas, EmpleadoMedidores, EmpleadoRecaudacion, EmpleadoAdministrativo, EmpleadoNorte, ReporteLectura, AuditoriaAcceso ,CargaDia, MaterialAsignado, CargaEjecutada, MaterialDevuelto,Remuneracion, DatosBancarios, BeneficioSocial, DocumentoEmpleado, Imagen, Categoria, Producto, Proveedor, Entrada, Salida, MovimientoDetalle, InventarioAuditoria, UnidadMedida, MatrizValidacion, Carta, Produccion, CoordenadasCatastro, CargaDiaria, BitacoraAlmacen, Digitacion, OperadorAlias, CoordenadaManual, CoordenadaGisSedalib, FotoFecha
 from flask_bcrypt import check_password_hash 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func, case
@@ -13073,6 +13073,13 @@ CFG = {
     "GIS_SEDALIB_CACHE_DIAS":      30,    # un lote encontrado se reutiliza 30 dias
     "GIS_SEDALIB_CACHE_NO_DIAS":   7,     # un "no lo tiene" se vuelve a preguntar a los 7
 
+    # --- Buscador por suministro: fotos del historial ---
+    # Servidor publico donde estan las fotos (el mismo que usa Fotoconsulta)
+    "FOTOS_URL_BASE":     "http://200.233.44.171/app_oraclesedalib/public/storage/images",
+    "FOTOS_HILOS":        8,      # fechas que se piden a la vez al servidor de fotos
+    "FOTOS_MAX_SEG":      8,      # tiempo maximo pidiendo fechas en una busqueda
+    "FOTOS_MAX_CONSULTA": 250,    # fotos nuevas por busqueda (el resto, en la siguiente)
+
     # --- BD ---
     "DB_CHUNK": 900,
 }
@@ -15435,6 +15442,299 @@ def _leer_form_comun(conf):
 # =============================================================================
 #  ENDPOINTS
 # =============================================================================
+# =============================================================================
+#  CONSULTA POR SUMINISTRO  (buscador del modulo Rutas)
+#  Junta en una sola respuesta todo lo que el sistema sabe de un predio:
+#  donde esta (a mano > GIS Sedalib > catastro > catastro v2), sus datos de
+#  catastro y el historial de fotos (lecturas y ordenes) ordenado por fecha.
+# =============================================================================
+_TABLA_FOTO_OK = False
+_RE_FOTO = re.compile(r"_C(\d+)_(\d+)_(\d+)_(\d+)")      # sum_C17_29_1763741_0.jpg
+_MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+          "septiembre", "octubre", "noviembre", "diciembre"]
+
+# Familias para los filtros del historial (por palabras de la leyenda)
+_FAMILIAS_FOTO = [
+    ("lecturas", "Lecturas", ("TOMA DE ESTADO", "RELECTURA")),
+    ("inspecciones", "Inspecciones", ("INSPECCION",)),
+    ("comunicaciones", "Comunicaciones", ("COMUNICACI", "CARTA", "DISTRIBUCION",
+                                          "RESULTADO VERIFICACION")),
+    ("cortes", "Cortes y reaperturas", ("CIERRE", "REAPERTURA", "LEVANTAMIENTO", "SELLADO",
+                                        "ORDEN DRASTICO", "OBSTURACION", "COERCITIVA",
+                                        "VERIFICACION DE ORDEN", "MOROSOS")),
+    ("catastro", "Catastro", ("CATASTRO",)),
+    ("medidores", "Medidores", ("MEDIDOR", "NUEVOS SUMINISTROS")),
+]
+
+
+def _asegurar_tabla_foto():
+    """Crea la tabla foto_fecha la primera vez (si no existe)."""
+    global _TABLA_FOTO_OK
+    if _TABLA_FOTO_OK:
+        return True
+    try:
+        FotoFecha.__table__.create(bind=db.engine, checkfirst=True)
+        _TABLA_FOTO_OK = True
+    except Exception:
+        log.exception("No se pudo crear/verificar la tabla foto_fecha")
+    return _TABLA_FOTO_OK
+
+
+def _variantes_suministro(s):
+    s = str(s or "").strip()
+    return [v for v in dict.fromkeys([s, s.zfill(11), s.lstrip("0")]) if v]
+
+
+def _familia_foto(categoria, leyenda):
+    if categoria == "lecturas":
+        return "lecturas"
+    ley = _norm(leyenda)
+    for clave, _nombre, palabras in _FAMILIAS_FOTO:
+        if any(p in ley for p in palabras):
+            return clave
+    return "otros"
+
+
+def _punto_de(x, y):
+    """(lon, lat) a partir de lo que tenga la BD (grados o UTM, o al reves)."""
+    for a, b in ((x, y), (y, x)):
+        a, b = _num(a), _num(b)
+        if a is None or b is None:
+            continue
+        _, _, ok = _mascara_valida([a], [b])
+        if ok[0]:
+            _, _, lo, la = _a_metros_y_grados(np.array([a]), np.array([b]))
+            if np.isfinite(lo[0]) and np.isfinite(la[0]):
+                return float(lo[0]), float(la[0])
+    return None
+
+
+def _ubicacion_suministro(variantes, conf, CoordenadasCatastro, DataCatastroV2):
+    """Todas las ubicaciones conocidas del suministro y sus datos de catastro."""
+    puntos, datos = [], {}
+
+    manual = _coordenadas_manuales(variantes, conf)
+    for s, (lon, lat) in manual.items():
+        puntos.append({"origen": "manual", "lon": lon, "lat": lat,
+                       "nombre": "Fijado a mano por un supervisor"})
+        break
+
+    if _gis.disponible():
+        try:
+            gis, _info = _puntos_gis_sedalib([variantes[0]] if variantes[0].isdigit()
+                                             else [], conf)
+            for lon, lat in list(gis.values())[:1]:
+                puntos.append({"origen": "gis_sedalib", "lon": lon, "lat": lat,
+                               "nombre": "GIS de Sedalib (centro del lote)"})
+        except Exception:
+            log.exception("Consulta: fallo el GIS de Sedalib")
+
+    try:
+        r = (CoordenadasCatastro.query
+             .filter(CoordenadasCatastro.clicodfac.in_(variantes)).first())
+        if r is not None:
+            p = _punto_de(r.coord_x, r.coord_y)
+            if p:
+                puntos.append({"origen": "catastro", "lon": p[0], "lat": p[1],
+                               "nombre": "Catastro"})
+            datos.update({
+                "titular": (r.nombre or "").strip(),
+                "localidad": (r.localidad or "").strip(),
+                "urbanizacion": (r.urbaniza or "").strip(),
+                "calle": (r.calle or "").strip(),
+                "numero": (r.nromuni or "").strip(),
+                "medidor": (r.medidor or "").strip(),
+                "ciclo": r.ciclo,
+            })
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("Consulta: no se pudo leer coordenadas_catastro")
+
+    try:
+        r = (DataCatastroV2.query
+             .filter(or_(DataCatastroV2.agrupado.in_(variantes),
+                         DataCatastroV2.suministro_p.in_(variantes))).first())
+        if r is not None:
+            p = _punto_de(r.este, r.norte)
+            if p:
+                puntos.append({"origen": "catastro_v2", "lon": p[0], "lat": p[1],
+                               "nombre": "Catastro (padrón)"})
+            if not datos.get("titular") and r.nombre:
+                datos["titular"] = r.nombre.strip()
+            datos.update({
+                "sector": (r.sector or "").strip(),
+                "manzana": (r.manzana or "").strip(),
+                "lote": (r.lote or "").strip(),
+            })
+            if not datos.get("ciclo") and r.ciclo:
+                datos["ciclo"] = r.ciclo
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("Consulta: no se pudo leer data_catastro")
+
+    # distancia de cada punto al que manda (el primero)
+    if puntos:
+        x0, y0, _, _ = _a_metros_y_grados(np.array([puntos[0]["lon"]]),
+                                          np.array([puntos[0]["lat"]]))
+        for p in puntos:
+            x, y, _, _ = _a_metros_y_grados(np.array([p["lon"]]), np.array([p["lat"]]))
+            p["distancia_m"] = int(round(float(np.hypot(x[0] - x0[0], y[0] - y0[0]))))
+    return puntos, {k: v for k, v in datos.items() if v not in (None, "")}
+
+
+def _fechas_fotos(urls, conf):
+    """
+    {url: datetime | None} con la fecha de cada foto (Last-Modified del servidor
+    de imagenes, que es cuando se subio). Lo ya consultado sale de la tabla
+    foto_fecha; lo nuevo se pregunta en paralelo y con tiempo limite.
+    """
+    import hashlib
+    from email.utils import parsedate_to_datetime
+    import requests as _rq
+
+    def clave(u):
+        return hashlib.sha1(u.encode("utf-8")).hexdigest()
+
+    salida = {u: None for u in urls}
+    claves = {clave(u): u for u in urls}
+    ahora = datetime.now(LIMA_TZ).replace(tzinfo=None)
+    hay_tabla = _asegurar_tabla_foto()
+    resueltas = set()
+    if hay_tabla and claves:
+        try:
+            for lote in _lotes(list(claves), conf["DB_CHUNK"]):
+                for f in FotoFecha.query.filter(FotoFecha.clave.in_(lote)).all():
+                    u = claves.get(f.clave)
+                    if not u:
+                        continue
+                    if f.fecha is not None:
+                        salida[u] = f.fecha
+                        resueltas.add(u)
+                    elif f.revisado and ahora - f.revisado < timedelta(days=1):
+                        resueltas.add(u)        # no tenia fecha hace poco: no insistir hoy
+        except SQLAlchemyError:
+            db.session.rollback()
+            log.exception("No se pudo leer la tabla foto_fecha")
+
+    faltan = [u for u in urls if u not in resueltas][:conf["FOTOS_MAX_CONSULTA"]]
+    if not faltan:
+        return salida
+    t0 = time.time()
+    sesion = _rq.Session()
+
+    def una(u):
+        if time.time() - t0 > conf["FOTOS_MAX_SEG"]:
+            return u, False, None
+        try:
+            r = sesion.head(u, timeout=4, allow_redirects=True)
+            lm = r.headers.get("Last-Modified") if r.status_code == 200 else None
+            if not lm:
+                return u, True, None
+            f = parsedate_to_datetime(lm).astimezone(LIMA_TZ).replace(tzinfo=None)
+            return u, True, f
+        except Exception:
+            return u, False, None
+
+    nuevas = []
+    with ThreadPoolExecutor(max_workers=conf["FOTOS_HILOS"]) as ex:
+        for u, respondio, f in ex.map(una, faltan):
+            if f is not None:
+                salida[u] = f
+            if respondio:
+                nuevas.append((u, f))
+    if hay_tabla and nuevas:
+        try:
+            for u, f in nuevas:
+                db.session.merge(FotoFecha(clave=clave(u), fecha=f, revisado=ahora))
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            log.exception("No se pudo guardar la tabla foto_fecha")
+    return salida
+
+
+def _fotos_suministro(variantes, conf):
+    """Historial de fotos del suministro agrupado en visitas, de la mas nueva a la mas vieja."""
+    base = conf["FOTOS_URL_BASE"].rstrip("/")
+    leyendas = globals().get("LEYENDA") or {}
+    try:
+        imagenes = Imagen.query.filter(Imagen.suministro.in_(variantes)).all()
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        if "1146" in str(e) or "doesn't exist" in str(e):
+            # Pasa en las copias locales: el registro de fotos solo vive en la BD de produccion
+            log.warning("Consulta: esta base de datos no tiene la tabla 'imagenes'")
+            return [], ("Esta base de datos no tiene el registro de fotos (tabla imagenes). "
+                        "Las fotos se ven en el servidor que sí lo tiene, como producción.")
+        log.exception("Consulta: no se pudo leer la tabla imagenes")
+        return [], "No se pudo leer el registro de fotos."
+
+    visitas, vistas = {}, set()
+    for img in imagenes:
+        carpeta = str(img.carpeta or "").replace("\\", "/").strip("/")
+        archivo = str(img.filename or "").strip()
+        if not archivo or not carpeta:
+            continue
+        categoria = (img.origen or "").strip().lower()
+        if categoria not in ("lecturas", "ordenes"):
+            categoria = "lecturas" if re.match(r"^\d{6}(/|$)", carpeta) else "ordenes"
+        m = _RE_FOTO.search(archivo)
+        mes = None
+        if categoria == "lecturas":
+            mes = carpeta[:6] if carpeta[:6].isdigit() else None
+            ciclo = re.search(r"_C(\d+)_", archivo)
+            if "/" not in carpeta and ciclo:
+                carpeta = carpeta + "/" + ciclo.group(1)    # 202505 -> 202505/17 (ciclo)
+            leyenda = "Lectura"
+            clave_visita = ("lecturas", mes or carpeta)
+            tipo = "lectura"
+            orden = None
+        else:
+            tipo = carpeta.split("/")[-1]
+            leyenda = (img.leyenda or leyendas.get(tipo) or ("Orden tipo %s" % tipo)).strip()
+            orden = m.group(3) if m else None
+            clave_visita = ("ordenes", tipo, orden or archivo)
+        url = base + "/" + categoria + "/" + "/".join(
+            _urlquote(p, safe="") for p in carpeta.split("/")) + "/" + _urlquote(archivo, safe="")
+        if url in vistas:
+            continue
+        vistas.add(url)
+        v = visitas.setdefault(clave_visita, {
+            "categoria": categoria, "tipo": tipo, "leyenda": leyenda, "orden": orden,
+            "mes": mes, "supervision": leyenda.upper().startswith("SUP "),
+            "familia": _familia_foto(categoria, leyenda), "fotos": []})
+        v["fotos"].append({"url": url, "archivo": archivo})
+
+    fechas = _fechas_fotos([f["url"] for v in visitas.values() for f in v["fotos"]], conf)
+    salida = []
+    for v in visitas.values():
+        for f in v["fotos"]:
+            fe = fechas.get(f["url"])
+            f["fecha"] = fe.strftime("%Y-%m-%d %H:%M") if fe else None
+        v["fotos"].sort(key=lambda f: (f["fecha"] or "", f["archivo"]))
+        con_fecha = [f["fecha"] for f in v["fotos"] if f["fecha"]]
+        if con_fecha:
+            v["fecha"], v["precision"] = min(con_fecha), "dia"
+        elif v["mes"]:
+            v["fecha"], v["precision"] = v["mes"][:4] + "-" + v["mes"][4:6] + "-01 00:00", "mes"
+        else:
+            v["fecha"], v["precision"] = None, "ninguna"
+        if v["categoria"] == "lecturas" and v["mes"]:
+            v["leyenda"] = "Lectura de %s %s" % (_MESES[int(v["mes"][4:6]) - 1], v["mes"][:4])
+        salida.append(v)
+    salida.sort(key=lambda v: (v["fecha"] is not None, v["fecha"] or "", v["orden"] or ""),
+                reverse=True)
+    for i, v in enumerate(salida):
+        v["id"] = i + 1
+        v.pop("mes", None)
+    return salida, ""
+
+
+def _urlquote(texto, safe=""):
+    from urllib.parse import quote
+    return quote(str(texto), safe=safe)
+
+
 def registrar_rutas(app, db, CoordenadasCatastro, DataCatastroV2, cfg=None):
     conf = dict(CFG)
     if cfg:
@@ -16066,6 +16366,32 @@ def registrar_rutas(app, db, CoordenadasCatastro, DataCatastroV2, cfg=None):
             log.error("Error exportando coordenadas:\n%s", traceback.format_exc())
             return jsonify({"error": "No se pudo generar el Excel de "
                                      "coordenadas."}), 500
+
+    # -------------------------------------------------------------------------
+    #  G) BUSCADOR POR SUMINISTRO: ubicacion, datos de catastro y fotos
+    # -------------------------------------------------------------------------
+    @app.route("/api/rutas/consulta_suministro", methods=["POST"])
+    @requiere_login
+    def consulta_suministro():
+        """Body: {"suministro": "..."} -> ubicaciones, datos y visitas con fotos."""
+        try:
+            datos = request.get_json(silent=True) or {}
+            s = str(datos.get("suministro") or "").strip()
+            if not re.fullmatch(r"\d{4,15}", s):
+                return jsonify({"success": False,
+                                "error": "Escribe un número de suministro (solo dígitos)."}), 400
+            variantes = _variantes_suministro(s)
+            puntos, ficha = _ubicacion_suministro(variantes, conf, CoordenadasCatastro,
+                                                  DataCatastroV2)
+            visitas, error_fotos = _fotos_suministro(variantes, conf)
+            return jsonify({"success": True, "suministro": s, "ubicaciones": puntos,
+                            "datos": ficha, "visitas": visitas,
+                            "error_fotos": error_fotos}), 200
+        except Exception:
+            db.session.rollback()
+            log.error("Error en la consulta por suministro:\n%s", traceback.format_exc())
+            return jsonify({"success": False,
+                            "error": "No se pudo consultar el suministro."}), 500
 
     # -------------------------------------------------------------------------
     #  F) PUNTO DEL GIS DE SEDALIB PARA UN SUMINISTRO (boton del mapa)
