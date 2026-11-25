@@ -192,6 +192,66 @@
 .rt-visor-mini.rt-on{opacity:1;border-color:#60a5fa}
 .rt-visor-mini img{width:100%;height:100%;object-fit:cover;display:block}
 .rt-visor-sep{flex-shrink:0;align-self:center;font-size:.62rem;color:#64748b;writing-mode:vertical-rl;transform:rotate(180deg);padding:0 2px}
+.rt-foto-check{position:absolute;top:6px;left:6px;width:24px;height:24px;border-radius:50%;border:2px solid #fff;
+  background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;color:transparent;font-size:.66rem;
+  opacity:0;transition:all .15s;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer}
+.rt-foto-check:hover{transform:scale(1.12);background:rgba(15,23,42,.55)}
+.rt-foto:hover .rt-foto-check,.rt-ficha.rt-con-seleccion .rt-foto-check{opacity:1}
+.rt-foto.rt-elegida{box-shadow:inset 0 0 0 3px #25d366}
+.rt-foto.rt-elegida img{transform:scale(.92);border-radius:6px}
+.rt-foto.rt-elegida .rt-foto-check{opacity:1;background:#25d366;border-color:#fff;color:#fff}
+.rt-visita-sel{margin-left:auto;font-size:.68rem;font-weight:700;color:#2563eb;background:none;border:none;cursor:pointer;padding:0 2px}
+.rt-visita-sel:hover{text-decoration:underline}
+.rt-visita-pie{display:flex;align-items:center;gap:8px}
+.rt-sel-barra{position:absolute;left:14px;right:14px;bottom:14px;background:#0f172a;color:#fff;border-radius:14px;padding:10px 10px 10px 14px;
+  display:flex;align-items:center;gap:8px;box-shadow:0 14px 34px rgba(15,23,42,.38);transform:translateY(150%);
+  transition:transform .25s cubic-bezier(.2,.8,.2,1);z-index:5}
+.rt-sel-barra.rt-visible{transform:none}
+.rt-sel-barra .rt-sel-txt{flex:1;min-width:0}
+.rt-sel-barra b{display:block;font-size:.84rem}
+.rt-sel-barra small{display:block;color:#94a3b8;font-size:.68rem}
+.rt-btn-wa{background:#25d366;color:#053b1d;border:none;border-radius:10px;height:38px;padding:0 14px;font-weight:800;font-size:.8rem;
+  cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.rt-btn-wa i{font-size:1.1rem}
+.rt-btn-wa:hover{background:#1fbe5a}
+.rt-btn-osc{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:10px;height:38px;min-width:38px;
+  padding:0 11px;font-weight:700;font-size:.76rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.rt-btn-osc:hover{background:rgba(255,255,255,.2)}
+.rt-ficha.rt-con-barra .rt-ficha-cuerpo{padding-bottom:96px}
+.rt-visor-sel{background:rgba(37,211,102,.12)!important;border-color:rgba(37,211,102,.5)!important}
+.rt-visor-sel.rt-on{background:#25d366!important;color:#053b1d!important;border-color:#25d366!important}
+.rt-visor-enviar{height:38px;border-radius:10px;border:none;background:#25d366;color:#053b1d;font-weight:800;font-size:.8rem;padding:0 12px;
+  cursor:pointer;display:none;align-items:center;gap:7px}
+.rt-visor-enviar.rt-visible{display:inline-flex}
+.rt-visor-mini{position:relative}
+.rt-visor-mini.rt-elegida::after{content:"\\f00c";font-family:"Font Awesome 6 Free","Font Awesome 5 Free";font-weight:900;position:absolute;
+  top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:#25d366;color:#fff;font-size:.55rem;display:flex;
+  align-items:center;justify-content:center}
+.rt-modal-wa{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:6000;display:flex;align-items:center;justify-content:center;
+  animation:rt-aparecer .2s ease}
+.rt-modal-wa-caja{background:#fff;border-radius:16px;width:min(540px,94vw);max-height:92vh;display:flex;flex-direction:column;
+  box-shadow:0 30px 80px rgba(15,23,42,.35);overflow:hidden}
+.rt-modal-wa-cab{background:#25d366;color:#053b1d;padding:16px 18px;display:flex;align-items:center;gap:12px}
+.rt-modal-wa-cab i{font-size:1.9rem}
+.rt-modal-wa-cab b{display:block;font-size:1.02rem}
+.rt-modal-wa-cab span{font-size:.76rem;opacity:.85}
+.rt-modal-wa-cuerpo{padding:6px 18px 10px;overflow-y:auto}
+.rt-paso{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #f1f5f9}
+.rt-paso:last-child{border-bottom:none}
+.rt-paso-n{width:28px;height:28px;border-radius:50%;background:#e2e8f0;color:#475569;font-weight:800;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;font-size:.8rem;transition:all .2s}
+.rt-paso.rt-hecho .rt-paso-n{background:#25d366;color:#fff}
+.rt-paso-c{flex:1;min-width:0}
+.rt-paso-c b{display:block;font-size:.86rem;color:#0f172a}
+.rt-paso-c span{display:block;font-size:.76rem;color:#64748b;line-height:1.5;margin-top:2px}
+.rt-paso-c kbd{background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;padding:0 5px;font-size:.7rem;color:#0f172a}
+.rt-miniaturas{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.rt-miniaturas img{width:44px;height:58px;object-fit:cover;border-radius:6px;background:#e2e8f0}
+.rt-texto-wa{margin-top:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:8px 10px;font-size:.76rem;color:#14532d;font-family:inherit;line-height:1.5;
+  white-space:pre-wrap;max-height:130px;overflow:auto}
+.rt-modal-wa-pie{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;background:#f8fafc;border-top:1px solid #eef2f7;flex-wrap:wrap}
+.rt-aviso-flot{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#0f172a;color:#fff;border-radius:10px;
+  padding:10px 16px;font-size:.8rem;font-weight:600;z-index:7000;box-shadow:0 10px 30px rgba(15,23,42,.35);animation:rt-aparecer .2s}
 .rt-inicio-busca{display:flex;align-items:center;gap:12px;border:1px solid #e2e8f0;border-radius:10px;padding:11px 12px;background:#fff;
   cursor:pointer;text-align:left;width:100%;font:inherit;transition:all .15s}
 .rt-inicio-busca:hover{border-color:#93c5fd;background:#f8fbff}
@@ -263,14 +323,31 @@
             setTimeout(() => { boton.innerHTML = previo; }, 1200);
         };
         if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(texto).then(ok, () => {});
-        } else {
-            const t = document.createElement('textarea');
-            t.value = texto; document.body.appendChild(t); t.select();
-            try { document.execCommand('copy'); ok(); } catch (e) { }
-            t.remove();
+            return navigator.clipboard.writeText(texto).then(() => { ok(); return true; }, () => false);
         }
+        const t = document.createElement('textarea');
+        t.value = texto;
+        t.style.position = 'fixed'; t.style.opacity = '0';
+        document.body.appendChild(t); t.select();
+        let hecho = false;
+        try { hecho = document.execCommand('copy'); if (hecho) ok(); } catch (e) { }
+        t.remove();
+        return Promise.resolve(hecho);
     }
+    function avisar(texto) {
+        const v = document.querySelector('.rt-aviso-flot');
+        if (v) v.remove();
+        const d = document.createElement('div');
+        d.className = 'rt-aviso-flot';
+        d.textContent = texto;
+        document.body.appendChild(d);
+        setTimeout(() => d.remove(), 2600);
+    }
+    function slug(t) {
+        return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32) || 'foto';
+    }
+    const MAX_SELECCION = 30;
 
     // ------------------------------------------------------ buscador (cabecera)
     A._montarBuscador = function () {
@@ -376,6 +453,7 @@
             if (!resp.ok || !data.success) throw new Error(data.error || ('Error ' + resp.status));
             this._consulta = data;
             this._consultaFiltro = 'todo';
+            this._sel = new Map();
             guardarReciente(s, (data.datos || {}).localidad);
             this._pintarConsultaMapa(data);
             this._pintarFicha(data);
@@ -807,6 +885,225 @@
 
         // --- historial de fotos
         cuerpo.appendChild(this._seccionFotos(data));
+        ficha.appendChild(this._barraSeleccion());
+        this._actualizarSeleccion();
+    };
+
+    // ------------------------------------------------------- selección de fotos
+    A._estaElegida = function (url) { return !!(this._sel && this._sel.has(url)); };
+
+    A._alternarFoto = function (foto, visita, forzar) {
+        if (!this._sel) this._sel = new Map();
+        const quitar = forzar === undefined ? this._sel.has(foto.url) : !forzar;
+        if (quitar) this._sel.delete(foto.url);
+        else {
+            if (!this._sel.has(foto.url) && this._sel.size >= MAX_SELECCION) {
+                avisar('Puedes elegir hasta ' + MAX_SELECCION + ' fotos por envío.');
+                return false;
+            }
+            this._sel.set(foto.url, { url: foto.url, archivo: foto.archivo, fecha: foto.fecha, visita: visita });
+        }
+        this._actualizarSeleccion();
+        return true;
+    };
+
+    A._textoElegirVisita = function (v) {
+        const todas = v.fotos.every((f) => this._estaElegida(f.url));
+        return todas ? 'Quitar' : (v.fotos.length > 1 ? 'Elegir las ' + v.fotos.length : 'Elegir');
+    };
+
+    A._alternarVisita = function (v) {
+        const todas = v.fotos.every((f) => this._estaElegida(f.url));
+        for (const f of v.fotos) {
+            if (!this._alternarFoto(f, v, !todas)) break;
+        }
+    };
+
+    A.limpiarSeleccion = function () {
+        if (this._sel) this._sel.clear();
+        this._actualizarSeleccion();
+    };
+
+    A._actualizarSeleccion = function () {
+        const n = this._sel ? this._sel.size : 0;
+        const ficha = document.getElementById('rt-ficha');
+        if (ficha) {
+            ficha.classList.toggle('rt-con-seleccion', n > 0);
+            ficha.classList.toggle('rt-con-barra', n > 0);
+            ficha.querySelectorAll('.rt-foto[data-url]').forEach((b) => {
+                const si = this._estaElegida(b.getAttribute('data-url'));
+                b.classList.toggle('rt-elegida', si);
+                const c = b.querySelector('.rt-foto-check');
+                if (c) c.setAttribute('aria-checked', si ? 'true' : 'false');
+            });
+            ficha.querySelectorAll('.rt-visita-sel').forEach((btn) => {
+                const v = ((this._consulta || {}).visitas || []).find((x) => String(x.id) === btn.getAttribute('data-visita'));
+                if (v) btn.textContent = this._textoElegirVisita(v);
+            });
+        }
+        const barra = document.getElementById('rt-sel-barra');
+        if (barra) {
+            barra.classList.toggle('rt-visible', n > 0);
+            const visitas = new Set([...(this._sel || new Map()).values()].map((f) => f.visita));
+            const b = barra.querySelector('b'), s = barra.querySelector('small');
+            if (b) b.textContent = n + (n === 1 ? ' foto elegida' : ' fotos elegidas');
+            if (s) s.textContent = visitas.size > 1 ? 'De ' + visitas.size + ' visitas distintas' : 'Lista para enviar o descargar';
+        }
+        if (this._visor && this._visor.refrescarSel) this._visor.refrescarSel();
+    };
+
+    A._barraSeleccion = function () {
+        return el('div', { class: 'rt-sel-barra', id: 'rt-sel-barra', role: 'region', 'aria-label': 'Fotos elegidas' }, [
+            el('div', { class: 'rt-sel-txt' }, [el('b'), el('small')]),
+            el('button', { type: 'button', class: 'rt-btn-wa', title: 'Enviar las fotos elegidas por WhatsApp',
+                           onclick: () => this.enviarPorWhatsapp() }, [el('i', { class: 'fab fa-whatsapp', 'aria-hidden': 'true' }), 'WhatsApp']),
+            el('button', { type: 'button', class: 'rt-btn-osc', title: 'Descargar las fotos elegidas',
+                           onclick: () => this.descargarSeleccion() }, [icono('fa-download')]),
+            el('button', { type: 'button', class: 'rt-btn-osc', title: 'Quitar la selección',
+                           onclick: () => this.limpiarSeleccion() }, [icono('fa-times')])
+        ]);
+    };
+
+    // ---------------------------------------------------- enviar / descargar
+    A._fotosElegidas = function () {
+        // en el orden del historial (de la más nueva a la más vieja)
+        const orden = [], vistas = new Set();
+        ((this._consulta || {}).visitas || []).forEach((v) => v.fotos.forEach((f) => {
+            if (this._estaElegida(f.url) && !vistas.has(f.url)) { vistas.add(f.url); orden.push(this._sel.get(f.url)); }
+        }));
+        return orden;
+    };
+
+    A._nombreFoto = function (f, n) {
+        const s = (this._consulta || {}).suministro || 'suministro';
+        const fe = f.fecha ? f.fecha.slice(0, 10)
+                 : (f.visita.fecha ? f.visita.fecha.slice(0, f.visita.precision === 'mes' ? 7 : 10) : 'sin-fecha');
+        return s + '_' + fe + '_' + slug(tituloVisita(f.visita)) + '_' + n + '.jpg';
+    };
+
+    A._urlDescarga = function (f, n) {
+        return '/api/rutas/foto?u=' + encodeURIComponent(f.url) + '&n=' + encodeURIComponent(this._nombreFoto(f, n));
+    };
+
+    A._textoParaEnviar = function () {
+        const d = this._consulta || {};
+        const datos = d.datos || {};
+        const p = (d.ubicaciones || [])[0];
+        const lineas = ['📍 Suministro ' + d.suministro];
+        const dir = [[datos.calle, datos.numero].filter(Boolean).join(' '), capitalizar(datos.localidad || '')].filter(Boolean).join(' · ');
+        if (dir) lineas.push(dir);
+        if (p) lineas.push('Ubicación: https://www.google.com/maps?q=' + p.lat.toFixed(6) + ',' + p.lon.toFixed(6));
+        const porVisita = new Map();
+        this._fotosElegidas().forEach((f) => porVisita.set(f.visita, (porVisita.get(f.visita) || 0) + 1));
+        porVisita.forEach((n, v) => {
+            lineas.push('📷 ' + tituloVisita(v) + (v.fecha && v.precision === 'dia' ? ' · ' + textoFecha(v).split(' · ')[0] : '') +
+                        ' (' + n + (n === 1 ? ' foto)' : ' fotos)'));
+        });
+        return lineas.join('\n');
+    };
+
+    A._descargar = async function (fotos, alAvanzar) {
+        for (let i = 0; i < fotos.length; i++) {
+            const a = document.createElement('a');
+            a.href = this._urlDescarga(fotos[i], i + 1);
+            a.download = this._nombreFoto(fotos[i], i + 1);
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            if (alAvanzar) alAvanzar(i + 1);
+            await new Promise((r) => setTimeout(r, 400));     // el navegador no junta descargas tan seguidas
+        }
+    };
+
+    A.descargarSeleccion = async function () {
+        const fotos = this._fotosElegidas();
+        if (!fotos.length) return;
+        avisar('Descargando ' + fotos.length + (fotos.length === 1 ? ' foto…' : ' fotos…'));
+        await this._descargar(fotos);
+    };
+
+    A.enviarPorWhatsapp = async function () {
+        const fotos = this._fotosElegidas();
+        if (!fotos.length) return;
+        const texto = this._textoParaEnviar();
+        // Con HTTPS el navegador puede pasar las fotos directo a WhatsApp (menú Compartir)
+        if (window.isSecureContext && navigator.canShare && navigator.share) {
+            try {
+                avisar('Preparando las fotos…');
+                const archivos = [];
+                for (let i = 0; i < fotos.length; i++) {
+                    const r = await fetch(this._urlDescarga(fotos[i], i + 1));
+                    if (!r.ok) throw new Error('foto');
+                    const blob = await r.blob();
+                    archivos.push(new File([blob], this._nombreFoto(fotos[i], i + 1), { type: blob.type || 'image/jpeg' }));
+                }
+                if (navigator.canShare({ files: archivos })) {
+                    await navigator.share({ files: archivos, text: texto });
+                    return;
+                }
+            } catch (err) {
+                if (err && err.name === 'AbortError') return;        // el usuario cerró el menú
+            }
+        }
+        this._guiaWhatsapp(fotos, texto);
+    };
+
+    // Sin HTTPS no hay forma de pasarle archivos a WhatsApp Web desde otra página:
+    // se descargan con un nombre claro y se deja el texto copiado para pegarlo.
+    A._guiaWhatsapp = function (fotos, texto) {
+        const viejo = document.getElementById('rt-modal-wa');
+        if (viejo) viejo.remove();
+        const s = (this._consulta || {}).suministro || '';
+        const paso = (n, titulo, detalle, extra) => el('div', { class: 'rt-paso' }, [
+            el('div', { class: 'rt-paso-n', text: String(n) }),
+            el('div', { class: 'rt-paso-c' }, [el('b', { text: titulo }), detalle, extra || null])]);
+        const det1 = el('span', { text: 'Se guardan en tu carpeta de Descargas con nombres que empiezan con ' + s + '_.' });
+        const minis = el('div', { class: 'rt-miniaturas' }, fotos.slice(0, 12).map((f) =>
+            el('img', { src: f.url, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' })));
+        const p1 = paso(1, 'Descargando ' + fotos.length + (fotos.length === 1 ? ' foto' : ' fotos'), det1, minis);
+        const caja = el('pre', { class: 'rt-texto-wa', text: texto });
+        const btnCopiar = el('button', { type: 'button', class: 'rt-accion', style: 'flex:0 0 auto;min-width:0;margin-top:8px;padding:0 12px;height:32px' },
+                             [icono('fa-copy'), 'Copiar otra vez']);
+        const det2 = el('span', { text: 'Ya está copiado: en WhatsApp lo pegas con Ctrl+V como descripción.' });
+        const p2 = paso(2, 'Texto con los datos del predio', det2, el('div', {}, [caja, btnCopiar]));
+        const det3 = el('span');
+        det3.innerHTML = 'Ve a tu pestaña de WhatsApp, abre el chat y pulsa <kbd>📎</kbd> → <b style="display:inline">Fotos y videos</b>. ' +
+            'Elige las fotos descargadas y pega el texto. También puedes arrastrarlas al chat desde la lista de descargas del navegador.';
+        const p3 = paso(3, 'Envíalas por WhatsApp', det3);
+        const cerrar = () => { modal.remove(); document.removeEventListener('keydown', teclas, true); };
+        const teclas = (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); cerrar(); } };
+        const modal = el('div', { class: 'rt-modal-wa', id: 'rt-modal-wa', role: 'dialog', 'aria-modal': 'true',
+                                  'aria-label': 'Enviar fotos por WhatsApp',
+                                  onclick: (ev) => { if (ev.target === modal) cerrar(); } }, [
+            el('div', { class: 'rt-modal-wa-caja' }, [
+                el('div', { class: 'rt-modal-wa-cab' }, [el('i', { class: 'fab fa-whatsapp', 'aria-hidden': 'true' }),
+                    el('div', {}, [el('b', { text: 'Enviar por WhatsApp' }),
+                                   el('span', { text: 'Suministro ' + s + ' · ' + fotos.length + (fotos.length === 1 ? ' foto' : ' fotos') })])]),
+                el('div', { class: 'rt-modal-wa-cuerpo' }, [p1, p2, p3]),
+                el('div', { class: 'rt-modal-wa-pie' }, [
+                    el('a', { class: 'rt-accion', href: 'https://web.whatsapp.com/', target: 'whatsapp', rel: 'noopener',
+                              style: 'flex:0 0 auto;min-width:0;padding:0 14px', title: 'Solo si no lo tienes abierto' },
+                       [el('i', { class: 'fab fa-whatsapp', 'aria-hidden': 'true' }), 'Abrir WhatsApp Web']),
+                    el('button', { type: 'button', class: 'rt-accion rt-prim', style: 'flex:0 0 auto;min-width:0;padding:0 18px',
+                                   onclick: cerrar }, ['Listo'])
+                ])
+            ])
+        ]);
+        document.addEventListener('keydown', teclas, true);
+        document.body.appendChild(modal);
+        btnCopiar.addEventListener('click', () => copiar(texto, btnCopiar));
+        copiar(texto).then((ok) => {
+            if (ok) p2.classList.add('rt-hecho');
+            else det2.textContent = 'Cópialo con el botón y pégalo en WhatsApp como descripción.';
+        });
+        this._descargar(fotos, (n) => {
+            det1.textContent = n < fotos.length
+                ? 'Descargando ' + n + ' de ' + fotos.length + '…'
+                : 'Listo: están en tu carpeta de Descargas y empiezan con ' + s + '_.' +
+                  (fotos.length > 1 ? ' Si el navegador pregunta si permites descargar varios archivos, pulsa Permitir.' : '');
+            if (n >= fotos.length) p1.classList.add('rt-hecho');
+        });
     };
 
     A._irACarga = function (id, s) {
@@ -905,14 +1202,23 @@
             const fotos = el('div', { class: 'rt-fotos', style: 'grid-template-columns:repeat(' + MAX + ',1fr)' });
             v.fotos.slice(0, MAX).forEach((foto, i) => {
                 const inicio = idxFoto + i;
-                const b = el('button', { type: 'button', class: 'rt-foto', title: 'Ver foto',
-                                         onclick: () => this.abrirVisor(inicio) });
+                const b = el('button', { type: 'button', class: 'rt-foto' + (this._estaElegida(foto.url) ? ' rt-elegida' : ''),
+                                         title: 'Ver foto', 'data-url': foto.url, onclick: () => this.abrirVisor(inicio) });
+                const marca = el('span', { class: 'rt-foto-check', role: 'checkbox', tabindex: '0',
+                                           title: 'Elegir para enviar o descargar',
+                                           'aria-checked': this._estaElegida(foto.url) ? 'true' : 'false' },
+                                 [icono('fa-check')]);
+                const alternar = (ev) => { ev.preventDefault(); ev.stopPropagation(); this._alternarFoto(foto, v); };
+                marca.addEventListener('click', alternar);
+                marca.addEventListener('keydown', (ev) => { if (ev.key === ' ' || ev.key === 'Enter') alternar(ev); });
+                b.appendChild(marca);
                 const img = el('img', { src: foto.url, alt: tituloVisita(v) + ' — foto ' + (i + 1),
                                         loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' });
                 img.addEventListener('load', () => { img.classList.add('rt-lista'); b.classList.add('rt-cargada'); });
                 img.addEventListener('error', () => {
                     b.classList.add('rt-rota'); b.title = 'No se pudo cargar la foto';
-                    b.innerHTML = '<i class="fas fa-image" aria-hidden="true"></i>';
+                    img.remove(); marca.remove();
+                    b.insertAdjacentHTML('beforeend', '<i class="fas fa-image" aria-hidden="true"></i>');
                 });
                 b.appendChild(img);
                 if (i === MAX - 1 && v.fotos.length > MAX) {
@@ -926,7 +1232,11 @@
                     el('div', { class: 'rt-visita-fecha' }, [icono('fa-calendar-alt'), textoFecha(v),
                         v.fecha && v.precision === 'dia' ? el('em', { text: '· ' + hace(v.fecha) }) : null]),
                     titulo,
-                    el('div', { class: 'rt-visita-m', text: meta.join(' · ') }),
+                    el('div', { class: 'rt-visita-pie' }, [
+                        el('div', { class: 'rt-visita-m', text: meta.join(' · ') }),
+                        el('button', { type: 'button', class: 'rt-visita-sel', 'data-visita': String(v.id),
+                                       text: this._textoElegirVisita(v), onclick: () => this._alternarVisita(v) })
+                    ]),
                     fotos
                 ])
             ]));
@@ -956,6 +1266,11 @@
         const img = el('img', { alt: '', draggable: 'false', referrerpolicy: 'no-referrer' });
         const original = el('a', { class: 'rt-visor-btn', target: '_blank', rel: 'noopener', title: 'Abrir la foto original' },
                             [icono('fa-external-link-alt')]);
+        const btnElegir = el('button', { type: 'button', class: 'rt-visor-btn rt-visor-sel', title: 'Elegir esta foto (S)',
+                                         'aria-label': 'Elegir esta foto', onclick: () => elegir() }, [icono('fa-check')]);
+        const btnEnviar = el('button', { type: 'button', class: 'rt-visor-enviar', title: 'Enviar las fotos elegidas por WhatsApp',
+                                         onclick: () => this.enviarPorWhatsapp() },
+                             [el('i', { class: 'fab fa-whatsapp', 'aria-hidden': 'true' }), el('span')]);
         const btn = (ico, tit, fn) => el('button', { type: 'button', class: 'rt-visor-btn', title: tit, 'aria-label': tit, onclick: fn },
                                          [icono(ico)]);
         const tira = el('div', { class: 'rt-visor-tira' });
@@ -965,7 +1280,7 @@
         ]);
         const visor = el('div', { class: 'rt-visor', id: 'rt-visor', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Fotos del suministro' }, [
             el('div', { class: 'rt-visor-cab' }, [
-                el('div', { class: 'rt-visor-t' }, [titulo, subt]), cont,
+                el('div', { class: 'rt-visor-t' }, [titulo, subt]), cont, btnEnviar, btnElegir,
                 btn('fa-search-plus', 'Acercar (clic en la foto)', () => zoom(st.zoom === 1 ? 2.2 : 1)),
                 btn('fa-redo', 'Girar (R)', () => { st.giro = (st.giro + 90) % 360; aplicar(); }),
                 original,
@@ -997,8 +1312,21 @@
             const activa = tira.querySelectorAll('.rt-visor-mini')[st.i];
             if (activa) activa.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
             [1, -1].forEach((d) => { const p = fotos[st.i + d]; if (p) { const pre = new Image(); pre.src = p.url; } });
+            st.refrescarSel();
         };
         const ir = (d) => { st.i = (st.i + d + fotos.length) % fotos.length; mostrar(); };
+        const elegir = () => { const f = fotos[st.i]; this._alternarFoto(f, f.visita); };
+        st.refrescarSel = () => {
+            const f = fotos[st.i];
+            const si = !!(f && this._estaElegida(f.url));
+            btnElegir.classList.toggle('rt-on', si);
+            btnElegir.title = si ? 'Quitar de las elegidas (S)' : 'Elegir esta foto (S)';
+            const n = this._sel ? this._sel.size : 0;
+            btnEnviar.classList.toggle('rt-visible', n > 0);
+            btnEnviar.querySelector('span').textContent = 'Enviar ' + n;
+            tira.querySelectorAll('.rt-visor-mini').forEach((m, k) =>
+                m.classList.toggle('rt-elegida', !!(fotos[k] && this._estaElegida(fotos[k].url))));
+        };
 
         let visitaPrevia = null;
         fotos.forEach((f, k) => {
@@ -1031,11 +1359,13 @@
         }, { passive: false });
         escena.addEventListener('click', (ev) => { if (ev.target === escena) this.cerrarVisor(); });
         const teclas = (ev) => {
+            if (document.getElementById('rt-modal-wa')) return;
             const usada = () => { ev.preventDefault(); ev.stopPropagation(); };
             if (ev.key === 'Escape') { usada(); this.cerrarVisor(); }
             else if (ev.key === 'ArrowRight') { usada(); ir(1); }
             else if (ev.key === 'ArrowLeft') { usada(); ir(-1); }
             else if (ev.key === 'r' || ev.key === 'R') { usada(); st.giro = (st.giro + 90) % 360; aplicar(); }
+            else if (ev.key === 's' || ev.key === 'S') { usada(); elegir(); }
         };
         document.addEventListener('keydown', teclas, true);
         document.addEventListener('mousemove', mover);
@@ -1067,7 +1397,7 @@
     // ------------------------------------------- integración con lo demás
     // Esc cierra la ficha (si el visor no está abierto)
     document.addEventListener('keydown', (ev) => {
-        if (ev.key !== 'Escape' || A._visor) return;
+        if (ev.key !== 'Escape' || A._visor || document.getElementById('rt-modal-wa')) return;
         const f = document.getElementById('rt-ficha');
         if (f && f.classList.contains('rt-abierta')) A.cerrarConsulta();
     });
