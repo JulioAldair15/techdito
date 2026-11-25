@@ -33,7 +33,10 @@
         catastro_v2: { nombre: 'Catastro (padrón)',         corto: 'Padrón',        color: '#64748b', icono: 'fa-map' }
     };
     const CLAVE_RECIENTES = 'rt-consultas-recientes';
-    const ANCHO_FICHA = 430;
+    const CLAVE_ANCHO = 'rt-ficha-ancho';
+    const ANCHO_MIN = 400;          // px
+    const ANCHO_MAX = 0.8;          // fracción del panel del mapa
+    const ANCHO_AMPLIO = 0.62;      // botón "ampliar"
 
     // ------------------------------------------------------------- estilos
     const CSS = `
@@ -61,9 +64,9 @@
 .rt-busq-msg{position:absolute;top:46px;left:12px;font-size:.72rem;color:#dc2626;font-weight:600;white-space:nowrap}
 @keyframes rt-temblor{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
 
-.rt-ficha{position:absolute;top:0;right:0;bottom:0;width:${ANCHO_FICHA}px;max-width:94%;background:#fff;z-index:800;
+.rt-ficha{position:absolute;top:0;right:0;bottom:0;width:560px;max-width:100%;background:#fff;z-index:800;
   display:flex;flex-direction:column;box-shadow:-12px 0 32px rgba(15,23,42,.16);border-left:1px solid #e2e8f0;
-  transform:translateX(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+  transform:translateX(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1),width .22s ease}
 .rt-ficha.rt-abierta{transform:translateX(0)}
 .rt-ficha-cab{padding:16px 18px 12px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f8fafc,#fff)}
 .rt-ficha-sobre{font-size:.66rem;font-weight:800;letter-spacing:.08em;color:#94a3b8}
@@ -73,6 +76,13 @@
   display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;transition:all .15s}
 .rt-ficha-ico:hover{background:#f1f5f9;color:#0f172a}
 .rt-ficha-cerrar{position:absolute;top:14px;right:14px}
+.rt-ficha-ampliar{position:absolute;top:14px;right:52px}
+.rt-ficha-asa{position:absolute;left:-6px;top:0;bottom:0;width:12px;cursor:col-resize;z-index:2;display:flex;align-items:center;justify-content:center}
+.rt-ficha-asa::before{content:"";position:absolute;left:5px;top:0;bottom:0;width:2px;background:transparent;transition:background .15s}
+.rt-ficha-asa:hover::before,.rt-ficha-asa.rt-moviendo::before{background:#2563eb}
+.rt-ficha-asa span{width:6px;height:44px;border-radius:4px;background:#cbd5e1;border:1px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.2);position:relative}
+.rt-ficha-asa:hover span,.rt-ficha-asa.rt-moviendo span{background:#2563eb}
+.rt-redimensionando,.rt-redimensionando *{cursor:col-resize!important;user-select:none!important}
 .rt-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .rt-chip{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:999px;
   border:1px solid transparent;white-space:nowrap}
@@ -82,7 +92,7 @@
 .rt-sec-t::after{content:"";flex:1;height:1px;background:#eef2f7}
 .rt-dir{font-size:1.02rem;font-weight:700;color:#0f172a;line-height:1.35}
 .rt-dir-sub{font-size:.8rem;color:#64748b;margin-top:2px}
-.rt-datos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.rt-datos{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:12px}
 .rt-dato{background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;padding:8px 10px;min-width:0}
 .rt-dato small{display:block;font-size:.64rem;font-weight:800;letter-spacing:.05em;color:#94a3b8}
 .rt-dato span{display:block;font-size:.8rem;color:#1e293b;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -109,7 +119,7 @@
 .rt-stat{border:1px solid #eef2f7;border-radius:10px;padding:9px 10px;background:#fff}
 .rt-stat b{display:block;font-size:1.15rem;color:#0f172a;font-variant-numeric:tabular-nums;line-height:1.1}
 .rt-stat span{font-size:.66rem;color:#94a3b8;font-weight:700;letter-spacing:.03em}
-.rt-filtros{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;scrollbar-width:thin}
+.rt-filtros{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .rt-filtro{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:999px;cursor:pointer;
   border:1px solid #e2e8f0;background:#fff;color:#475569;white-space:nowrap;transition:all .15s}
 .rt-filtro:hover{border-color:#94a3b8}
@@ -128,7 +138,7 @@
 .rt-visita-t{font-size:.86rem;font-weight:800;color:#0f172a;margin:3px 0 2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .rt-visita-m{font-size:.7rem;color:#94a3b8;font-variant-numeric:tabular-nums}
 .rt-tag{font-size:.6rem;font-weight:800;letter-spacing:.04em;padding:2px 6px;border-radius:5px}
-.rt-fotos{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px}
+.rt-fotos{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
 .rt-foto{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;cursor:zoom-in;border:none;padding:0;
   background:linear-gradient(90deg,#f1f5f9 0%,#e2e8f0 50%,#f1f5f9 100%);background-size:200% 100%;animation:rt-brillo 1.2s linear infinite}
 .rt-foto img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .3s,transform .3s}
@@ -478,6 +488,8 @@
             ficha = el('aside', { id: 'rt-ficha', class: 'rt-ficha', role: 'dialog', 'aria-label': 'Ficha del suministro' });
             der.appendChild(ficha);
         }
+        // el ancho se calcula con el panel ya en su tamaño final
+        setTimeout(() => this._aplicarAnchoFicha(), this._panelRecienAbierto ? 430 : 0);
         requestAnimationFrame(() => ficha.classList.add('rt-abierta'));
         if (soloMostrar && this._consulta && this._consulta.suministro === s) return;
     };
@@ -497,6 +509,120 @@
             izq.style.overflow = '';
             izq.style.minWidth = '';
         }
+    };
+
+    // ------------------------------------------------ ancho de la ficha
+    A._anchoPanelMapa = function () {
+        const der = document.querySelector('.rt-panel-der');
+        return der ? der.getBoundingClientRect().width : 0;
+    };
+
+    A._anchoFichaDeseado = function () {
+        const panel = this._anchoPanelMapa();
+        let guardado = null;
+        try { guardado = localStorage.getItem(CLAVE_ANCHO); } catch (e) { }
+        let w;
+        if (guardado === 'amplio') w = panel * ANCHO_AMPLIO;
+        else if (guardado && !isNaN(+guardado)) w = +guardado;
+        else w = Math.min(760, Math.max(520, panel * 0.42));       // por defecto
+        return Math.round(Math.max(ANCHO_MIN, Math.min(w, panel * ANCHO_MAX)));
+    };
+
+    A._aplicarAnchoFicha = function (w, guardar) {
+        const ficha = document.getElementById('rt-ficha');
+        if (!ficha) return;
+        const panel = this._anchoPanelMapa();
+        if (!panel) return;
+        w = Math.round(Math.max(ANCHO_MIN, Math.min(w || this._anchoFichaDeseado(), panel * ANCHO_MAX)));
+        const cambio = Math.abs((this._anchoFicha || 0) - w) > 2;
+        ficha.style.width = w + 'px';
+        this._anchoFicha = w;
+        this._iconoAncho();
+        if (guardar) {
+            try { localStorage.setItem(CLAVE_ANCHO, guardar === 'amplio' ? 'amplio' : String(w)); } catch (e) { }
+        }
+        if (cambio && this._consulta) this._repintarFotos();
+    };
+
+    A._esAmplia = function () {
+        const panel = this._anchoPanelMapa();
+        return !!(panel && this._anchoFicha && this._anchoFicha >= panel * (ANCHO_AMPLIO - 0.04));
+    };
+
+    A._iconoAncho = function () {
+        const btn = document.getElementById('rt-ficha-ampliar');
+        if (!btn) return;
+        const amplia = this._esAmplia();
+        btn.innerHTML = amplia ? '<i class="fas fa-compress-alt"></i>' : '<i class="fas fa-expand-alt"></i>';
+        btn.title = amplia ? 'Reducir la ficha' : 'Ampliar la ficha';
+    };
+
+    A.alternarAnchoFicha = function () {
+        const ficha = document.getElementById('rt-ficha');
+        const panel = this._anchoPanelMapa();
+        if (!ficha || !panel) return;
+        if (this._esAmplia()) {
+            try { localStorage.removeItem(CLAVE_ANCHO); } catch (e) { }
+            this._aplicarAnchoFicha(null, false);
+        } else {
+            this._aplicarAnchoFicha(panel * ANCHO_AMPLIO, 'amplio');
+        }
+        setTimeout(() => this._recentrarConsulta(), 300);
+    };
+
+    // Asa en el borde izquierdo de la ficha para arrastrar su ancho
+    A._asaFicha = function () {
+        const asa = el('div', { class: 'rt-ficha-asa', title: 'Arrastra para cambiar el ancho',
+                                role: 'separator', 'aria-orientation': 'vertical' }, [el('span')]);
+        asa.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            const der = document.querySelector('.rt-panel-der');
+            const ficha = document.getElementById('rt-ficha');
+            if (!der || !ficha) return;
+            const derecha = der.getBoundingClientRect().right;
+            ficha.style.transition = 'none';
+            asa.classList.add('rt-moviendo');
+            document.body.classList.add('rt-redimensionando');
+            const mover = (e) => {
+                const w = Math.max(ANCHO_MIN, Math.min(derecha - e.clientX, this._anchoPanelMapa() * ANCHO_MAX));
+                ficha.style.width = Math.round(w) + 'px';
+            };
+            const soltar = () => {
+                document.removeEventListener('mousemove', mover);
+                document.removeEventListener('mouseup', soltar);
+                asa.classList.remove('rt-moviendo');
+                document.body.classList.remove('rt-redimensionando');
+                ficha.style.transition = '';
+                this._aplicarAnchoFicha(ficha.offsetWidth, true);
+                this._recentrarConsulta();
+            };
+            document.addEventListener('mousemove', mover);
+            document.addEventListener('mouseup', soltar);
+        });
+        asa.addEventListener('dblclick', () => this.alternarAnchoFicha());
+        return asa;
+    };
+
+    // Vuelve a poner el pin a la vista, en el espacio libre que deja la ficha
+    A._recentrarConsulta = function () {
+        if (!this.map || !this._consulta || !(this._consulta.ubicaciones || []).length) return;
+        const ficha = document.getElementById('rt-ficha');
+        const ancho = ficha && ficha.classList.contains('rt-abierta') ? ficha.offsetWidth : 0;
+        const p = this._consulta.ubicaciones[0];
+        this.map.setView([p.lat, p.lon], this.map.getZoom(), { animate: false });
+        if (ancho) this.map.panBy([ancho / 2, 0], { animate: true });
+    };
+
+    A._repintarFotos = function () {
+        const cont = document.getElementById('rt-linea-fotos');
+        if (cont && this._consulta) this._pintarLinea(cont, this._consulta);
+    };
+
+    // Cuántas fotos por visita caben en una fila con el ancho actual
+    A._fotosPorFila = function () {
+        const w = this._anchoFicha || 560;
+        const util = w - 36 - 22 - 24;               // márgenes de la ficha, línea y tarjeta
+        return Math.max(3, Math.min(8, Math.floor((util + 6) / (104 + 6))));
     };
 
     A.cerrarConsulta = function () {
@@ -519,6 +645,9 @@
             el('div', { class: 'rt-ficha-sobre', text: 'SUMINISTRO' }),
             el('div', { class: 'rt-ficha-num' }, [el('strong', { text: s }), btnCopiar]),
             chips ? el('div', { class: 'rt-chips' }, chips) : null,
+            el('button', { type: 'button', class: 'rt-ficha-ico rt-ficha-ampliar', id: 'rt-ficha-ampliar',
+                           title: 'Ampliar la ficha', 'aria-label': 'Ampliar o reducir la ficha',
+                           onclick: () => this.alternarAnchoFicha() }, [icono('fa-expand-alt')]),
             el('button', { type: 'button', class: 'rt-ficha-ico rt-ficha-cerrar', title: 'Cerrar (Esc)',
                            'aria-label': 'Cerrar', onclick: () => this.cerrarConsulta() }, [icono('fa-times')])
         ]);
@@ -536,6 +665,7 @@
             el('div', { class: 'rt-stats', style: 'margin-top:22px' }, [esq('100%', 50), esq('100%', 50), esq('100%', 50)]),
             esq('100%', 120, 'margin-top:6px'), esq('100%', 120, 'margin-top:10px')
         ]);
+        ficha.appendChild(this._asaFicha());
         ficha.appendChild(this._cabeceraFicha(s, [el('span', { class: 'rt-chip', style: 'background:#f1f5f9;color:#64748b' },
             [icono('fa-circle-notch fa-spin'), 'Buscando ubicación y fotos…'])]));
         ficha.appendChild(cuerpo);
@@ -545,6 +675,7 @@
         const ficha = document.getElementById('rt-ficha');
         if (!ficha) return;
         ficha.innerHTML = '';
+        ficha.appendChild(this._asaFicha());
         ficha.appendChild(this._cabeceraFicha(s));
         ficha.appendChild(el('div', { class: 'rt-ficha-cuerpo' }, [
             el('div', { class: 'rt-vacio' }, [icono('fa-exclamation-triangle', 'color:#f59e0b'),
@@ -593,7 +724,9 @@
         }
 
         ficha.innerHTML = '';
+        ficha.appendChild(this._asaFicha());
         ficha.appendChild(this._cabeceraFicha(s, chips));
+        this._iconoAncho();
         const cuerpo = el('div', { class: 'rt-ficha-cuerpo' });
         ficha.appendChild(cuerpo);
 
@@ -768,8 +901,8 @@
                 icono(fam.icono, 'color:' + fam.color + ';font-size:.78rem'), tituloVisita(v),
                 v.supervision ? el('span', { class: 'rt-tag', style: 'background:#fef3c7;color:#92400e', text: 'SUPERVISIÓN' }) : null
             ]);
-            const fotos = el('div', { class: 'rt-fotos' });
-            const MAX = 4;
+            const MAX = this._fotosPorFila();
+            const fotos = el('div', { class: 'rt-fotos', style: 'grid-template-columns:repeat(' + MAX + ',1fr)' });
             v.fotos.slice(0, MAX).forEach((foto, i) => {
                 const inicio = idxFoto + i;
                 const b = el('button', { type: 'button', class: 'rt-foto', title: 'Ver foto',
