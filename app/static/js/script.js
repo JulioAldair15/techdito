@@ -19476,3 +19476,363 @@ const rtApp = {
         XLSX.writeFile(wb, 'cargas_' + new Date().toISOString().slice(0, 10) + '.xlsx');
     }
 };
+
+// =============================================================== PANTALLA DE INICIO
+// Lo primero que se ve al entrar a Rutas: el mapa de la zona y un panel
+// "Empieza aquí" (arrastrar el Excel, elegir quién arma el ruteo, ayuda de
+// columnas y un Excel de ejemplo). Cuando ya hay cargas, todo funciona como antes.
+(function () {
+    'use strict';
+    if (typeof rtApp === 'undefined') return;
+    const A = rtApp;
+    const orig = {
+        cerrarDetalle: A.cerrarDetalle,
+        renderizarListaCargas: A.renderizarListaCargas,
+        _toggleBotonExport: A._toggleBotonExport,
+        inicializarMapa: A.inicializarMapa
+    };
+
+    A.CENTRO_INICIO = [-8.11599, -79.02998];   // Trujillo
+    A._enInicio = false;
+
+    const CSS = [
+        '.rt-inicio{padding:18px;display:flex;flex-direction:column;gap:14px}',
+        '.rt-inicio-zona{border:2px dashed #cbd5e1;border-radius:10px;padding:22px 14px;text-align:center;' +
+            'cursor:pointer;background:#f8fafc;transition:all .15s}',
+        '.rt-inicio-zona:hover,.rt-inicio-zona:focus{border-color:#2563eb;background:#eff6ff;outline:none}',
+        '.rt-inicio-zona.rt-sobre{border-color:#16a34a;background:#f0fdf4}',
+        '.rt-inicio-zona-t{font-weight:700;color:#1e293b;margin-top:8px;font-size:.92rem}',
+        '.rt-inicio-zona-s{color:#64748b;font-size:.76rem;margin-top:2px}',
+        '.rt-inicio-etq{font-size:.72rem;font-weight:800;color:#64748b;letter-spacing:.04em}',
+        '.rt-inicio-modos{display:flex;flex-direction:column;gap:8px}',
+        '.rt-inicio-modo{display:flex;gap:12px;align-items:flex-start;text-align:left;width:100%;background:#fff;' +
+            'border:1px solid #e2e8f0;border-radius:8px;padding:11px 12px;cursor:pointer;font:inherit}',
+        '.rt-inicio-modo:hover{border-color:#93c5fd;background:#f8fbff}',
+        '.rt-inicio-modo.rt-sel{border:2px solid #2563eb;padding:10px 11px;background:#eff6ff}',
+        '.rt-inicio-modo i{color:#2563eb;font-size:1rem;margin-top:2px;width:18px;text-align:center}',
+        '.rt-inicio-modo b{display:block;color:#1e293b;font-size:.85rem}',
+        '.rt-inicio-modo span{display:block;color:#64748b;font-size:.74rem;margin-top:2px}',
+        '.rt-inicio-pasos{display:flex;flex-direction:column;gap:7px;padding-top:12px;border-top:1px solid #e2e8f0}',
+        '.rt-inicio-paso{display:flex;align-items:center;gap:9px;color:#475569;font-size:.8rem}',
+        '.rt-inicio-paso em{font-style:normal;width:22px;height:22px;border-radius:50%;background:#dbeafe;' +
+            'color:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:.72rem;' +
+            'font-weight:800;flex-shrink:0}',
+        '.rt-inicio-ayuda{border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;background:#fff;' +
+            'font-size:.78rem;color:#475569}',
+        '.rt-inicio-ayuda summary{cursor:pointer;font-weight:700;color:#1e293b}',
+        '.rt-inicio-ayuda ul{margin:8px 0;padding-left:18px;line-height:1.55}',
+        '.rt-inicio-ayuda button{margin-top:4px;background:#f1f5f9;border:1px solid #cbd5e1;color:#1e293b;' +
+            'border-radius:6px;padding:6px 10px;cursor:pointer;font-size:.76rem;font-weight:600}',
+        '.rt-inicio-ayuda button:hover{background:#e2e8f0}',
+        '.rt-leyenda{background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:6px 10px;' +
+            'font-size:11px;color:#334155;box-shadow:0 1px 4px rgba(0,0,0,.15);line-height:1.3}',
+        '.rt-leyenda summary{cursor:pointer;font-weight:700}',
+        '.rt-leyenda .rt-ley-fila{display:flex;align-items:center;gap:6px;margin-top:4px}'
+    ].join('\n');
+
+    function ponerEstilos() {
+        if (document.getElementById('rt-inicio-css')) return;
+        const st = document.createElement('style');
+        st.id = 'rt-inicio-css';
+        st.textContent = CSS;
+        document.head.appendChild(st);
+    }
+
+    // Ya hay algo procesado (aunque no haya salido ninguna carga)
+    A._hayResultado = function () {
+        return (this.datosRutas && this.datosRutas.length > 0) || !!this.resumen;
+    };
+
+    A.mostrarInicio = function () {
+        const cont = document.getElementById('rt-lista-cargas');
+        if (!cont || this._hayResultado()) return;
+        ponerEstilos();
+        this._enInicio = true;
+        cont.innerHTML = '';
+        cont.appendChild(this._panelInicio());
+
+        const fijar = (id, prop, valor) => {
+            const el = document.getElementById(id);
+            if (el) el[prop] = valor;
+        };
+        fijar('rt-titulo-lista', 'textContent', 'EMPIEZA AQUÍ');
+        fijar('rt-detalle-titulo', 'textContent', 'Mapa de la zona');
+        fijar('rt-detalle-sub', 'textContent',
+              'Cuando generes el ruteo, aquí verás cada carga con sus puntos.');
+        ['rt-badge-total', 'rt-btn-cerrar-detalle', 'rt-scroll-tarjetas'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (el.getAttribute('data-rt-display') === null) {
+                el.setAttribute('data-rt-display', el.style.display || '');   // para dejarlo como estaba
+            }
+            el.style.display = 'none';
+        });
+
+        this._abrirPanel();
+        this._vigilarMapa();
+        if (this.map) {
+            if (this.capaRuta) this.capaRuta.clearLayers();
+            this.map.setView(this.CENTRO_INICIO, 13);
+        }
+    };
+
+    A._salirDeInicio = function () {
+        if (!this._enInicio) return;
+        this._enInicio = false;
+        const t = document.getElementById('rt-titulo-lista');
+        if (t) t.textContent = 'CARGAS OPTIMIZADAS';
+        ['rt-badge-total', 'rt-btn-cerrar-detalle', 'rt-scroll-tarjetas'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = el.getAttribute('data-rt-display') || '';
+        });
+    };
+
+    // El mapa se crea recién cuando la sección Rutas se ve en pantalla (Leaflet
+    // no se puede dibujar en un contenedor oculto). Además, cada vez que el
+    // panel cambia de tamaño se reacomoda solo.
+    A._vigilarMapa = function () {
+        if (this._observador) return;
+        const div = document.getElementById('mapa-visor');
+        if (!div) return;
+        const revisar = () => {
+            if (!div.offsetWidth || !div.offsetHeight) return;
+            if (!this.map) {
+                if (this._enInicio && this.inicializarMapa()) this.map.setView(this.CENTRO_INICIO, 13);
+            } else {
+                this.map.invalidateSize();
+            }
+        };
+        if (typeof ResizeObserver === 'undefined') {
+            setTimeout(revisar, 400);
+            return;
+        }
+        let pendiente = false;
+        this._observador = new ResizeObserver(() => {
+            if (pendiente) return;
+            pendiente = true;
+            requestAnimationFrame(() => { pendiente = false; revisar(); });
+        });
+        this._observador.observe(div);
+    };
+
+    A._panelInicio = function () {
+        const el = this._el.bind(this);
+        const caja = el('div', { class: 'rt-inicio' });
+
+        // --- zona para arrastrar o elegir el Excel
+        const input = el('input', {
+            type: 'file', accept: '.xlsx,.xls,.csv', style: 'display:none;',
+            onchange: (ev) => {
+                const f = ev.target.files && ev.target.files[0];
+                ev.target.value = '';
+                if (f) this._archivoDesdeInicio(f);
+            }
+        });
+        const zona = el('div', {
+            class: 'rt-inicio-zona', role: 'button', tabindex: '0',
+            title: 'Arrastra tu Excel aquí o haz clic para elegirlo',
+            onclick: () => input.click(),
+            onkeydown: (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); input.click(); }
+            },
+            ondragover: (ev) => { ev.preventDefault(); zona.classList.add('rt-sobre'); },
+            ondragleave: () => zona.classList.remove('rt-sobre'),
+            ondrop: (ev) => {
+                ev.preventDefault();
+                zona.classList.remove('rt-sobre');
+                const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+                if (f) this._archivoDesdeInicio(f);
+            }
+        }, [
+            el('i', { class: 'fas fa-file-excel', style: 'font-size:1.9rem;color:#16a34a;' }),
+            el('div', { class: 'rt-inicio-zona-t', text: 'Arrastra aquí tu Excel' }),
+            el('div', { class: 'rt-inicio-zona-s', text: 'o haz clic para elegirlo (.xlsx, .xls o .csv)' }),
+            input
+        ]);
+        caja.appendChild(zona);
+
+        // --- quién arma el ruteo (solo si el modal tiene esa opción)
+        if (document.querySelector('input[name="modo_ruteo"]')) {
+            const actual = typeof this.modoRuteo === 'function' ? this.modoRuteo() : 'sistema';
+            const modos = el('div', { class: 'rt-inicio-modos' });
+            [
+                { modo: 'sistema', icono: 'fa-magic', t: 'El sistema arma el ruteo',
+                  s: 'Agrupa los suministros por cercanía y reparte las cargas.' },
+                { modo: 'excel', icono: 'fa-table', t: 'Ya viene armado en mi Excel',
+                  s: 'Tu Excel trae la carga y el orden; el sistema arma los planos.' }
+            ].forEach((m) => {
+                modos.appendChild(el('button', {
+                    type: 'button', 'data-modo': m.modo,
+                    class: 'rt-inicio-modo' + (m.modo === actual ? ' rt-sel' : ''),
+                    onclick: () => this._elegirModoInicio(m.modo)
+                }, [
+                    el('i', { class: 'fas ' + m.icono }),
+                    el('div', {}, [el('b', { text: m.t }), el('span', { text: m.s })])
+                ]));
+            });
+            caja.appendChild(el('div', { class: 'rt-inicio-etq', text: '¿QUIÉN ARMA EL RUTEO?' }));
+            caja.appendChild(modos);
+        }
+
+        // --- los pasos
+        const pasos = el('div', { class: 'rt-inicio-pasos' });
+        ['Sube tu Excel y elige la actividad',
+         'Revisa las cargas en el mapa y corrige los puntos que estén mal',
+         'Imprime los planos o exporta las cargas'].forEach((txt, i) => {
+            pasos.appendChild(el('div', { class: 'rt-inicio-paso' },
+                                 [el('em', { text: String(i + 1) }), el('span', { text: txt })]));
+        });
+        caja.appendChild(pasos);
+
+        // --- ayuda de columnas + Excel de ejemplo
+        const ayuda = el('details', { class: 'rt-inicio-ayuda' });
+        ayuda.appendChild(el('summary', { text: '¿Qué columnas necesita mi Excel?' }));
+        const lista = el('ul');
+        [
+            ['SUMINISTRO', ' (obligatoria). También sirve CLICODFAC.'],
+            ['LOCALIDAD o DISTRITO', ': recomendada, ayuda a ubicar mejor cada punto.'],
+            ['Dirección', ': una o varias columnas (vía, número, urbanización). Las eliges al subir.'],
+            ['FECHA y FRANJA HORARIA', ': solo para inspecciones con cita, por ejemplo 08:00 AM - 10:00 AM.'],
+            ['Coordenadas', ': no hacen falta. Se toman de catastro, del GIS de Sedalib o de la dirección.'],
+            ['Si el ruteo ya viene armado', ': una columna con la CARGA y, si quieres, otra con el ORDEN.']
+        ].forEach((p) => lista.appendChild(el('li', {}, [el('b', { text: p[0] }), p[1]])));
+        ayuda.appendChild(lista);
+        ayuda.appendChild(el('button', {
+            type: 'button', onclick: () => this.descargarEjemploRutas()
+        }, [el('i', { class: 'fas fa-download', style: 'margin-right:6px;' }), 'Descargar Excel de ejemplo']));
+        caja.appendChild(ayuda);
+
+        return caja;
+    };
+
+    A._elegirModoInicio = function (modo) {
+        const r = document.querySelector('input[name="modo_ruteo"][value="' + modo + '"]');
+        if (r) r.checked = true;
+        document.querySelectorAll('.rt-inicio-modo').forEach((b) => {
+            b.classList.toggle('rt-sel', b.getAttribute('data-modo') === modo);
+        });
+        this.abrirModal();
+        if (typeof this.cambiarActividad === 'function') this.cambiarActividad();
+    };
+
+    // El archivo soltado en la pantalla pasa directo a la ventana de siempre.
+    A._archivoDesdeInicio = function (file) {
+        if (!/\.(xlsx|xls|csv)$/i.test(file.name || '')) {
+            alert('Ese archivo no es un Excel. Usa un archivo .xlsx, .xls o .csv.');
+            return;
+        }
+        this.abrirModal();
+        if (typeof this.cambiarActividad === 'function') this.cambiarActividad();
+        const input = document.getElementById('rt-file-input-1');
+        if (!input) return;
+        try {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+        } catch (err) {
+            alert('No se pudo poner el archivo solo. Elígelo en la ventana que se abrió.');
+            return;
+        }
+        // igual que si el usuario lo hubiera elegido: lee las columnas, etc.
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    A.descargarEjemploRutas = function () {
+        if (typeof XLSX === 'undefined') { alert('Falta la librería XLSX.'); return; }
+        const wb = XLSX.utils.book_new();
+        const hoja = (filas, anchos) => {
+            const ws = XLSX.utils.aoa_to_sheet(filas);
+            ws['!cols'] = anchos.map((w) => ({ wch: w }));
+            return ws;
+        };
+        XLSX.utils.book_append_sheet(wb, hoja([
+            ['SUMINISTRO', 'FECHA', 'FRANJA HORARIA', 'LOCALIDAD', 'URBANIZACION', 'DIRECCION', 'NUMERO'],
+            ['12345678901', '25/11/2026', '08:00 AM - 10:00 AM', 'TRUJILLO', 'URB. EJEMPLO', 'JR. EJEMPLO', '123'],
+            ['12345678902', '25/11/2026', '10:00 AM - 12:00 PM', 'MOCHE', '', 'AV. EJEMPLO', '456'],
+            ['12345678903', '25/11/2026', '02:00 PM - 04:00 PM', 'EL PORVENIR', 'URB. EJEMPLO', 'CA. EJEMPLO', '789']
+        ], [14, 12, 22, 14, 16, 18, 9]), 'Lo arma el sistema');
+        XLSX.utils.book_append_sheet(wb, hoja([
+            ['CARGA', 'ORDEN', 'SUMINISTRO', 'LOCALIDAD', 'DIRECCION', 'NUMERO'],
+            ['1', '1', '12345678901', 'TRUJILLO', 'JR. EJEMPLO', '123'],
+            ['1', '2', '12345678902', 'TRUJILLO', 'AV. EJEMPLO', '456'],
+            ['2', '1', '12345678903', 'MOCHE', 'CA. EJEMPLO', '789']
+        ], [8, 8, 14, 14, 18, 9]), 'Ya viene armado');
+        XLSX.utils.book_append_sheet(wb, hoja([
+            ['Cómo llenar el Excel para Rutas'],
+            [''],
+            ['SUMINISTRO: obligatoria (también sirve CLICODFAC).'],
+            ['LOCALIDAD o DISTRITO: recomendada, ayuda a ubicar mejor cada punto.'],
+            ['Dirección: una o varias columnas (vía, número, urbanización). Se eligen al subir el archivo.'],
+            ['FECHA y FRANJA HORARIA: solo para inspecciones con cita (ejemplo: 08:00 AM - 10:00 AM).'],
+            ['Coordenadas: no hacen falta. Se toman de catastro, del GIS de Sedalib o de la dirección.'],
+            ['Si el ruteo ya viene armado: una columna con la CARGA y, opcional, otra con el ORDEN de visita.'],
+            [''],
+            ['Los suministros y direcciones de estas hojas son solo de ejemplo.']
+        ], [95]), 'Léeme');
+        XLSX.writeFile(wb, 'ejemplo_rutas.xlsx');
+    };
+
+    // Leyenda: el color del punto es la carga; el borde dice de dónde salió.
+    A._controlLeyenda = function () {
+        const c = L.control({ position: 'bottomleft' });
+        c.onAdd = () => {
+            const d = L.DomUtil.create('div', 'rt-leyenda');
+            L.DomEvent.disableClickPropagation(d);
+            L.DomEvent.disableScrollPropagation(d);
+            const punto = (borde, grosor, guion) =>
+                '<svg width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="#64748b" ' +
+                'stroke="' + borde + '" stroke-width="' + grosor + '"' +
+                (guion ? ' stroke-dasharray="2,2"' : '') + '/></svg>';
+            const colores = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'].map((c2) =>
+                '<svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="4.5" fill="' + c2 +
+                '"/></svg>').join('');
+            d.innerHTML =
+                '<details open><summary>Leyenda</summary>' +
+                '<div class="rt-ley-fila">' + colores + ' Cada color es una carga</div>' +
+                '<div class="rt-ley-fila">' + punto('#ffffff', 2, false) + ' Catastro o GIS Sedalib</div>' +
+                '<div class="rt-ley-fila">' + punto('#0f172a', 2, true) + ' Ubicado por su dirección</div>' +
+                '<div class="rt-ley-fila">' + punto('#d97706', 3, false) + ' Por revisar</div>' +
+                '<div class="rt-ley-fila">' + punto('#1d4ed8', 3, false) + ' Fijado a mano</div>' +
+                '</details>';
+            return d;
+        };
+        return c;
+    };
+
+    A.inicializarMapa = function () {
+        const ok = orig.inicializarMapa.apply(this, arguments);
+        if (ok && this.map && !this._leyenda) {
+            ponerEstilos();
+            this._leyenda = this._controlLeyenda();
+            this._leyenda.addTo(this.map);
+        }
+        return ok;
+    };
+
+    A.renderizarListaCargas = function () {
+        if (this._hayResultado()) this._salirDeInicio();
+        const out = orig.renderizarListaCargas.apply(this, arguments);
+        const b = document.getElementById('rt-btn-resumen-excel');
+        if (b) b.style.display = this.datosRutas.length ? '' : 'none';
+        return out;
+    };
+
+    A._toggleBotonExport = function () {
+        const out = orig._toggleBotonExport.apply(this, arguments);
+        const b = document.getElementById('rt-btn-resumen-excel');
+        if (b) b.style.display = this.datosRutas.length ? '' : 'none';
+        return out;
+    };
+
+    A.cerrarDetalle = function () {
+        const out = orig.cerrarDetalle.apply(this, arguments);
+        if (!this._hayResultado()) this.mostrarInicio();
+        return out;
+    };
+
+    const arrancar = () => {
+        try { A.mostrarInicio(); } catch (err) { console.warn('Rutas: no se pudo mostrar el inicio', err); }
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arrancar);
+    else arrancar();
+})();
