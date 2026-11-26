@@ -18572,8 +18572,8 @@ const rtApp = {
         manual:    { titulo: 'Ubicación fijada por el supervisor',
                      chip: '📌 Fijada por supervisor',
                      fondo: '#eff6ff', borde: '#bfdbfe', texto: '#1d4ed8' },
-        gis:       { titulo: 'Ubicado con el GIS de Sedalib',
-                     chip: '🎯 GIS Sedalib',
+        gis:       { titulo: 'Ubicado en su lote exacto',
+                     chip: '🎯 Lote exacto',
                      fondo: '#f0fdfa', borde: '#99f6e4', texto: '#0f766e' }
     },
     actividad: '',
@@ -18657,7 +18657,7 @@ const rtApp = {
         caja.appendChild(boton('📍 Mover este punto',
             () => this.iniciarMovimiento(ruta.id, item.suministro), !hayPropuesta));
         if (item.estado_direccion !== 'gis') {
-            caja.appendChild(boton('🎯 Buscar en el GIS de Sedalib',
+            caja.appendChild(boton('🎯 Buscar el lote exacto',
                 () => this.iniciarMovimiento(ruta.id, item.suministro, true), false));
         }
         const pos = this._par(item.lat, item.lon);
@@ -19059,7 +19059,7 @@ const rtApp = {
         };
         mov.buscandoGis = true;
         if (btn) btn.disabled = true;
-        decir('Buscando el suministro ' + mov.suministro + ' en el GIS de Sedalib…');
+        decir('Buscando el suministro ' + mov.suministro + ' en el plano de lotes…');
         try {
             const resp = await fetch('/api/rutas/gis_sedalib', {
                 method: 'POST',
@@ -19071,14 +19071,14 @@ const rtApp = {
             if (resp.status === 401) { decir('Tu sesión expiró. Inicia sesión otra vez.', '#b91c1c'); return; }
             const lat = this._num(data.lat), lon = this._num(data.lon);
             if (!resp.ok || !data.success || lat === null || lon === null) {
-                decir(data.error || ('No se pudo consultar el GIS de Sedalib (error ' + resp.status + ').'),
+                decir(data.error || ('No se pudo consultar el plano de lotes (error ' + resp.status + ').'),
                       '#b45309');
                 return;
             }
             mov.marker.setLatLng([lat, lon]);
             this._actualizarMovimiento();
             this.map.setView([lat, lon], Math.max(this.map.getZoom(), 18));
-            decir('✓ El GIS de Sedalib ubica el lote aquí. Revísalo y pulsa "Guardar ubicación".',
+            decir('✓ El plano de lotes ubica el lote aquí. Revísalo y pulsa "Guardar ubicación".',
                   '#0f766e');
         } catch (err) {
             if (this._mov === mov) decir('No hay conexión con el servidor.', '#b91c1c');
@@ -19132,10 +19132,10 @@ const rtApp = {
             style: 'padding:6px 12px;border-radius:5px;cursor:pointer;font-weight:700;' +
                    'font-size:.75rem;' + estilo
         });
-        const btnGis = boton('🎯 GIS Sedalib', 'background:#f0fdfa;color:#0f766e;border:1px solid #5eead4;',
+        const btnGis = boton('🎯 Lote exacto', 'background:#f0fdfa;color:#0f766e;border:1px solid #5eead4;',
                              () => this.buscarEnGisSedalib());
         btnGis.id = 'rt-mover-gis';
-        btnGis.title = 'Lleva el pin al lote del suministro según el GIS de Sedalib';
+        btnGis.title = 'Lleva el pin al lote del suministro según el plano de lotes';
         fila.appendChild(btnGis);
         fila.appendChild(boton('Cancelar', 'background:#fff;color:#475569;border:1px solid #cbd5e1;',
                                () => this.cancelarMovimiento()));
@@ -19308,7 +19308,7 @@ const rtApp = {
                    'background:' + (falla ? '#fffbeb' : '#f0fdfa') + ';border:1px solid ' +
                    (falla ? '#fde68a' : '#99f6e4') + ';color:' + (falla ? '#92400e' : '#0f766e') + ';'
         });
-        caja.appendChild(this._el('div', { style: 'font-weight:700;', text: '🎯 GIS de Sedalib' }));
+        caja.appendChild(this._el('div', { style: 'font-weight:700;', text: '🎯 Lote exacto (plano de lotes)' }));
         const partes = [];
         if (g.activo) {
             partes.push((g.ubicados || 0) + ' predios ubicados en su lote exacto');
@@ -19341,7 +19341,7 @@ const rtApp = {
             [vd.revisar || 0, 'por revisar (en ámbar en el mapa)', '#b45309'],
             [vd.fuera_de_localidad || 0, 'propuestas fuera de su localidad (no se movieron)', '#b45309'],
             [vd.fijadas_supervisor || 0, 'fijadas por el supervisor', '#1d4ed8'],
-            [vd.gis_sedalib || 0, 'ubicadas con el GIS de Sedalib', '#0f766e'],
+            [vd.gis_sedalib || 0, 'ubicadas en su lote exacto', '#0f766e'],
             [vd.sin_verificar || 0, 'sin con qué comparar', '#64748b']
         ].filter((p) => p[0] > 0).forEach(([n, txt, col]) => {
             fila.appendChild(this._el('span', {
@@ -19442,7 +19442,7 @@ const rtApp = {
                     LATITUD: it.lat,
                     LONGITUD: it.lon,
                     KM_DESDE_ANTERIOR: it.km_desde_anterior,
-                    ORIGEN_COORDENADA: it.origen_coord
+                    ORIGEN_COORDENADA: it.origen_coord === 'gis_sedalib' ? 'lote exacto' : it.origen_coord
                 });
             });
         });
@@ -19693,7 +19693,7 @@ const rtApp = {
             ['LOCALIDAD o DISTRITO', ': recomendada, ayuda a ubicar mejor cada punto.'],
             ['Dirección', ': una o varias columnas (vía, número, urbanización). Las eliges al subir.'],
             ['FECHA y FRANJA HORARIA', ': solo para inspecciones con cita, por ejemplo 08:00 AM - 10:00 AM.'],
-            ['Coordenadas', ': no hacen falta. Se toman de catastro, del GIS de Sedalib o de la dirección.'],
+            ['Coordenadas', ': no hacen falta. Se toman de catastro, del plano de lotes o de la dirección.'],
             ['Si el ruteo ya viene armado', ': una columna con la CARGA y, si quieres, otra con el ORDEN.']
         ].forEach((p) => lista.appendChild(el('li', {}, [el('b', { text: p[0] }), p[1]])));
         ayuda.appendChild(lista);
@@ -19764,7 +19764,7 @@ const rtApp = {
             ['LOCALIDAD o DISTRITO: recomendada, ayuda a ubicar mejor cada punto.'],
             ['Dirección: una o varias columnas (vía, número, urbanización). Se eligen al subir el archivo.'],
             ['FECHA y FRANJA HORARIA: solo para inspecciones con cita (ejemplo: 08:00 AM - 10:00 AM).'],
-            ['Coordenadas: no hacen falta. Se toman de catastro, del GIS de Sedalib o de la dirección.'],
+            ['Coordenadas: no hacen falta. Se toman de catastro, del plano de lotes o de la dirección.'],
             ['Si el ruteo ya viene armado: una columna con la CARGA y, opcional, otra con el ORDEN de visita.'],
             [''],
             ['Los suministros y direcciones de estas hojas son solo de ejemplo.']
@@ -19789,7 +19789,7 @@ const rtApp = {
             d.innerHTML =
                 '<details open><summary>Leyenda</summary>' +
                 '<div class="rt-ley-fila">' + colores + ' Cada color es una carga</div>' +
-                '<div class="rt-ley-fila">' + punto('#ffffff', 2, false) + ' Catastro o GIS Sedalib</div>' +
+                '<div class="rt-ley-fila">' + punto('#ffffff', 2, false) + ' Catastro o lote exacto</div>' +
                 '<div class="rt-ley-fila">' + punto('#0f172a', 2, true) + ' Ubicado por su dirección</div>' +
                 '<div class="rt-ley-fila">' + punto('#d97706', 3, false) + ' Por revisar</div>' +
                 '<div class="rt-ley-fila">' + punto('#1d4ed8', 3, false) + ' Fijado a mano</div>' +

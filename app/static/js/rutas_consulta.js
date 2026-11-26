@@ -28,7 +28,7 @@
     };
     const ORIGENES = {
         manual:      { nombre: 'Fijado a mano',            corto: 'Fijado a mano', color: '#1d4ed8', icono: 'fa-hand-pointer' },
-        gis_sedalib: { nombre: 'Lote exacto · GIS Sedalib', corto: 'GIS Sedalib',   color: '#0f766e', icono: 'fa-crosshairs' },
+        gis_sedalib: { nombre: 'Lote exacto · plano de lotes', corto: 'Lote exacto',   color: '#0f766e', icono: 'fa-crosshairs' },
         catastro:    { nombre: 'Catastro',                  corto: 'Catastro',      color: '#475569', icono: 'fa-map' },
         catastro_v2: { nombre: 'Catastro (padrón)',         corto: 'Padrón',        color: '#64748b', icono: 'fa-map' }
     };
@@ -214,6 +214,18 @@
   cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
 .rt-btn-wa i{font-size:1.1rem}
 .rt-btn-wa:hover{background:#1fbe5a}
+.rt-wa-grupo{position:relative;display:inline-flex}
+.rt-wa-grupo .rt-btn-wa{border-radius:10px 0 0 10px}
+.rt-btn-wa.rt-wa-mas{border-radius:0 10px 10px 0;padding:0 9px;border-left:1px solid rgba(5,59,29,.25)}
+.rt-wa-menu{position:absolute;right:0;bottom:46px;width:290px;background:#fff;color:#0f172a;border-radius:12px;padding:6px;
+  box-shadow:0 16px 40px rgba(15,23,42,.3);display:none;z-index:10}
+.rt-wa-menu.rt-abierto{display:block}
+.rt-wa-op{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:none;border:none;border-radius:8px;
+  padding:9px 10px;cursor:pointer;font:inherit}
+.rt-wa-op:hover{background:#f1f5f9}
+.rt-wa-op i{width:18px;text-align:center;margin-top:2px;color:#16a34a}
+.rt-wa-op b{display:block;font-size:.8rem}
+.rt-wa-op span{display:block;font-size:.7rem;color:#64748b;line-height:1.4}
 .rt-btn-osc{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:10px;height:38px;min-width:38px;
   padding:0 11px;font-weight:700;font-size:.76rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .rt-btn-osc:hover{background:rgba(255,255,255,.2)}
@@ -861,7 +873,7 @@
             }
         } else {
             sec.appendChild(el('div', { class: 'rt-alerta' }, [icono('fa-info-circle', 'margin-top:2px'),
-                el('span', { text: 'No encontramos este suministro ni en catastro ni en el GIS de Sedalib. Igual te mostramos sus fotos.' })]));
+                el('span', { text: 'No encontramos este suministro ni en catastro ni en el plano de lotes. Igual te mostramos sus fotos.' })]));
         }
         cuerpo.appendChild(sec);
 
@@ -955,12 +967,37 @@
     A._barraSeleccion = function () {
         return el('div', { class: 'rt-sel-barra', id: 'rt-sel-barra', role: 'region', 'aria-label': 'Fotos elegidas' }, [
             el('div', { class: 'rt-sel-txt' }, [el('b'), el('small')]),
-            el('button', { type: 'button', class: 'rt-btn-wa', title: 'Enviar las fotos elegidas por WhatsApp',
-                           onclick: () => this.enviarPorWhatsapp() }, [el('i', { class: 'fab fa-whatsapp', 'aria-hidden': 'true' }), 'WhatsApp']),
+            this._grupoWhatsapp(),
             el('button', { type: 'button', class: 'rt-btn-osc', title: 'Descargar las fotos elegidas',
                            onclick: () => this.descargarSeleccion() }, [icono('fa-download')]),
             el('button', { type: 'button', class: 'rt-btn-osc', title: 'Quitar la selección',
                            onclick: () => this.limpiarSeleccion() }, [icono('fa-times')])
+        ]);
+    };
+
+    // Botón WhatsApp (abre WhatsApp Web para elegir el contacto) + ▾ con la
+    // opción de mandar las fotos como imágenes.
+    A._grupoWhatsapp = function () {
+        const menu = el('div', { class: 'rt-wa-menu', role: 'menu' }, [
+            el('button', { type: 'button', class: 'rt-wa-op', role: 'menuitem',
+                           onclick: () => { menu.classList.remove('rt-abierto'); this.enviarPorWhatsapp(); } }, [
+                el('i', { class: 'fab fa-whatsapp', 'aria-hidden': 'true' }),
+                el('div', {}, [el('b', { text: 'Elegir contacto en WhatsApp Web' }),
+                               el('span', { text: 'Se abre WhatsApp Web con el mensaje listo y los enlaces de las fotos.' })])]),
+            el('button', { type: 'button', class: 'rt-wa-op', role: 'menuitem',
+                           onclick: () => { menu.classList.remove('rt-abierto'); this.enviarComoImagenes(); } }, [
+                icono('fa-images'),
+                el('div', {}, [el('b', { text: 'Enviar como imágenes' }),
+                               el('span', { text: 'Se descargan y las adjuntas en el chat (llegan como fotos).' })])])
+        ]);
+        const mas = el('button', { type: 'button', class: 'rt-btn-wa rt-wa-mas', title: 'Más formas de enviar',
+                                   'aria-haspopup': 'menu', onclick: (ev) => {
+                                       ev.stopPropagation(); menu.classList.toggle('rt-abierto'); } }, [icono('fa-chevron-up')]);
+        document.addEventListener('click', (ev) => { if (!menu.contains(ev.target)) menu.classList.remove('rt-abierto'); });
+        return el('div', { class: 'rt-wa-grupo' }, [
+            el('button', { type: 'button', class: 'rt-btn-wa', title: 'Abrir WhatsApp Web y elegir a quién enviar',
+                           onclick: () => this.enviarPorWhatsapp() }, [el('i', { class: 'fab fa-whatsapp', 'aria-hidden': 'true' }), 'WhatsApp']),
+            mas, menu
         ]);
     };
 
@@ -1002,6 +1039,28 @@
         return lineas.join('\n');
     };
 
+    // El mismo texto, pero con el enlace de cada foto debajo de su visita
+    A._textoConEnlaces = function () {
+        const d = this._consulta || {};
+        const datos = d.datos || {};
+        const p = (d.ubicaciones || [])[0];
+        const lineas = ['📍 *Suministro ' + d.suministro + '*'];
+        const dir = [[datos.calle, datos.numero].filter(Boolean).join(' '), capitalizar(datos.localidad || '')].filter(Boolean).join(' · ');
+        if (dir) lineas.push(dir);
+        if (p) lineas.push('Ubicación: https://www.google.com/maps?q=' + p.lat.toFixed(6) + ',' + p.lon.toFixed(6));
+        let visita = null;
+        this._fotosElegidas().forEach((f) => {
+            if (f.visita !== visita) {
+                visita = f.visita;
+                lineas.push('');
+                lineas.push('📷 *' + tituloVisita(visita) + '*' +
+                            (visita.fecha && visita.precision === 'dia' ? ' · ' + textoFecha(visita).split(' · ')[0] : ''));
+            }
+            lineas.push(f.url);
+        });
+        return lineas.join('\n');
+    };
+
     A._descargar = async function (fotos, alAvanzar) {
         for (let i = 0; i < fotos.length; i++) {
             const a = document.createElement('a');
@@ -1023,7 +1082,23 @@
         await this._descargar(fotos);
     };
 
-    A.enviarPorWhatsapp = async function () {
+    // WhatsApp Web no deja recibir archivos desde otra página, pero sí un
+    // mensaje: con /send?text= se abre su lista de contactos para elegir a quién.
+    A.enviarPorWhatsapp = function () {
+        const fotos = this._fotosElegidas();
+        if (!fotos.length) return;
+        const texto = encodeURIComponent(this._textoConEnlaces());
+        const movil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+        const url = movil ? 'https://wa.me/?text=' + texto : 'https://web.whatsapp.com/send?text=' + texto;
+        const v = window.open(url, 'whatsapp');
+        if (v) { try { v.focus(); } catch (e) { } }
+        else { location.href = url; return; }                       // el navegador bloqueó la pestaña nueva
+        avisar('Elige el contacto en WhatsApp Web y pulsa enviar. Las fotos van como enlaces.');
+    };
+
+    // Las fotos como imágenes: con HTTPS, el menú Compartir del sistema; sin
+    // HTTPS, se descargan y se adjuntan a mano (guía paso a paso).
+    A.enviarComoImagenes = async function () {
         const fotos = this._fotosElegidas();
         if (!fotos.length) return;
         const texto = this._textoParaEnviar();
@@ -1078,7 +1153,7 @@
                                   onclick: (ev) => { if (ev.target === modal) cerrar(); } }, [
             el('div', { class: 'rt-modal-wa-caja' }, [
                 el('div', { class: 'rt-modal-wa-cab' }, [el('i', { class: 'fab fa-whatsapp', 'aria-hidden': 'true' }),
-                    el('div', {}, [el('b', { text: 'Enviar por WhatsApp' }),
+                    el('div', {}, [el('b', { text: 'Enviar como imágenes' }),
                                    el('span', { text: 'Suministro ' + s + ' · ' + fotos.length + (fotos.length === 1 ? ' foto' : ' fotos') })])]),
                 el('div', { class: 'rt-modal-wa-cuerpo' }, [p1, p2, p3]),
                 el('div', { class: 'rt-modal-wa-pie' }, [
