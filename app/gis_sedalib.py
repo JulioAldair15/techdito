@@ -88,12 +88,12 @@ def disponible():
 def motivo_no_disponible():
     u, c = credenciales()
     if not (u and c):
-        return ("no hay credenciales del GIS de Sedalib configuradas en el servidor "
-                "(variables SEDALIB_GIS_USUARIO / SEDALIB_GIS_CLAVE o sedalib_gis.json)")
+        # (faltan las variables de entorno o el archivo de credenciales: ver arriba)
+        return "el servidor no tiene configurado el acceso al plano de lotes"
     if time.time() < _estado["pausa_hasta"]:
-        return "el GIS de Sedalib rechazo el usuario o la clave; se reintentara en unos minutos"
+        return "el plano de lotes rechazó el usuario o la clave del servidor; se reintentará en unos minutos"
     if time.time() < _estado["pausa_red_hasta"]:
-        return "el GIS de Sedalib no esta respondiendo; se reintentara en unos minutos"
+        return "el plano de lotes no está respondiendo; se reintentará en unos minutos"
     return ""
 
 
@@ -164,7 +164,7 @@ class ClienteGisSedalib:
         r.raise_for_status()
         token = _campo_oculto(r.text, "t")
         if not token:
-            raise ErrorGis("la pagina de login del GIS cambio (no se encontro el token)")
+            raise ErrorGis("la página de acceso del plano de lotes cambió (no se encontró el token)")
         v01 = _campo_oculto(r.text, "v01") or ""
         r = s.post(URL_LOGIN, timeout=self.timeout,
                    headers={"X-Requested-With": "XMLHttpRequest", "Referer": URL_LOGIN_PAGINA},
@@ -177,7 +177,7 @@ class ClienteGisSedalib:
         except ValueError:
             ok = False
         if not ok:
-            raise CredencialesRechazadas("el GIS de Sedalib rechazo el usuario o la clave")
+            raise CredencialesRechazadas("el plano de lotes rechazó el usuario o la clave del servidor")
         # El buscador usa la sesion del visor: se abre una vez.
         s.get(URL_VISOR, params={"config": "default", "resetsession": "ALL"},
               timeout=self.timeout)
@@ -199,7 +199,7 @@ class ClienteGisSedalib:
             except ValueError:
                 self.sesion = None            # sesion vencida: se entra de nuevo una vez
                 if intento == 2:
-                    raise ErrorGis("el GIS de Sedalib respondio algo inesperado")
+                    raise ErrorGis("el plano de lotes respondió algo inesperado")
         return None
 
 
@@ -275,7 +275,11 @@ def consultar(suministros, hilos=4, tope=300, presupuesto_s=15):
              len(resultados), sum(1 for v in resultados.values() if v),
              len(errores), time.time() - t0)
     if errores:
-        return resultados, errores[0].replace("RECHAZO: ", "")
+        primero = errores[0]
+        if primero.startswith("RECHAZO: "):
+            return resultados, primero.replace("RECHAZO: ", "")
+        log.warning("Plano de lotes: %s", primero)
+        return resultados, "el plano de lotes no respondió bien; se volverá a intentar más tarde"
     return resultados, ""
 
 

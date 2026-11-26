@@ -37,7 +37,7 @@ ETIQUETAS_EXPORT = {
     "revisar_direccion": "NO CUADRA CON SU DIRECCION: REVISAR",
     "corregida_supervisor": "CORREGIDA POR EL SUPERVISOR",
     "mantenida_supervisor": "EL SUPERVISOR MANTUVO LA ORIGINAL",
-    "corregida_gis": "UBICADA CON EL GIS DE SEDALIB (LOTE DEL SUMINISTRO)",
+    "corregida_gis": "UBICADA EN SU LOTE EXACTO (PLANO DE LOTES)",
 }
 ESTADOS_VERDES = {"corregida_direccion", "ubicada_direccion", "corregida_supervisor",
                   "corregida_gis"}
@@ -46,7 +46,7 @@ ORIGEN_MANUAL = "manual"
 # Origenes que el validador no toca: (estado que se muestra, nota)
 ORIGENES_FIJOS = {
     "manual": ("manual", "Ubicacion fijada a mano por el supervisor."),
-    "gis_sedalib": ("gis", "Ubicado con el GIS de Sedalib (centro del lote del suministro)."),
+    "gis_sedalib": ("gis", "Ubicado en el centro de su lote (plano de lotes)."),
 }
 # estado del validador -> clave del resumen
 _RESUMEN_DE = {"verificada": "verificadas", "aproximada": "aproximadas",
