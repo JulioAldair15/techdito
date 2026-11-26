@@ -361,6 +361,10 @@
                 <li><a href="#" data-section="rutas"><i class="fas fa-route"></i> <span>Rutas</span></a></li>
                 {% endif %}
 
+                {% if puede_monitoreo %}
+                <li><a href="#" data-section="monitoreo"><i class="fas fa-satellite-dish"></i> <span>Monitoreo</span></a></li>
+                {% endif %}
+
                 <li class="logout-item">
                     <a href="{{ url_for('logout') }}" class="logout-link">
                         <i class="fas fa-sign-out-alt"></i> <span>Cerrar Sesión</span>
@@ -2888,6 +2892,13 @@
 
                 </div>
 
+                <!-- MONITOREO DE OPERARIOS (lo arma static/js/monitoreo.js) -->
+                {% if puede_monitoreo %}
+                <div id="monitoreo" class="section">
+                    <div id="mo-app"></div>
+                </div>
+                {% endif %}
+
                 <!-- RUTAS -->
                 <div id="rutas" class="section">
                     <div class="rt-wrapper">
@@ -4475,6 +4486,7 @@
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     <script src="{{ url_for('static', filename='js/rutas_excel.js') }}"></script>
     <script src="{{ url_for('static', filename='js/rutas_consulta.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/monitoreo.js') }}"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 </body>
