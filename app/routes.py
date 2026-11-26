@@ -13079,6 +13079,8 @@ CFG = {
     "FOTOS_HILOS":        8,      # fechas que se piden a la vez al servidor de fotos
     "FOTOS_MAX_SEG":      8,      # tiempo maximo pidiendo fechas en una busqueda
     "FOTOS_MAX_CONSULTA": 250,    # fotos nuevas por busqueda (el resto, en la siguiente)
+    "RUTAS_MOVIL_HORAS":  16,     # cuanto dura el pase de la app movil al modulo Rutas
+    "RUTAS_MOVIL_MAX_HORA": 300,  # busquedas por usuario y por hora desde la app
 
     # --- BD ---
     "DB_CHUNK": 900,
@@ -15337,8 +15339,8 @@ def _preparar_datos(contenido, form, conf, db, CoordenadasCatastro, DataCatastro
                 df.at[i, "cx"], df.at[i, "cy"] = p
                 df.at[i, "origen"] = ORIGEN_GIS
                 df.at[i, "__dir_estado__"] = "gis"
-                df.at[i, "__dir_nota__"] = ("Ubicado con el GIS de Sedalib (centro del lote "
-                                            "del suministro).")
+                df.at[i, "__dir_nota__"] = ("Ubicado en el centro de su lote "
+                                            "(plano de lotes).")
                 df.at[i, "__lon_prop__"], df.at[i, "__lat_prop__"] = None, None
                 reubicados[s] = p
             # deja la correccion en la lista que va a catastro
@@ -15347,7 +15349,7 @@ def _preparar_datos(contenido, form, conf, db, CoordenadasCatastro, DataCatastro
                 if p:
                     d["estado"] = "corregida_gis"
                     d["lon_corregida"], d["lat_corregida"] = _num(p[0]), _num(p[1])
-                    d["motivo"] = "Ubicado con el GIS de Sedalib (lote del suministro)"
+                    d["motivo"] = "Ubicado en su lote exacto (plano de lotes)"
     gis_info["ubicados"] = int((df["origen"].astype(str) == ORIGEN_GIS).sum())
 
     # --- Absorcion de localidades desconocidas -----------------------------
@@ -15525,7 +15527,7 @@ def _ubicacion_suministro(variantes, conf, CoordenadasCatastro, DataCatastroV2):
                                              else [], conf)
             for lon, lat in list(gis.values())[:1]:
                 puntos.append({"origen": "gis_sedalib", "lon": lon, "lat": lat,
-                               "nombre": "GIS de Sedalib (centro del lote)"})
+                               "nombre": "Lote exacto (centro del lote)"})
         except Exception:
             log.exception("Consulta: fallo el GIS de Sedalib")
 
@@ -16394,6 +16396,101 @@ def registrar_rutas(app, db, CoordenadasCatastro, DataCatastroV2, cfg=None):
                             "error": "No se pudo consultar el suministro."}), 500
 
     # -------------------------------------------------------------------------
+    #  G2) APP MOVIL - MODULO "RUTAS": la misma busqueda por suministro, desde el celular
+    #      La app no guarda la cookie de sesion de la web, asi que entra con un pase
+    #      firmado (token) que pide con su usuario y clave al iniciar sesion.
+    #      El pase vence a las RUTAS_MOVIL_HORAS y deja de valer si cambia la clave.
+    # -------------------------------------------------------------------------
+    import hashlib as _hl
+    from itsdangerous import URLSafeTimedSerializer as _Firmador, BadSignature as _FirmaMala
+    _firmador_movil = _Firmador(app.secret_key, salt="techdito-rutas-movil")
+    _busquedas_movil = {}          # id_usuario -> [instantes] (limite por hora)
+
+    def _huella_clave(u):
+        return _hl.sha1(str(u.contraseña or "").encode("utf-8")).hexdigest()[:12]
+
+    def _usuario_movil():
+        cab = request.headers.get("Authorization") or ""
+        token = cab[7:].strip() if cab[:7].lower() == "bearer " else ""
+        if not token:
+            return None
+        try:
+            datos = _firmador_movil.loads(token, max_age=int(conf["RUTAS_MOVIL_HORAS"]) * 3600)
+        except _FirmaMala:
+            return None
+        try:
+            u = Usuario.query.get(int(datos.get("u")))
+        except Exception:
+            db.session.rollback()
+            return None
+        if u is None or datos.get("h") != _huella_clave(u):
+            return None
+        return u
+
+    @app.route("/api/movil/rutas/sesion", methods=["POST"])
+    def rutas_movil_sesion():
+        """Body: {"user", "password"} -> {"token"} para usar el modulo Rutas de la app."""
+        try:
+            datos = request.get_json(silent=True) or {}
+            nombre = str(datos.get("user") or "").strip()
+            clave = str(datos.get("password") or "")
+            if not nombre or not clave:
+                return jsonify({"success": False, "error": "Falta el usuario o la contraseña."}), 400
+            u = Usuario.query.filter_by(user=nombre).first()
+            valido = False
+            if u is not None and u.contraseña:
+                try:
+                    valido = check_password_hash(u.contraseña, clave)
+                except Exception:
+                    valido = False
+            if not valido:
+                return jsonify({"success": False, "error": "Usuario o contraseña incorrectos."}), 401
+            token = _firmador_movil.dumps({"u": u.id_usuario, "h": _huella_clave(u)})
+            log.info("[RUTAS MOVIL] pase entregado a %s (id %s)", u.user, u.id_usuario)
+            return jsonify({"success": True, "token": token, "user_id": u.id_usuario,
+                            "horas": int(conf["RUTAS_MOVIL_HORAS"])}), 200
+        except Exception:
+            db.session.rollback()
+            log.error("Error entregando el pase de Rutas a la app:\n%s", traceback.format_exc())
+            return jsonify({"success": False, "error": "No se pudo iniciar Rutas."}), 500
+
+    @app.route("/api/movil/rutas/consulta", methods=["POST"])
+    def rutas_movil_consulta():
+        """Header 'Authorization: Bearer <token>'; body {"suministro"} -> igual que la web."""
+        usuario = _usuario_movil()
+        if usuario is None:
+            return jsonify({"success": False, "sesion": False,
+                            "error": "Tu acceso a Rutas venció. Confirma tu contraseña."}), 401
+        ahora = time.time()
+        marcas = [t for t in _busquedas_movil.get(usuario.id_usuario, []) if ahora - t < 3600]
+        if len(marcas) >= int(conf["RUTAS_MOVIL_MAX_HORA"]):
+            return jsonify({"success": False,
+                            "error": "Hiciste demasiadas búsquedas en la última hora. "
+                                     "Espera unos minutos."}), 429
+        marcas.append(ahora)
+        _busquedas_movil[usuario.id_usuario] = marcas
+        try:
+            datos = request.get_json(silent=True) or {}
+            s = str(datos.get("suministro") or "").strip()
+            if not re.fullmatch(r"\d{4,15}", s):
+                return jsonify({"success": False,
+                                "error": "Escribe un número de suministro (solo dígitos)."}), 400
+            variantes = _variantes_suministro(s)
+            puntos, ficha = _ubicacion_suministro(variantes, conf, CoordenadasCatastro,
+                                                  DataCatastroV2)
+            visitas, error_fotos = _fotos_suministro(variantes, conf)
+            log.info("[RUTAS MOVIL] %s (id %s) consultó el suministro %s",
+                     usuario.user, usuario.id_usuario, s)
+            return jsonify({"success": True, "suministro": s, "ubicaciones": puntos,
+                            "datos": ficha, "visitas": visitas,
+                            "error_fotos": error_fotos}), 200
+        except Exception:
+            db.session.rollback()
+            log.error("Error en la consulta por suministro (app):\n%s", traceback.format_exc())
+            return jsonify({"success": False,
+                            "error": "No se pudo consultar el suministro."}), 500
+
+    # -------------------------------------------------------------------------
     #  H) UNA FOTO DEL HISTORIAL, SERVIDA DESDE AQUI (para descargarla o compartirla)
     #     El servidor de fotos es de otro dominio: el navegador no deja descargarla
     #     con su nombre ni pasarla a WhatsApp si no viene de este mismo servidor.
@@ -16444,16 +16541,16 @@ def registrar_rutas(app, db, CoordenadasCatastro, DataCatastroV2, cfg=None):
             p = puntos.get(s)
             if not p:
                 if info.get("error"):
-                    return jsonify({"success": False, "error": "No se pudo consultar el GIS "
-                                    "de Sedalib: %s" % info["error"]}), 502
-                return jsonify({"success": False, "error": "El GIS de Sedalib no tiene "
+                    return jsonify({"success": False, "error": "No se pudo consultar el plano "
+                                    "de lotes: %s" % info["error"]}), 502
+                return jsonify({"success": False, "error": "El plano de lotes no tiene "
                                 "ubicado el suministro %s." % s}), 404
             return jsonify({"success": True, "suministro": s, "lon": p[0], "lat": p[1]}), 200
         except Exception:
             db.session.rollback()
             log.error("Error consultando el GIS de Sedalib:\n%s", traceback.format_exc())
             return jsonify({"success": False,
-                            "error": "No se pudo consultar el GIS de Sedalib."}), 500
+                            "error": "No se pudo consultar el plano de lotes."}), 500
 
     # -------------------------------------------------------------------------
     #  E) UBICACION FIJADA A MANO (el supervisor arrastra el punto en el mapa)
