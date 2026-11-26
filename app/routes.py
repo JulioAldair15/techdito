@@ -17161,3 +17161,7 @@ def _recomponer_carga_masiva(carga_in, perfil, cfg):
     }
 
 registrar_rutas(app, db, CoordenadasCatastro, DataCatastroV2)
+
+# Monitoreo de operarios: ubicación que manda la app móvil (ver monitoreo.py)
+from .monitoreo import registrar_monitoreo
+registrar_monitoreo(app, db, Usuario)
